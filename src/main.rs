@@ -1,7 +1,9 @@
 mod cli;
+mod collectors;
 mod error;
 mod model;
 mod report;
+mod rules;
 mod run;
 
 use std::process::ExitCode;

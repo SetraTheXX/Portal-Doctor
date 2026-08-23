@@ -26,8 +26,12 @@ cargo build --release
 ## Usage
 
 ```sh
-# run the passive diagnostic check (default command)
+# run all passive diagnostic checks (default command)
 portaldoctor check
+
+# restrict to desktop/session/environment discovery
+portaldoctor check environment
+portaldoctor check environment --verbose
 
 # machine-readable output
 portaldoctor check --json
