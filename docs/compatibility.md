@@ -41,11 +41,10 @@ they are untested in v0.1 and no support is claimed.
 3. `UseIn` matching is ASCII case-insensitive. Upstream comparisons are
    historically case-sensitive; practical desktop/descriptor pairs differ in
    case, so strict matching would misreport common setups.
-4. Shell-wrapper scripts used as `systemctl` replacements leave grandchildren
-   running for at most one timeout window after detection; direct binaries are
-   reaped immediately on timeout (process-group kill).
-5. Subprocess stdout larger than the pipe buffer (~64 KiB) causes that probe
-   to be treated as timed out instead of captured.
+4. Subprocess stdout larger than the pipe buffer (~64 KiB) causes that probe
+   to be treated as timed out instead of captured. `systemctl show` and
+   `show-environment` emit only small dumps, so this does not affect the
+   built-in checks.
 
 ## Reporting gaps
 
