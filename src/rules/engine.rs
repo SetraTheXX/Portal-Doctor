@@ -25,6 +25,10 @@ fn registered() -> Vec<Box<dyn DiagnosticRule>> {
         Box::new(super::portal::Xdp003),
         Box::new(super::portal::Xdp004),
         Box::new(super::portal::Xdp005),
+        Box::new(super::dbus::Dbus001),
+        Box::new(super::dbus::Dbus002),
+        Box::new(super::dbus::Xdp001),
+        Box::new(super::dbus::Xdp002),
     ]
 }
 

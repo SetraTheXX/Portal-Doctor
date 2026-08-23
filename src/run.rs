@@ -7,6 +7,7 @@ use crate::error::Error;
 use crate::model::finding::Finding;
 use crate::model::portal::PortalRoute;
 use crate::model::section::Section;
+use crate::model::service::ServiceInfo;
 use crate::model::snapshot::Snapshot;
 use crate::report::{
     JsonRenderer, PortalExplainRenderer, PortalListRenderer, PortalRoutesRenderer, Renderer,
@@ -117,15 +118,26 @@ fn collect_snapshot() -> Collected {
         _ => Section::<Vec<PortalRoute>>::unsupported("portal collection incomplete"),
     };
 
-    let snapshot = Snapshot::new(
-        unix_epoch_ms(),
-        system,
-        session,
-        environment,
-        portal_config,
-        portal_backends,
-        portal_routes,
-    );
+    // Phase 3: runtime verification targets the frontend and every selected
+    // backend bus name.
+    let selected_backend_names = selected_backend_dbus_names(&portal_routes, &portal_backends);
+    let dbus = collectors::dbus::collect(&selected_backend_names);
+    let mut unit_names = vec![ServiceInfo::frontend_unit().to_owned()];
+    if let Some(backends) = &portal_backends.value {
+        unit_names.extend(backends.iter().map(|b| ServiceInfo::backend_unit(&b.id)));
+    }
+    let services = collectors::systemd_user::collect(&unit_names);
+
+    let mut snapshot = Snapshot::new(unix_epoch_ms());
+    snapshot.system = system;
+    snapshot.session = session;
+    snapshot.environment = environment;
+    snapshot.portal_config = portal_config;
+    snapshot.portal_backends = portal_backends;
+    snapshot.portal_routes = portal_routes;
+    snapshot.dbus = dbus;
+    snapshot.services = services;
+
     let findings = rules::engine::evaluate(&snapshot);
     tracing::debug!(findings = findings.len(), "evaluation finished");
     Collected { snapshot }
@@ -142,12 +154,35 @@ fn desktop_names(session: &Section<crate::model::environment::SessionInfo>) -> V
         .unwrap_or_default()
 }
 
+/// Bus names of the backends selected by the resolved routes.
+fn selected_backend_dbus_names(
+    routes: &Section<Vec<PortalRoute>>,
+    backends: &Section<Vec<crate::model::portal::PortalBackend>>,
+) -> Vec<String> {
+    let (Some(routes), Some(backends)) = (&routes.value, &backends.value) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = routes
+        .iter()
+        .flat_map(|route| route.selected_candidates.iter())
+        .filter_map(|id| {
+            backends
+                .iter()
+                .find(|backend| backend.id == *id)
+                .map(|backend| backend.dbus_name.clone())
+        })
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    names
+}
+
 fn is_environment_finding(finding: &Finding) -> bool {
     finding.id.starts_with("ENV")
 }
 
 fn is_portal_finding(finding: &Finding) -> bool {
-    finding.id.starts_with("XDP") || finding.id.starts_with("CFG")
+    finding.id.starts_with("XDP") || finding.id.starts_with("CFG") || finding.id.starts_with("DBUS")
 }
 
 fn filter_findings(findings: Vec<Finding>, keep: fn(&Finding) -> bool) -> Vec<Finding> {

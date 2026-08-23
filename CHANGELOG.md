@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Portal rules `XDP003`–`XDP005` and `CFG001`–`CFG004`.
   - `portaldoctor portal list | routes | explain <interface>`,
     `portaldoctor check portal`.
+- Phase 3: D-Bus and systemd runtime verification.
+  - `zbus`-based session bus checks: frontend and selected backend bus names,
+    classified outcomes (has owner, no owner, timeout, access denied,
+    activation failure), bounded by the central timeout policy.
+  - Portal-relevant systemd user unit states via bounded
+    `systemctl --user show`.
+  - Rules `DBUS001`–`DBUS002` and `XDP001`–`XDP002`; runtime findings included
+    in bare `check` output.
 - Phase 2 audit fixes: desktop names normalized to lowercase like upstream;
   `org.freedesktop.impl.portal.Default` preference acts as fallback and is
   overridden by interface-specific entries; route selection picks the first

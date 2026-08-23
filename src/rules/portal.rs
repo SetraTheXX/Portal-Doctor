@@ -430,15 +430,12 @@ mod tests {
         backends: Section<Vec<PortalBackend>>,
         routes: Section<Vec<PortalRoute>>,
     ) -> Snapshot {
-        Snapshot::new(
-            0,
-            Section::<crate::model::environment::SystemInfo>::unsupported("fixture"),
-            session,
-            Section::<crate::model::environment::EnvironmentInfo>::unsupported("fixture"),
-            config,
-            backends,
-            routes,
-        )
+        let mut snapshot = Snapshot::new(0);
+        snapshot.session = session;
+        snapshot.portal_config = config;
+        snapshot.portal_backends = backends;
+        snapshot.portal_routes = routes;
+        snapshot
     }
 
     fn ids(findings: &[Finding]) -> Vec<&str> {
