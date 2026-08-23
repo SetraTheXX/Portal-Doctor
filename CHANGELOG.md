@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Portal rules `XDP003`–`XDP005` and `CFG001`–`CFG004`.
   - `portaldoctor portal list | routes | explain <interface>`,
     `portaldoctor check portal`.
+- Fixed: bounded subprocess helper (`output_bounded`) kills the whole child
+  process group on timeout, so shell wrappers or grandchildren cannot survive
+  as orphans; systemd user-service collector migrated to it.
 - Phase 3: D-Bus and systemd runtime verification.
   - `zbus`-based session bus checks: frontend and selected backend bus names,
     classified outcomes (has owner, no owner, timeout, access denied,

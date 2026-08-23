@@ -22,3 +22,6 @@ all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 # Model types intentionally mirror their module names (model/finding.rs -> Finding).
 module_name_repetitions = { level = "allow" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
