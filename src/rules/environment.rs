@@ -241,6 +241,15 @@ mod tests {
             Section::<SystemInfo>::unsupported("not part of environment fixtures"),
             Section::available(session_info(&process_map)),
             Section::available(environment_info(process_map, None, activation_map.as_ref())),
+            Section::<crate::model::portal::PortalConfigInfo>::unsupported(
+                "not part of environment fixtures",
+            ),
+            Section::<Vec<crate::model::portal::PortalBackend>>::unsupported(
+                "not part of environment fixtures",
+            ),
+            Section::<Vec<crate::model::portal::PortalRoute>>::unsupported(
+                "not part of environment fixtures",
+            ),
         )
     }
 

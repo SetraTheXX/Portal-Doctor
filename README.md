@@ -35,6 +35,11 @@ portaldoctor check environment --verbose
 
 # machine-readable output
 portaldoctor check --json
+
+# portal inspection
+portaldoctor portal list
+portaldoctor portal routes
+portaldoctor portal explain ScreenCast
 ```
 
 Also accepts `--version` and `--help`.
