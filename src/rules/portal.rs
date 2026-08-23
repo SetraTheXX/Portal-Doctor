@@ -28,20 +28,15 @@ fn portal_finding(
     }
 }
 
-/// Current desktop names from `XDG_CURRENT_DESKTOP` (colon-separated).
+/// Current desktop names from `XDG_CURRENT_DESKTOP`, normalized like
+/// upstream (trimmed, lowercased).
 fn desktops(snapshot: &Snapshot) -> Vec<String> {
     snapshot
         .session
         .value
         .as_ref()
         .and_then(|s| s.current_desktop.as_ref())
-        .map(|raw| {
-            raw.split(':')
-                .map(str::trim)
-                .filter(|d| !d.is_empty())
-                .map(str::to_owned)
-                .collect()
-        })
+        .map(|raw| crate::resolver::portal_routes::normalize_desktops(raw))
         .unwrap_or_default()
 }
 
@@ -181,10 +176,11 @@ impl DiagnosticRule for Cfg001 {
         if desktops.is_empty() {
             return Vec::new();
         }
-        let has_desktop_specific = config
-            .selected_file
-            .as_deref()
-            .is_some_and(|f| !f.ends_with("portals.conf"));
+        let has_desktop_specific = config.selected_file.as_deref().is_some_and(|f| {
+            std::path::Path::new(f)
+                .file_name()
+                .is_some_and(|name| name != "portals.conf")
+        });
         if has_desktop_specific {
             return Vec::new();
         }
@@ -315,19 +311,12 @@ impl DiagnosticRule for Cfg004 {
     }
 
     fn evaluate(&self, snapshot: &Snapshot) -> Vec<Finding> {
-        let (Some(routes), Some(config)) =
-            (&snapshot.portal_routes.value, &snapshot.portal_config.value)
-        else {
+        let Some(routes) = &snapshot.portal_routes.value else {
             return Vec::new();
         };
         routes
             .iter()
-            .filter(|route| {
-                !config
-                    .preferences
-                    .iter()
-                    .any(|p| p.interface == route.interface)
-            })
+            .filter(|route| route.requested_candidates.is_empty())
             .filter(|route| route.available_candidates.len() > 1)
             .map(|route| {
                 portal_finding(
@@ -347,5 +336,519 @@ impl DiagnosticRule for Cfg004 {
                 )
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cfg001, Cfg002, Cfg003, Cfg004, Xdp003, Xdp004, Xdp005};
+    use crate::model::environment::{SessionInfo, SessionType};
+    use crate::model::finding::Finding;
+    use crate::model::portal::{
+        PortalBackend, PortalConfigInfo, PortalPreference, PortalRoute, RouteEvidence, RouteStatus,
+    };
+    use crate::model::section::Section;
+    use crate::model::snapshot::Snapshot;
+    use crate::rules::engine::DiagnosticRule;
+    use std::collections::BTreeSet;
+
+    const SCREENSHOT: &str = "org.freedesktop.impl.portal.Screenshot";
+
+    fn session(desktop: &str) -> Section<SessionInfo> {
+        Section::available(SessionInfo {
+            current_desktop: Some(desktop.to_owned()),
+            session_desktop: None,
+            session_type: Some(SessionType::Wayland),
+            session_type_raw: Some("wayland".to_owned()),
+            wayland_display: Some("wayland-0".to_owned()),
+            display: None,
+        })
+    }
+
+    fn pref(interface: &str, backends: &[&str]) -> PortalPreference {
+        PortalPreference {
+            interface: interface.to_owned(),
+            backends: backends.iter().map(|b| (*b).to_owned()).collect(),
+            source_file: "/cfg/xdg-desktop-portal/portals.conf".to_owned(),
+            source_priority: 1,
+        }
+    }
+
+    fn config(
+        preferences: Vec<PortalPreference>,
+        selected: Option<&str>,
+        errors: Vec<String>,
+    ) -> Section<PortalConfigInfo> {
+        Section::available(PortalConfigInfo {
+            candidate_files: vec![
+                "/cfg/xdg-desktop-portal/gnome-portals.conf".to_owned(),
+                "/cfg/xdg-desktop-portal/portals.conf".to_owned(),
+            ],
+            selected_file: selected.map(str::to_owned),
+            preferences,
+            parse_errors: errors,
+        })
+    }
+
+    fn backends(ids: &[&str]) -> Section<Vec<PortalBackend>> {
+        Section::available(
+            ids.iter()
+                .map(|id| PortalBackend {
+                    id: (*id).to_owned(),
+                    descriptor_path: format!("/usr/share/xdg-desktop-portal/portals/{id}.portal"),
+                    duplicate_descriptors: Vec::new(),
+                    dbus_name: format!("org.freedesktop.impl.portal.desktop.{id}"),
+                    interfaces: BTreeSet::from([SCREENSHOT.to_owned()]),
+                    legacy_use_in: Vec::new(),
+                })
+                .collect(),
+        )
+    }
+
+    fn route(
+        interface: &str,
+        requested: &[&str],
+        available: &[&str],
+        selected: &[&str],
+        status: RouteStatus,
+    ) -> PortalRoute {
+        PortalRoute {
+            interface: interface.to_owned(),
+            requested_candidates: requested.iter().map(|s| (*s).to_owned()).collect(),
+            available_candidates: available.iter().map(|s| (*s).to_owned()).collect(),
+            selected_candidates: selected.iter().map(|s| (*s).to_owned()).collect(),
+            evidence: vec![RouteEvidence {
+                message: "fixture evidence".to_owned(),
+            }],
+            status,
+        }
+    }
+
+    fn snapshot(
+        session: Section<SessionInfo>,
+        config: Section<PortalConfigInfo>,
+        backends: Section<Vec<PortalBackend>>,
+        routes: Section<Vec<PortalRoute>>,
+    ) -> Snapshot {
+        Snapshot::new(
+            0,
+            Section::<crate::model::environment::SystemInfo>::unsupported("fixture"),
+            session,
+            Section::<crate::model::environment::EnvironmentInfo>::unsupported("fixture"),
+            config,
+            backends,
+            routes,
+        )
+    }
+
+    fn ids(findings: &[Finding]) -> Vec<&str> {
+        findings.iter().map(|f| f.id.as_str()).collect()
+    }
+
+    // ---- XDP003 ----
+
+    #[test]
+    fn xdp003_fires_without_any_backend() {
+        let s = snapshot(
+            session("GNOME"),
+            config(Vec::new(), None, Vec::new()),
+            backends(&[]),
+            Section::unsupported("no routes"),
+        );
+        assert_eq!(ids(&Xdp003.evaluate(&s)), ["XDP003"]);
+    }
+
+    #[test]
+    fn xdp003_silent_when_backends_exist() {
+        let s = snapshot(
+            session("GNOME"),
+            config(Vec::new(), None, Vec::new()),
+            backends(&["gnome"]),
+            Section::unsupported("no routes"),
+        );
+        assert!(Xdp003.evaluate(&s).is_empty());
+    }
+
+    // ---- XDP004 ----
+
+    #[test]
+    fn xdp004_fires_when_configured_interface_has_no_provider() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                vec![pref(SCREENSHOT, &["gnome"])],
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&[]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &["gnome"],
+                &[],
+                &[],
+                RouteStatus::NoProvider,
+            )]),
+        );
+        assert_eq!(ids(&Xdp004.evaluate(&s)), ["XDP004"]);
+    }
+
+    #[test]
+    fn xdp004_silent_when_provider_exists() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                vec![pref(SCREENSHOT, &["gnome"])],
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&["gnome"]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &["gnome"],
+                &["gnome"],
+                &["gnome"],
+                RouteStatus::Selected,
+            )]),
+        );
+        assert!(Xdp004.evaluate(&s).is_empty());
+    }
+
+    #[test]
+    fn xdp004_silent_for_disabled_interfaces() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                vec![pref(SCREENSHOT, &["none"])],
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&[]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &["none"],
+                &[],
+                &[],
+                RouteStatus::Disabled,
+            )]),
+        );
+        assert!(Xdp004.evaluate(&s).is_empty());
+    }
+
+    #[test]
+    fn xdp004_silent_when_interface_not_configured() {
+        let s = snapshot(
+            session("GNOME"),
+            config(Vec::new(), None, Vec::new()),
+            backends(&[]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &[],
+                &[],
+                &[],
+                RouteStatus::NoProvider,
+            )]),
+        );
+        assert!(Xdp004.evaluate(&s).is_empty());
+    }
+
+    // ---- XDP005 ----
+
+    #[test]
+    fn xdp005_fires_for_missing_backend_in_config() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                vec![pref(SCREENSHOT, &["gnome", "kde"])],
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&["gnome"]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &["gnome", "kde"],
+                &["gnome"],
+                &["gnome"],
+                RouteStatus::Selected,
+            )]),
+        );
+        let findings = Xdp005.evaluate(&s);
+        assert_eq!(ids(&findings), ["XDP005"]);
+        assert!(findings[0].summary.contains("kde"));
+    }
+
+    #[test]
+    fn xdp005_silent_when_all_referenced_backends_exist() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                vec![pref(SCREENSHOT, &["gnome", "gtk"])],
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&["gnome", "gtk"]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &["gnome", "gtk"],
+                &["gnome", "gtk"],
+                &["gnome"],
+                RouteStatus::Selected,
+            )]),
+        );
+        assert!(Xdp005.evaluate(&s).is_empty());
+    }
+
+    #[test]
+    fn xdp005_ignores_star_and_none_tokens() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                vec![pref(SCREENSHOT, &["*", "none"])],
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&[]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &["*", "none"],
+                &[],
+                &[],
+                RouteStatus::Disabled,
+            )]),
+        );
+        assert!(Xdp005.evaluate(&s).is_empty());
+    }
+
+    // ---- CFG001 ----
+
+    #[test]
+    fn cfg001_warns_when_no_config_exists() {
+        let s = snapshot(
+            session("ubuntu:GNOME"),
+            config(Vec::new(), None, Vec::new()),
+            backends(&["gnome"]),
+            Section::unsupported("n/a"),
+        );
+        let findings = Cfg001.evaluate(&s);
+        assert_eq!(ids(&findings), ["CFG001"]);
+        assert_eq!(
+            findings[0].severity,
+            crate::model::finding::Severity::Warning
+        );
+    }
+
+    #[test]
+    fn cfg001_informs_on_generic_fallback() {
+        let s = snapshot(
+            session("ubuntu:GNOME"),
+            config(
+                Vec::new(),
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&["gnome"]),
+            Section::unsupported("n/a"),
+        );
+        let findings = Cfg001.evaluate(&s);
+        assert_eq!(ids(&findings), ["CFG001"]);
+        assert_eq!(findings[0].severity, crate::model::finding::Severity::Info);
+    }
+
+    #[test]
+    fn cfg001_silent_with_desktop_specific_config() {
+        let s = snapshot(
+            session("ubuntu:GNOME"),
+            config(
+                Vec::new(),
+                Some("/cfg/xdg-desktop-portal/gnome-portals.conf"),
+                Vec::new(),
+            ),
+            backends(&["gnome"]),
+            Section::unsupported("n/a"),
+        );
+        assert!(Cfg001.evaluate(&s).is_empty());
+    }
+
+    #[test]
+    fn cfg001_silent_without_desktop_identity() {
+        let s = snapshot(
+            session(""),
+            config(Vec::new(), None, Vec::new()),
+            backends(&["gnome"]),
+            Section::unsupported("n/a"),
+        );
+        assert!(Cfg001.evaluate(&s).is_empty());
+    }
+
+    // ---- CFG002 ----
+
+    #[test]
+    fn cfg002_fires_on_parse_errors() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                Vec::new(),
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                vec!["line 3: missing '='".to_owned()],
+            ),
+            backends(&["gnome"]),
+            Section::unsupported("n/a"),
+        );
+        assert_eq!(ids(&Cfg002.evaluate(&s)), ["CFG002"]);
+    }
+
+    #[test]
+    fn cfg002_silent_without_parse_errors() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                Vec::new(),
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&["gnome"]),
+            Section::unsupported("n/a"),
+        );
+        assert!(Cfg002.evaluate(&s).is_empty());
+    }
+
+    // ---- CFG003 ----
+
+    #[test]
+    fn cfg003_fires_when_preferred_backend_lacks_interface() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                vec![pref(SCREENSHOT, &["gtk"])],
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&["gnome", "gtk"]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &["gtk"],
+                &["gnome"],
+                &[],
+                RouteStatus::NoProvider,
+            )]),
+        );
+        assert_eq!(ids(&Cfg003.evaluate(&s)), ["CFG003"]);
+    }
+
+    #[test]
+    fn cfg003_silent_when_selection_succeeds() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                vec![pref(SCREENSHOT, &["gnome"])],
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&["gnome"]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &["gnome"],
+                &["gnome"],
+                &["gnome"],
+                RouteStatus::Selected,
+            )]),
+        );
+        assert!(Cfg003.evaluate(&s).is_empty());
+    }
+
+    #[test]
+    fn cfg003_silent_without_preference() {
+        let s = snapshot(
+            session("GNOME"),
+            config(Vec::new(), None, Vec::new()),
+            backends(&["gnome"]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &[],
+                &["gnome"],
+                &["gnome"],
+                RouteStatus::Selected,
+            )]),
+        );
+        assert!(Cfg003.evaluate(&s).is_empty());
+    }
+
+    // ---- CFG004 ----
+
+    #[test]
+    fn cfg004_fires_for_unpinned_multi_provider() {
+        let s = snapshot(
+            session("GNOME"),
+            config(Vec::new(), None, Vec::new()),
+            backends(&["gnome", "gtk"]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &[],
+                &["gnome", "gtk"],
+                &["gnome"],
+                RouteStatus::Selected,
+            )]),
+        );
+        let findings = Cfg004.evaluate(&s);
+        assert_eq!(ids(&findings), ["CFG004"]);
+        assert_eq!(findings[0].severity, crate::model::finding::Severity::Info);
+    }
+
+    #[test]
+    fn cfg004_silent_with_single_provider() {
+        let s = snapshot(
+            session("GNOME"),
+            config(Vec::new(), None, Vec::new()),
+            backends(&["gnome"]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &[],
+                &["gnome"],
+                &["gnome"],
+                RouteStatus::Selected,
+            )]),
+        );
+        assert!(Cfg004.evaluate(&s).is_empty());
+    }
+
+    #[test]
+    fn cfg004_silent_when_preference_pins_selection() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                vec![pref(SCREENSHOT, &["gnome"])],
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&["gnome", "gtk"]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &["gnome"],
+                &["gnome", "gtk"],
+                &["gnome"],
+                RouteStatus::Selected,
+            )]),
+        );
+        assert!(Cfg004.evaluate(&s).is_empty());
+    }
+
+    #[test]
+    fn cfg004_silent_when_default_preference_applies() {
+        let s = snapshot(
+            session("GNOME"),
+            config(
+                vec![pref("org.freedesktop.impl.portal.Default", &["gnome"])],
+                Some("/cfg/xdg-desktop-portal/portals.conf"),
+                Vec::new(),
+            ),
+            backends(&["gnome", "gtk"]),
+            Section::available(vec![route(
+                SCREENSHOT,
+                &["gnome"],
+                &["gnome", "gtk"],
+                &["gnome"],
+                RouteStatus::Selected,
+            )]),
+        );
+        assert!(Cfg004.evaluate(&s).is_empty());
     }
 }

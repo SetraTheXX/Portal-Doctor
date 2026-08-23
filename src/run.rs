@@ -131,19 +131,14 @@ fn collect_snapshot() -> Collected {
     Collected { snapshot }
 }
 
-/// Desktop names from `XDG_CURRENT_DESKTOP` (colon-separated).
+/// Desktop names from `XDG_CURRENT_DESKTOP`, normalized like upstream
+/// (trimmed, lowercased).
 fn desktop_names(session: &Section<crate::model::environment::SessionInfo>) -> Vec<String> {
     session
         .value
         .as_ref()
         .and_then(|s| s.current_desktop.as_ref())
-        .map(|raw| {
-            raw.split(':')
-                .map(str::trim)
-                .filter(|d| !d.is_empty())
-                .map(str::to_owned)
-                .collect()
-        })
+        .map(|raw| resolver::portal_routes::normalize_desktops(raw))
         .unwrap_or_default()
 }
 

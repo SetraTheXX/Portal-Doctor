@@ -10,6 +10,30 @@ use crate::model::portal::{
 /// The universe of interfaces is the union of interfaces implemented by
 /// discovered backends and interfaces referenced by configuration, so a
 /// configured-but-implemented-nowhere interface still appears as a route.
+/// Pseudo-interface whose `[preferred]` entry acts as the fallback backend
+/// for every interface without an explicit entry (upstream `portals.conf`
+/// semantics). Not itself a routable interface.
+pub const DEFAULT_INTERFACE: &str = "org.freedesktop.impl.portal.Default";
+
+/// Normalize a raw `XDG_CURRENT_DESKTOP` value into ordered desktop names:
+/// trimmed, non-empty, lowercased (upstream lowercases desktop identifiers).
+#[must_use]
+pub fn normalize_desktops(raw: &str) -> Vec<String> {
+    raw.split(':')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect()
+}
+
+/// Resolve the route table for every known portal interface
+/// (architecture §10).
+///
+/// The universe of interfaces is the union of interfaces implemented by
+/// discovered backends and interfaces referenced by configuration, so a
+/// configured-but-implemented-nowhere interface still appears as a route.
+/// The `Default` pseudo-interface is excluded from the universe and applied
+/// as the fallback preference for interfaces without an explicit entry.
 #[must_use]
 pub fn resolve_routes(
     desktops: &[String],
@@ -20,17 +44,35 @@ pub fn resolve_routes(
         .iter()
         .flat_map(|b| b.interfaces.iter().cloned())
         .collect();
-    interfaces.extend(config.preferences.iter().map(|p| p.interface.clone()));
+    interfaces.extend(
+        config
+            .preferences
+            .iter()
+            .filter(|p| p.interface != DEFAULT_INTERFACE)
+            .map(|p| p.interface.clone()),
+    );
 
     let preferences: BTreeMap<&str, &PortalPreference> = config
         .preferences
         .iter()
         .map(|p| (p.interface.as_str(), p))
         .collect();
+    let default_preference = config
+        .preferences
+        .iter()
+        .find(|p| p.interface == DEFAULT_INTERFACE);
 
     interfaces
         .into_iter()
-        .map(|interface| resolve_interface(&interface, desktops, &preferences, backends))
+        .map(|interface| {
+            resolve_interface(
+                &interface,
+                desktops,
+                &preferences,
+                default_preference,
+                backends,
+            )
+        })
         .collect()
 }
 
@@ -38,9 +80,11 @@ fn resolve_interface(
     interface: &str,
     desktops: &[String],
     preferences: &BTreeMap<&str, &PortalPreference>,
+    default_preference: Option<&PortalPreference>,
     backends: &[PortalBackend],
 ) -> PortalRoute {
-    let preference = preferences.get(interface);
+    let explicit = preferences.get(interface).copied();
+    let preference = explicit.or(default_preference);
 
     let available: Vec<&PortalBackend> = backends
         .iter()
@@ -53,19 +97,26 @@ fn resolve_interface(
         .collect();
 
     let mut evidence = Vec::new();
-    if let Some(pref) = preference {
-        evidence.push(RouteEvidence {
+    match (explicit, default_preference) {
+        (Some(pref), _) => evidence.push(RouteEvidence {
             message: format!(
-                "preferred entry from {} (priority {}): {}",
+                "interface-specific preferred entry from {} (priority {}): {}",
                 pref.source_file,
                 pref.source_priority,
                 pref.backends.join(", ")
             ),
-        });
-    } else {
-        evidence.push(RouteEvidence {
-            message: "no [preferred] entry; default to any available backend".to_owned(),
-        });
+        }),
+        (None, Some(pref)) => evidence.push(RouteEvidence {
+            message: format!(
+                "no interface-specific entry; using default preference from {} (priority {}): {}",
+                pref.source_file,
+                pref.source_priority,
+                pref.backends.join(", ")
+            ),
+        }),
+        (None, None) => evidence.push(RouteEvidence {
+            message: "no [preferred] entry; any available backend is a candidate".to_owned(),
+        }),
     }
     for backend in &usable {
         evidence.push(RouteEvidence {
@@ -127,16 +178,16 @@ fn select_candidates(
     if has_preference && requested.iter().any(|token| token == "none") {
         return (Vec::new(), RouteStatus::Disabled);
     }
-    if requested.iter().any(|token| token == "*") || !has_preference {
-        let selected: Vec<String> = usable.iter().map(|b| b.id.clone()).collect();
-        let empty = selected.is_empty();
-        return (selected, status_for(empty));
-    }
-    let selected: Vec<String> = requested
+    let order: Vec<&str> = if has_preference && !requested.iter().any(|t| t == "*") {
+        requested.iter().map(String::as_str).collect()
+    } else {
+        usable.iter().map(|b| b.id.as_str()).collect()
+    };
+    let selected = order
         .iter()
-        .filter(|token| usable.iter().any(|b| b.id == **token))
-        .cloned()
-        .collect();
+        .find(|id| usable.iter().any(|b| b.id == **id))
+        .map(|id| vec![(*id).to_owned()])
+        .unwrap_or_default();
     let empty = selected.is_empty();
     (selected, status_for(empty))
 }
@@ -215,8 +266,8 @@ mod tests {
         let shot = route(SCREENSHOT, &routes);
         assert_eq!(shot.requested_candidates, ["gnome", "gtk"]);
         assert_eq!(shot.available_candidates, ["gnome", "gtk"]);
-        // Both preferred backends are selected candidates in preference order.
-        assert_eq!(shot.selected_candidates, ["gnome", "gtk"]);
+        // Upstream picks the first usable backend in preference order.
+        assert_eq!(shot.selected_candidates, ["gnome"]);
         assert_eq!(shot.status, RouteStatus::Selected);
     }
 
@@ -271,14 +322,11 @@ mod tests {
         ];
         let config = config(vec![preference(SCREENSHOT, &["*"])]);
         let routes = resolve_routes(&["GNOME".to_owned()], &config, &backends);
-        assert_eq!(
-            route(SCREENSHOT, &routes).selected_candidates,
-            ["gnome", "gtk"]
-        );
+        assert_eq!(route(SCREENSHOT, &routes).selected_candidates, ["gnome"]);
     }
 
     #[test]
-    fn no_preference_defaults_to_all_available() {
+    fn no_preference_selects_first_available_backend() {
         let backends = vec![
             backend("gnome", "d.gnome", &[SCREENCAST], &[]),
             backend("gtk", "d.gtk", &[SCREENCAST], &[]),
@@ -287,7 +335,8 @@ mod tests {
         let cast = route(SCREENCAST, &routes);
         assert!(cast.requested_candidates.is_empty());
         assert_eq!(cast.available_candidates, ["gnome", "gtk"]);
-        assert_eq!(cast.selected_candidates, ["gnome", "gtk"]);
+        // Upstream: the first usable backend serves the interface.
+        assert_eq!(cast.selected_candidates, ["gnome"]);
         assert_eq!(cast.status, RouteStatus::Selected);
     }
 
@@ -310,6 +359,65 @@ mod tests {
             &backends,
         );
         assert_eq!(route(SCREENSHOT, &routes).available_candidates, ["gnome"]);
+    }
+
+    #[test]
+    fn default_preference_applies_to_unspecified_interfaces() {
+        let backends = vec![
+            backend("gnome", "d.gnome", &[SCREENCAST], &[]),
+            backend("gtk", "d.gtk", &[SCREENSHOT], &[]),
+        ];
+        let config = config(vec![preference(
+            "org.freedesktop.impl.portal.Default",
+            &["gtk"],
+        )]);
+        let routes = resolve_routes(&["GNOME".to_owned()], &config, &backends);
+        let shot = route(SCREENSHOT, &routes);
+        assert_eq!(shot.requested_candidates, ["gtk"]);
+        assert_eq!(shot.selected_candidates, ["gtk"]);
+        // Default pseudo-interface must not appear as its own route.
+        assert!(
+            routes
+                .iter()
+                .all(|r| r.interface != "org.freedesktop.impl.portal.Default")
+        );
+        assert!(
+            shot.evidence
+                .iter()
+                .any(|e| e.message.contains("default preference"))
+        );
+    }
+
+    #[test]
+    fn interface_specific_preference_overrides_default() {
+        let backends = vec![
+            backend("gnome", "d.gnome", &[SCREENSHOT], &[]),
+            backend("gtk", "d.gtk", &[SCREENSHOT], &[]),
+        ];
+        let config = config(vec![
+            preference("org.freedesktop.impl.portal.Default", &["gtk"]),
+            preference(SCREENSHOT, &["gnome"]),
+        ]);
+        let routes = resolve_routes(&["GNOME".to_owned()], &config, &backends);
+        let shot = route(SCREENSHOT, &routes);
+        assert_eq!(shot.requested_candidates, ["gnome"]);
+        assert_eq!(shot.selected_candidates, ["gnome"]);
+        assert!(
+            shot.evidence
+                .iter()
+                .any(|e| e.message.contains("interface-specific"))
+        );
+    }
+
+    #[test]
+    fn normalize_desktops_lowercases_and_trims() {
+        use super::normalize_desktops;
+        assert_eq!(
+            normalize_desktops("ubuntu:GNOME: :Unity"),
+            ["ubuntu", "gnome", "unity"]
+        );
+        assert!(normalize_desktops("").is_empty());
+        assert_eq!(normalize_desktops("  KDE "), ["kde"]);
     }
 
     #[test]
