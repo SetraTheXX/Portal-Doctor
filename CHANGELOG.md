@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Environment rules `ENV001`–`ENV004` with deterministic fixture tests.
   - Environment rules `ENV001`–`ENV004` with deterministic fixture tests.
   - `portaldoctor check environment [--verbose]`.
+- Phase 4: diagnostic engine v1 — v0.1 release gate.
+  - Finalized the v0.1 rule registry (15 rules) with a catalog test pinning
+    registration to the documented set.
+  - Every finding now carries the complete structured contract (explanation,
+    impact, recommendation) asserted across rule fixture tests.
+  - Default terminal output is actionable: each finding shows its first
+    recommended step without `--verbose`.
+  - Published JSON schema-v1 documentation (`docs/json-schema.md`) and the
+    finding catalog (`docs/findings.md`).
 - Phase 2: portal discovery and routing resolver.
   - `portals.conf` discovery with desktop-specific names and `XDG` precedence;
     parser supports `[preferred]`, `*`, `none` and provenance.

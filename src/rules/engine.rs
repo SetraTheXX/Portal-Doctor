@@ -32,6 +32,17 @@ fn registered() -> Vec<Box<dyn DiagnosticRule>> {
     ]
 }
 
+/// Stable IDs of the complete v0.1 rule registry, in deterministic
+/// evaluation order (lexicographic). The finding catalog documentation
+/// (`docs/findings.md`) must list exactly these IDs.
+// Exercised by the registry tests below; kept public for the docs workflow.
+#[allow(dead_code)]
+pub fn rule_ids() -> Vec<&'static str> {
+    let mut ids: Vec<&'static str> = registered().iter().map(|rule| rule.id()).collect();
+    ids.sort_unstable();
+    ids
+}
+
 /// Evaluate every registered rule and return findings sorted by rule ID.
 pub fn evaluate(snapshot: &Snapshot) -> Vec<Finding> {
     let mut findings = Vec::new();
@@ -40,4 +51,31 @@ pub fn evaluate(snapshot: &Snapshot) -> Vec<Finding> {
     }
     findings.sort_by(|a, b| a.id.cmp(&b.id));
     findings
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rule_ids;
+
+    /// Phase 4 gate: the v0.1 registry is exactly the documented catalog,
+    /// with no duplicates and no undocumented rules.
+    #[test]
+    fn v01_registry_matches_documented_catalog() {
+        let expected = [
+            "CFG001", "CFG002", "CFG003", "CFG004", //
+            "DBUS001", "DBUS002", //
+            "ENV001", "ENV002", "ENV003", "ENV004", //
+            "XDP001", "XDP002", "XDP003", "XDP004", "XDP005",
+        ];
+        assert_eq!(rule_ids(), expected);
+    }
+
+    #[test]
+    fn registry_has_no_duplicates() {
+        let ids = rule_ids();
+        let mut sorted = ids.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(ids.len(), sorted.len());
+    }
 }

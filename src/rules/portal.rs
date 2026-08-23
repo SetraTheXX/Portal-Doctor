@@ -5,13 +5,16 @@ use crate::model::snapshot::Snapshot;
 use crate::rules::engine::DiagnosticRule;
 
 /// Build a portal/config finding.
+#[allow(clippy::too_many_arguments)]
 fn portal_finding(
     id: &'static str,
     severity: Severity,
     confidence: Confidence,
     title: &'static str,
     summary: String,
+    explanation: &str,
     evidence: Evidence,
+    impact: &str,
     recommendation: &str,
 ) -> Finding {
     Finding {
@@ -20,9 +23,9 @@ fn portal_finding(
         confidence,
         title: title.to_owned(),
         summary,
-        explanation: String::new(),
+        explanation: explanation.to_owned(),
         evidence: vec![evidence],
-        impact: None,
+        impact: Some(impact.to_owned()),
         recommendation: vec![recommendation.to_owned()],
         source_component: "portal".to_owned(),
     }
@@ -62,7 +65,12 @@ impl DiagnosticRule for Xdp003 {
             "No portal backend definitions discovered",
             "No `.portal` backend descriptors were found in any effective `XDG` data root."
                 .to_owned(),
+            "Portal interfaces are served by backends that advertise themselves through \
+             `.portal` descriptor files under `xdg-desktop-portal/portals` directories; \
+             without any descriptor the frontend has nothing to route to.",
             Evidence::MissingProvider,
+            "All portal-dependent features (file chooser, screen sharing, settings) will \
+             fail.",
             "Verify the portal backend packages (e.g. xdg-desktop-portal-gnome) are installed.",
         )]
     }
@@ -105,7 +113,11 @@ impl DiagnosticRule for Xdp004 {
                          in this desktop context.",
                         route.interface
                     ),
+                    "The [preferred] section of portals.conf pins this interface to named \
+                     backends; if none of the discovered and desktop-applicable backends \
+                     advertises it, requests cannot be satisfied.",
                     Evidence::MissingProvider,
+                    "Applications calling this interface will receive errors or hang.",
                     "Install a backend that provides this interface, or remove the \
                      [preferred] entry for it.",
                 )
@@ -154,7 +166,11 @@ impl DiagnosticRule for Xdp005 {
                  descriptor: {}.",
                 unique.join(", ")
             ),
+            "A [preferred] entry names a backend whose descriptor is absent; the frontend \
+             skips such entries, which may silently change which backend serves the \
+             interface.",
             Evidence::ConfigSelection,
+            "Routing falls through to other backends or fails when none remain.",
             "Install the referenced backend package or fix the [preferred] entry.",
         )]
     }
@@ -207,7 +223,11 @@ impl DiagnosticRule for Cfg001 {
                 "No `<desktop>-portals.conf` was found for {}.",
                 desktops.join(", ")
             ),
+            "`xdg-desktop-portal` selects configuration from `<desktop>-portals.conf` files \
+             named after each desktop in `XDG_CURRENT_DESKTOP`, falling back to the generic \
+             `portals.conf`; missing files mean upstream defaults apply.",
             Evidence::ConfigSelection,
+            "Routing may not match what the distribution or user intended for this desktop.",
             "Create a desktop-specific config or accept the generic/default routing.",
         )]
     }
@@ -241,7 +261,10 @@ impl DiagnosticRule for Cfg002 {
                     .unwrap_or("<no config file>"),
                 config.parse_errors.join("; ")
             ),
+            "The frontend parser skips malformed lines; preferences after an error may be \
+             ignored, changing routing unpredictably.",
             Evidence::ConfigSelection,
+            "Some preferred backends may be ignored without any visible warning.",
             "Fix or remove the malformed lines in the config file.",
         )]
     }
@@ -292,7 +315,12 @@ impl DiagnosticRule for Cfg003 {
                         route.interface,
                         route.requested_candidates.join(", ")
                     ),
+                    "The configured backends exist as descriptors but do not declare this \
+                     interface in their Interfaces list; the frontend only routes interfaces \
+                     a backend advertises.",
                     Evidence::ConfigSelection,
+                    "Requests routed per configuration will fail even though other providers \
+                     exist.",
                     "Point the [preferred] entry at a backend that implements the interface.",
                 )
             })
@@ -331,7 +359,12 @@ impl DiagnosticRule for Cfg004 {
                         route.available_candidates.len(),
                         route.available_candidates.join(", ")
                     ),
+                    "With no explicit preference the frontend picks one of several providers \
+                     arbitrarily; different sessions or restarts can observe different \
+                     behavior, complicating diagnosis.",
                     Evidence::ConfigSelection,
+                    "Behavior may vary between runs or users, making issues harder to \
+                     reproduce.",
                     "Add a [preferred] entry to make the selection deterministic.",
                 )
             })
@@ -442,6 +475,12 @@ mod tests {
         findings.iter().map(|f| f.id.as_str()).collect()
     }
 
+    /// Evaluate and enforce the PRD §8/G5 finding contract on every result.
+    fn evaluated(findings: Vec<Finding>) -> Vec<Finding> {
+        crate::rules::contract::assert_contract(&findings);
+        findings
+    }
+
     // ---- XDP003 ----
 
     #[test]
@@ -452,7 +491,7 @@ mod tests {
             backends(&[]),
             Section::unsupported("no routes"),
         );
-        assert_eq!(ids(&Xdp003.evaluate(&s)), ["XDP003"]);
+        assert_eq!(ids(&evaluated(Xdp003.evaluate(&s))), ["XDP003"]);
     }
 
     #[test]
@@ -463,7 +502,7 @@ mod tests {
             backends(&["gnome"]),
             Section::unsupported("no routes"),
         );
-        assert!(Xdp003.evaluate(&s).is_empty());
+        assert!(evaluated(Xdp003.evaluate(&s)).is_empty());
     }
 
     // ---- XDP004 ----
@@ -486,7 +525,7 @@ mod tests {
                 RouteStatus::NoProvider,
             )]),
         );
-        assert_eq!(ids(&Xdp004.evaluate(&s)), ["XDP004"]);
+        assert_eq!(ids(&evaluated(Xdp004.evaluate(&s))), ["XDP004"]);
     }
 
     #[test]
@@ -507,7 +546,7 @@ mod tests {
                 RouteStatus::Selected,
             )]),
         );
-        assert!(Xdp004.evaluate(&s).is_empty());
+        assert!(evaluated(Xdp004.evaluate(&s)).is_empty());
     }
 
     #[test]
@@ -528,7 +567,7 @@ mod tests {
                 RouteStatus::Disabled,
             )]),
         );
-        assert!(Xdp004.evaluate(&s).is_empty());
+        assert!(evaluated(Xdp004.evaluate(&s)).is_empty());
     }
 
     #[test]
@@ -545,7 +584,7 @@ mod tests {
                 RouteStatus::NoProvider,
             )]),
         );
-        assert!(Xdp004.evaluate(&s).is_empty());
+        assert!(evaluated(Xdp004.evaluate(&s)).is_empty());
     }
 
     // ---- XDP005 ----
@@ -568,7 +607,7 @@ mod tests {
                 RouteStatus::Selected,
             )]),
         );
-        let findings = Xdp005.evaluate(&s);
+        let findings = evaluated(Xdp005.evaluate(&s));
         assert_eq!(ids(&findings), ["XDP005"]);
         assert!(findings[0].summary.contains("kde"));
     }
@@ -591,7 +630,7 @@ mod tests {
                 RouteStatus::Selected,
             )]),
         );
-        assert!(Xdp005.evaluate(&s).is_empty());
+        assert!(evaluated(Xdp005.evaluate(&s)).is_empty());
     }
 
     #[test]
@@ -612,7 +651,7 @@ mod tests {
                 RouteStatus::Disabled,
             )]),
         );
-        assert!(Xdp005.evaluate(&s).is_empty());
+        assert!(evaluated(Xdp005.evaluate(&s)).is_empty());
     }
 
     // ---- CFG001 ----
@@ -625,7 +664,7 @@ mod tests {
             backends(&["gnome"]),
             Section::unsupported("n/a"),
         );
-        let findings = Cfg001.evaluate(&s);
+        let findings = evaluated(Cfg001.evaluate(&s));
         assert_eq!(ids(&findings), ["CFG001"]);
         assert_eq!(
             findings[0].severity,
@@ -645,7 +684,7 @@ mod tests {
             backends(&["gnome"]),
             Section::unsupported("n/a"),
         );
-        let findings = Cfg001.evaluate(&s);
+        let findings = evaluated(Cfg001.evaluate(&s));
         assert_eq!(ids(&findings), ["CFG001"]);
         assert_eq!(findings[0].severity, crate::model::finding::Severity::Info);
     }
@@ -662,7 +701,7 @@ mod tests {
             backends(&["gnome"]),
             Section::unsupported("n/a"),
         );
-        assert!(Cfg001.evaluate(&s).is_empty());
+        assert!(evaluated(Cfg001.evaluate(&s)).is_empty());
     }
 
     #[test]
@@ -673,7 +712,7 @@ mod tests {
             backends(&["gnome"]),
             Section::unsupported("n/a"),
         );
-        assert!(Cfg001.evaluate(&s).is_empty());
+        assert!(evaluated(Cfg001.evaluate(&s)).is_empty());
     }
 
     // ---- CFG002 ----
@@ -690,7 +729,7 @@ mod tests {
             backends(&["gnome"]),
             Section::unsupported("n/a"),
         );
-        assert_eq!(ids(&Cfg002.evaluate(&s)), ["CFG002"]);
+        assert_eq!(ids(&evaluated(Cfg002.evaluate(&s))), ["CFG002"]);
     }
 
     #[test]
@@ -705,7 +744,7 @@ mod tests {
             backends(&["gnome"]),
             Section::unsupported("n/a"),
         );
-        assert!(Cfg002.evaluate(&s).is_empty());
+        assert!(evaluated(Cfg002.evaluate(&s)).is_empty());
     }
 
     // ---- CFG003 ----
@@ -728,7 +767,7 @@ mod tests {
                 RouteStatus::NoProvider,
             )]),
         );
-        assert_eq!(ids(&Cfg003.evaluate(&s)), ["CFG003"]);
+        assert_eq!(ids(&evaluated(Cfg003.evaluate(&s))), ["CFG003"]);
     }
 
     #[test]
@@ -749,7 +788,7 @@ mod tests {
                 RouteStatus::Selected,
             )]),
         );
-        assert!(Cfg003.evaluate(&s).is_empty());
+        assert!(evaluated(Cfg003.evaluate(&s)).is_empty());
     }
 
     #[test]
@@ -766,7 +805,7 @@ mod tests {
                 RouteStatus::Selected,
             )]),
         );
-        assert!(Cfg003.evaluate(&s).is_empty());
+        assert!(evaluated(Cfg003.evaluate(&s)).is_empty());
     }
 
     // ---- CFG004 ----
@@ -785,7 +824,7 @@ mod tests {
                 RouteStatus::Selected,
             )]),
         );
-        let findings = Cfg004.evaluate(&s);
+        let findings = evaluated(Cfg004.evaluate(&s));
         assert_eq!(ids(&findings), ["CFG004"]);
         assert_eq!(findings[0].severity, crate::model::finding::Severity::Info);
     }
@@ -804,7 +843,7 @@ mod tests {
                 RouteStatus::Selected,
             )]),
         );
-        assert!(Cfg004.evaluate(&s).is_empty());
+        assert!(evaluated(Cfg004.evaluate(&s)).is_empty());
     }
 
     #[test]
@@ -825,7 +864,7 @@ mod tests {
                 RouteStatus::Selected,
             )]),
         );
-        assert!(Cfg004.evaluate(&s).is_empty());
+        assert!(evaluated(Cfg004.evaluate(&s)).is_empty());
     }
 
     #[test]
@@ -846,6 +885,6 @@ mod tests {
                 RouteStatus::Selected,
             )]),
         );
-        assert!(Cfg004.evaluate(&s).is_empty());
+        assert!(evaluated(Cfg004.evaluate(&s)).is_empty());
     }
 }
