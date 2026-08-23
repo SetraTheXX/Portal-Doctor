@@ -12,7 +12,6 @@ target/
 *.lib
 
 # Cargo / tooling
-Cargo.lock
 .idea/
 .vscode/
 *.suo

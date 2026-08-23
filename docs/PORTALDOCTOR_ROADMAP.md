@@ -91,7 +91,17 @@ Create a minimal versioned JSON format even before full data exists.
 
 ## Release
 
-No public feature release required. Optional `v0.0.1-dev` tag only if useful internally.
+No public feature release required. Optional internal dev tags (e.g.
+`v0.0.1-dev`) may be cut; tag names do not have to match the crate version.
+
+Version policy for Phases 0–3:
+
+- the crate version stays `0.1.0` while development targets v0.1.0; no release
+  is cut from these phases,
+- `portaldoctor_version` in the JSON report always equals the crate version
+  (PRD §7.4),
+- changes accumulate under `[Unreleased]` in CHANGELOG.md,
+- the first public release is **v0.1.0**, cut at the Phase 4 exit gate.
 
 ---
 
