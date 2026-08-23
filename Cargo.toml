@@ -15,6 +15,7 @@ serde_json = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
+zbus = { version = "5", features = ["blocking-api"] }
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

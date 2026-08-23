@@ -1,5 +1,6 @@
 use std::fmt::Write as _;
 
+use crate::model::dbus::{DbusOutcome, PORTAL_FRONTEND_NAME};
 use crate::model::environment::EnvironmentRelation;
 use crate::model::section::Section;
 use crate::report::{Renderer, Report};
@@ -19,6 +20,7 @@ impl Renderer for TerminalRenderer {
         write_system(&mut out, report);
         write_session(&mut out, report);
         write_environment(&mut out, report, verbose);
+        write_runtime(&mut out, report, verbose);
         out.push('\n');
         write_findings(&mut out, report, verbose);
         out
@@ -201,6 +203,64 @@ fn write_findings(out: &mut String, report: &Report, verbose: bool) {
     }
     if !verbose {
         out.push_str("\nRun with --verbose for details.\n");
+    }
+}
+
+fn write_runtime(out: &mut String, report: &Report, verbose: bool) {
+    let Some(info) = &report.snapshot.dbus.value else {
+        return;
+    };
+    if !info.connected {
+        writeln!(out, "D-Bus: session bus unavailable").expect("writing to a String cannot fail");
+        return;
+    }
+    let frontend_outcome = info
+        .checks
+        .iter()
+        .find(|check| check.name == PORTAL_FRONTEND_NAME)
+        .map(|check| &check.outcome);
+    let frontend_line = match frontend_outcome {
+        Some(DbusOutcome::HasOwner) => {
+            "D-Bus: connected \u{b7} portal frontend reachable".to_owned()
+        }
+        _ => "D-Bus: connected \u{b7} portal frontend NOT reachable".to_owned(),
+    };
+    writeln!(out, "{frontend_line}").expect("writing to a String cannot fail");
+    for check in &info.checks {
+        if check.name == PORTAL_FRONTEND_NAME {
+            continue;
+        }
+        writeln!(
+            out,
+            "  backend {}: {}",
+            check.name,
+            describe_outcome(&check.outcome)
+        )
+        .expect("writing to a String cannot fail");
+    }
+
+    if verbose && let Some(services) = &report.snapshot.services.value {
+        writeln!(out, "\nSystemd user units:").expect("writing to a String cannot fail");
+        for unit in &services.units {
+            writeln!(out, "  {}: {}", unit.unit, unit.state.as_str())
+                .expect("writing to a String cannot fail");
+            if let Some(sub) = &unit.sub_state {
+                writeln!(out, "    sub-state: {sub}").expect("writing to a String cannot fail");
+            }
+        }
+    }
+}
+
+fn describe_outcome(outcome: &DbusOutcome) -> String {
+    match outcome {
+        DbusOutcome::HasOwner => "reachable".to_owned(),
+        DbusOutcome::NoOwner => "no owner on the bus".to_owned(),
+        DbusOutcome::NoSessionBus => "no session bus".to_owned(),
+        DbusOutcome::ActivationFailure => "activation failure".to_owned(),
+        DbusOutcome::Timeout => "timed out".to_owned(),
+        DbusOutcome::AccessDenied => "access denied".to_owned(),
+        DbusOutcome::MalformedResponse => "malformed response".to_owned(),
+        DbusOutcome::Other(msg) => format!("error: {msg}"),
     }
 }
 

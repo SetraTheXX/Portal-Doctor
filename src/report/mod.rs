@@ -51,21 +51,14 @@ pub trait Renderer {
 #[cfg(test)]
 mod tests {
     use super::{JsonRenderer, Renderer, Report, TerminalRenderer};
-    use crate::model::environment::EnvironmentInfo;
     use crate::model::section::Section;
     use crate::model::snapshot::Snapshot;
     use serde_json::json;
 
     fn empty_snapshot() -> Snapshot {
-        Snapshot::new(
-            42,
-            Section::<crate::model::environment::SystemInfo>::unsupported("test"),
-            Section::<crate::model::environment::SessionInfo>::unsupported("test"),
-            Section::<EnvironmentInfo>::unavailable("test"),
-            Section::<crate::model::portal::PortalConfigInfo>::unsupported("test"),
-            Section::<Vec<crate::model::portal::PortalBackend>>::unsupported("test"),
-            Section::<Vec<crate::model::portal::PortalRoute>>::unsupported("test"),
-        )
+        let mut snapshot = Snapshot::new(42);
+        snapshot.environment = Section::unavailable("test");
+        snapshot
     }
 
     #[test]

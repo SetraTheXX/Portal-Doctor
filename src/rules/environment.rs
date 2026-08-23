@@ -209,7 +209,6 @@ impl DiagnosticRule for Env004 {
 mod tests {
     use super::{Env001, Env002, Env003, Env004};
     use crate::collectors::environment::{environment_info, session_info};
-    use crate::model::environment::SystemInfo;
     use crate::model::finding::Finding;
     use crate::model::section::Section;
     use crate::model::snapshot::Snapshot;
@@ -236,21 +235,11 @@ mod tests {
             .as_millis()
             .try_into()
             .unwrap();
-        Snapshot::new(
-            collected_at,
-            Section::<SystemInfo>::unsupported("not part of environment fixtures"),
-            Section::available(session_info(&process_map)),
-            Section::available(environment_info(process_map, None, activation_map.as_ref())),
-            Section::<crate::model::portal::PortalConfigInfo>::unsupported(
-                "not part of environment fixtures",
-            ),
-            Section::<Vec<crate::model::portal::PortalBackend>>::unsupported(
-                "not part of environment fixtures",
-            ),
-            Section::<Vec<crate::model::portal::PortalRoute>>::unsupported(
-                "not part of environment fixtures",
-            ),
-        )
+        let mut snapshot = Snapshot::new(collected_at);
+        snapshot.session = Section::available(session_info(&process_map));
+        snapshot.environment =
+            Section::available(environment_info(process_map, None, activation_map.as_ref()));
+        snapshot
     }
 
     fn ids(findings: &[Finding]) -> Vec<&str> {
