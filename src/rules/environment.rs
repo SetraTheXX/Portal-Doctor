@@ -301,6 +301,7 @@ mod tests {
         let snapshot = fixture_snapshot(&process, Some(&activation));
         let findings = evaluate(&snapshot);
         assert_eq!(ids(&findings), ["ENV004"]);
+        crate::rules::contract::assert_contract(&findings);
         assert!(findings[0].summary.contains("XDG_CURRENT_DESKTOP"));
         assert!(findings[0].summary.contains("XDG_SESSION_TYPE"));
     }
@@ -324,7 +325,9 @@ mod tests {
             ("XDG_SESSION_TYPE", "mir"),
         ];
         let snapshot = fixture_snapshot(&process, Some(&process));
-        assert_eq!(ids(&evaluate(&snapshot)), ["ENV002"]);
+        let findings = evaluate(&snapshot);
+        assert_eq!(ids(&findings), ["ENV002"]);
+        crate::rules::contract::assert_contract(&findings);
     }
 
     #[test]

@@ -357,14 +357,20 @@ mod tests {
         findings.iter().map(|f| f.id.as_str()).collect()
     }
 
+    /// Evaluate and enforce the PRD §8/G5 finding contract on every result.
+    fn evaluated(findings: Vec<Finding>) -> Vec<Finding> {
+        crate::rules::contract::assert_contract(&findings);
+        findings
+    }
+
     #[test]
     fn no_session_bus_fires_dbus001_and_xdp001() {
         let s = snapshot(
             dbus_info(false, vec![check(FRONTEND, DbusOutcome::NoSessionBus)]),
             Section::unsupported("n/a"),
         );
-        assert_eq!(ids(&Dbus001.evaluate(&s)), ["DBUS001"]);
-        assert_eq!(ids(&Xdp001.evaluate(&s)), ["XDP001"]);
+        assert_eq!(ids(&evaluated(Dbus001.evaluate(&s))), ["DBUS001"]);
+        assert_eq!(ids(&evaluated(Xdp001.evaluate(&s))), ["XDP001"]);
     }
 
     #[test]
@@ -379,10 +385,10 @@ mod tests {
             ),
             services(UnitState::Active),
         );
-        assert!(Dbus001.evaluate(&s).is_empty());
-        assert_eq!(ids(&Xdp001.evaluate(&s)), ["XDP001"]);
+        assert!(evaluated(Dbus001.evaluate(&s)).is_empty());
+        assert_eq!(ids(&evaluated(Xdp001.evaluate(&s))), ["XDP001"]);
         // Backend reachable -> DBUS002 silent.
-        assert!(Dbus002.evaluate(&s).is_empty());
+        assert!(evaluated(Dbus002.evaluate(&s)).is_empty());
     }
 
     #[test]
@@ -391,7 +397,7 @@ mod tests {
             dbus_info(true, vec![check(FRONTEND, DbusOutcome::Timeout)]),
             Section::unsupported("n/a"),
         );
-        let findings = Xdp001.evaluate(&s);
+        let findings = evaluated(Xdp001.evaluate(&s));
         assert_eq!(ids(&findings), ["XDP001"]);
         assert_eq!(
             findings[0].evidence[0],
@@ -411,9 +417,9 @@ mod tests {
             ),
             services(UnitState::Active),
         );
-        assert_eq!(ids(&Dbus002.evaluate(&s)), ["DBUS002"]);
+        assert_eq!(ids(&evaluated(Dbus002.evaluate(&s))), ["DBUS002"]);
         // Frontend healthy -> XDP001 silent.
-        assert!(Xdp001.evaluate(&s).is_empty());
+        assert!(evaluated(Xdp001.evaluate(&s)).is_empty());
     }
 
     #[test]
@@ -428,7 +434,7 @@ mod tests {
             ),
             services(UnitState::Failed),
         );
-        assert_eq!(ids(&Dbus002.evaluate(&s)), ["DBUS002"]);
+        assert_eq!(ids(&evaluated(Dbus002.evaluate(&s))), ["DBUS002"]);
     }
 
     #[test]
@@ -443,10 +449,10 @@ mod tests {
             ),
             services(UnitState::Active),
         );
-        assert!(Dbus001.evaluate(&s).is_empty());
-        assert!(Dbus002.evaluate(&s).is_empty());
-        assert!(Xdp001.evaluate(&s).is_empty());
-        assert!(Xdp002.evaluate(&s).is_empty());
+        assert!(evaluated(Dbus001.evaluate(&s)).is_empty());
+        assert!(evaluated(Dbus002.evaluate(&s)).is_empty());
+        assert!(evaluated(Xdp001.evaluate(&s)).is_empty());
+        assert!(evaluated(Xdp002.evaluate(&s)).is_empty());
     }
 
     #[test]
@@ -455,7 +461,7 @@ mod tests {
             dbus_info(true, vec![check(FRONTEND, DbusOutcome::HasOwner)]),
             services(UnitState::Failed),
         );
-        assert_eq!(ids(&Xdp002.evaluate(&s)), ["XDP002"]);
+        assert_eq!(ids(&evaluated(Xdp002.evaluate(&s))), ["XDP002"]);
     }
 
     #[test]

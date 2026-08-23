@@ -184,6 +184,11 @@ fn write_findings(out: &mut String, report: &Report, verbose: bool) {
         writeln!(out, "{headline}").expect("writing to a String cannot fail");
         let summary_line = format!("  {}", finding.summary);
         writeln!(out, "{summary_line}").expect("writing to a String cannot fail");
+        // Default output stays actionable: surface the first recommended step
+        // even in the terse view.
+        if let Some(next) = finding.recommendation.first() {
+            writeln!(out, "    next: {next}").expect("writing to a String cannot fail");
+        }
         if !verbose {
             continue;
         }

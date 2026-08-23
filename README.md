@@ -46,12 +46,28 @@ Also accepts `--version` and `--help`.
 
 ## Documentation
 
-See [docs/PORTALDOCTOR_DOCS_INDEX.md](docs/PORTALDOCTOR_DOCS_INDEX.md) for the
-project documentation index (research, PRD, architecture, roadmap).
+- [Finding catalog](docs/findings.md) — every rule, severity and trigger
+  (`ENV001`–`ENV004`, `XDP001`–`XDP005`, `CFG001`–`CFG004`, `DBUS001`–`DBUS002`)
+- [JSON schema v1](docs/json-schema.md) — the machine-readable report format
+- [Privacy statement](docs/privacy.md) — what is collected, what is contacted
+- [Compatibility & known limitations](docs/compatibility.md)
+- [Project docs index](docs/PORTALDOCTOR_DOCS_INDEX.md) — research, PRD,
+  architecture, roadmap
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Known limitations (v0.1)
+
+- Validated on Ubuntu 26.04 / GNOME / Wayland / systemd only; other setups are
+  untested (details in [compatibility](docs/compatibility.md)).
+- ScreenCast readiness is judged from configuration and D-Bus reachability;
+  PipeWire/WirePlumber state is a later phase.
+- No active portal probes, no journal evidence, no automatic fixes.
+
+See [compatibility & known limitations](docs/compatibility.md) for the full
+list.
 
 ## License
 
