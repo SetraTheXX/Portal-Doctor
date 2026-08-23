@@ -18,6 +18,13 @@ fn registered() -> Vec<Box<dyn DiagnosticRule>> {
         Box::new(super::environment::Env002),
         Box::new(super::environment::Env003),
         Box::new(super::environment::Env004),
+        Box::new(super::portal::Cfg001),
+        Box::new(super::portal::Cfg002),
+        Box::new(super::portal::Cfg003),
+        Box::new(super::portal::Cfg004),
+        Box::new(super::portal::Xdp003),
+        Box::new(super::portal::Xdp004),
+        Box::new(super::portal::Xdp005),
     ]
 }
 

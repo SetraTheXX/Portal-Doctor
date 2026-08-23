@@ -1,12 +1,18 @@
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::cli::{CheckArgs, CheckDomain, Cli};
+use crate::cli::{CheckArgs, CheckDomain, Cli, PortalArgs, PortalCmd};
 use crate::collectors;
 use crate::error::Error;
+use crate::model::finding::Finding;
+use crate::model::portal::PortalRoute;
 use crate::model::section::Section;
 use crate::model::snapshot::Snapshot;
-use crate::report::{JsonRenderer, Renderer, Report, TerminalRenderer};
+use crate::report::{
+    JsonRenderer, PortalExplainRenderer, PortalListRenderer, PortalRoutesRenderer, Renderer,
+    Report, TerminalRenderer,
+};
+use crate::resolver;
 use crate::rules;
 
 /// Execute the parsed `CLI` and write the selected output to `stdout`.
@@ -22,18 +28,49 @@ pub fn run(cli: &Cli) -> Result<(), Error> {
     tracing::info!(?command, "starting portaldoctor");
     match command {
         crate::cli::Command::Check(args) => run_check(&args, cli.json, cli.verbose),
+        crate::cli::Command::Portal(args) => run_portal(&args, cli.json),
     }
 }
 
 fn run_check(args: &CheckArgs, json: bool, verbose: bool) -> Result<(), Error> {
-    // Bare `check` runs every implemented domain; Phase 1 ships exactly one,
-    // so both cases currently execute the environment checks.
-    match args.domain {
-        Some(CheckDomain::Environment) | None => run_environment_checks(json, verbose),
+    let collected = collect_snapshot();
+    let findings = rules::engine::evaluate(&collected.snapshot);
+    let findings = match args.domain {
+        None => findings,
+        Some(CheckDomain::Environment) => filter_findings(findings, is_environment_finding),
+        Some(CheckDomain::Portal) => filter_findings(findings, is_portal_finding),
+    };
+    let report = Report::new(collected.snapshot, findings, env!("CARGO_PKG_VERSION"));
+    write_report(&report, json, verbose)
+}
+
+fn run_portal(args: &PortalArgs, json: bool) -> Result<(), Error> {
+    let collected = collect_snapshot();
+    let findings = rules::engine::evaluate(&collected.snapshot);
+    let findings = filter_findings(findings, is_portal_finding);
+    let report = Report::new(collected.snapshot, findings, env!("CARGO_PKG_VERSION"));
+    let rendered = match &args.command {
+        PortalCmd::List => PortalListRenderer.render(&report, false),
+        PortalCmd::Routes => PortalRoutesRenderer.render(&report, false),
+        PortalCmd::Explain { interface } => PortalExplainRenderer {
+            interface: interface.clone(),
+        }
+        .render(&report, false),
+    };
+    if json {
+        let rendered = JsonRenderer.render(&report, false);
+        write_stdout(&rendered)
+    } else {
+        write_stdout(&rendered)
     }
 }
 
-fn run_environment_checks(json: bool, verbose: bool) -> Result<(), Error> {
+/// Everything the current run collected, in one snapshot.
+struct Collected {
+    snapshot: Snapshot,
+}
+
+fn collect_snapshot() -> Collected {
     let system = collectors::os_release::collect();
     let process_env = collectors::environment::collect_process_environment();
     let session = Section::available(collectors::environment::session_info(&process_env));
@@ -60,16 +97,78 @@ fn run_environment_checks(json: bool, verbose: bool) -> Result<(), Error> {
         }
     }
 
-    let snapshot = Snapshot::new(unix_epoch_ms(), system, session, environment);
+    let desktops = desktop_names(&session);
+    let roots = environment.value.as_ref().map_or_else(
+        || {
+            collectors::environment::search_roots(
+                &std::collections::BTreeMap::new(),
+                std::env::var("HOME").ok().as_deref(),
+            )
+        },
+        |info| info.search_roots.clone(),
+    );
+
+    let portal_config = collectors::portal_config::collect(&roots, &desktops);
+    let portal_backends = collectors::portal_files::collect(&roots);
+    let portal_routes = match (&portal_config.value, &portal_backends.value) {
+        (Some(config), Some(backends)) => Section::available(
+            resolver::portal_routes::resolve_routes(&desktops, config, backends),
+        ),
+        _ => Section::<Vec<PortalRoute>>::unsupported("portal collection incomplete"),
+    };
+
+    let snapshot = Snapshot::new(
+        unix_epoch_ms(),
+        system,
+        session,
+        environment,
+        portal_config,
+        portal_backends,
+        portal_routes,
+    );
     let findings = rules::engine::evaluate(&snapshot);
     tracing::debug!(findings = findings.len(), "evaluation finished");
-    let report = Report::new(snapshot, findings, env!("CARGO_PKG_VERSION"));
+    Collected { snapshot }
+}
 
+/// Desktop names from `XDG_CURRENT_DESKTOP` (colon-separated).
+fn desktop_names(session: &Section<crate::model::environment::SessionInfo>) -> Vec<String> {
+    session
+        .value
+        .as_ref()
+        .and_then(|s| s.current_desktop.as_ref())
+        .map(|raw| {
+            raw.split(':')
+                .map(str::trim)
+                .filter(|d| !d.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn is_environment_finding(finding: &Finding) -> bool {
+    finding.id.starts_with("ENV")
+}
+
+fn is_portal_finding(finding: &Finding) -> bool {
+    finding.id.starts_with("XDP") || finding.id.starts_with("CFG")
+}
+
+fn filter_findings(findings: Vec<Finding>, keep: fn(&Finding) -> bool) -> Vec<Finding> {
+    findings.into_iter().filter(keep).collect()
+}
+
+fn write_report(report: &Report, json: bool, verbose: bool) -> Result<(), Error> {
     let rendered = if json {
-        JsonRenderer.render(&report, verbose)
+        JsonRenderer.render(report, verbose)
     } else {
-        TerminalRenderer.render(&report, verbose)
+        TerminalRenderer.render(report, verbose)
     };
+    write_stdout(&rendered)
+}
+
+fn write_stdout(rendered: &str) -> Result<(), Error> {
     let mut stdout = std::io::stdout().lock();
     writeln!(stdout, "{rendered}")?;
     stdout.flush()?;

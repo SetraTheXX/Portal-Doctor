@@ -1,5 +1,6 @@
 mod json;
-mod terminal;
+pub mod portal;
+pub mod terminal;
 
 use serde::Serialize;
 
@@ -7,6 +8,7 @@ use crate::model::finding::Finding;
 use crate::model::snapshot::{SNAPSHOT_SCHEMA_VERSION, Snapshot};
 
 pub use json::JsonRenderer;
+pub use portal::{PortalExplainRenderer, PortalListRenderer, PortalRoutesRenderer};
 pub use terminal::TerminalRenderer;
 
 /// Top-level run output; matches the v1 `JSON` contract (PRD §7.4).
@@ -60,6 +62,9 @@ mod tests {
             Section::<crate::model::environment::SystemInfo>::unsupported("test"),
             Section::<crate::model::environment::SessionInfo>::unsupported("test"),
             Section::<EnvironmentInfo>::unavailable("test"),
+            Section::<crate::model::portal::PortalConfigInfo>::unsupported("test"),
+            Section::<Vec<crate::model::portal::PortalBackend>>::unsupported("test"),
+            Section::<Vec<crate::model::portal::PortalRoute>>::unsupported("test"),
         )
     }
 

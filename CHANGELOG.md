@@ -21,4 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     effective `XDG` search roots, `systemd` user activation environment
     (bounded timeout).
   - Environment rules `ENV001`–`ENV004` with deterministic fixture tests.
+  - Environment rules `ENV001`–`ENV004` with deterministic fixture tests.
   - `portaldoctor check environment [--verbose]`.
+- Phase 2: portal discovery and routing resolver.
+  - `portals.conf` discovery with desktop-specific names and `XDG` precedence;
+    parser supports `[preferred]`, `*`, `none` and provenance.
+  - `.portal` backend discovery across effective `XDG` data roots with
+    duplicate provenance.
+  - Route resolver producing explainable, source-backed route tables.
+  - Portal rules `XDP003`–`XDP005` and `CFG001`–`CFG004`.
+  - `portaldoctor portal list | routes | explain <interface>`,
+    `portaldoctor check portal`.

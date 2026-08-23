@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use crate::model::environment::{EnvironmentInfo, SessionInfo, SystemInfo};
+use crate::model::portal::{PortalBackend, PortalConfigInfo, PortalRoute};
 use crate::model::section::Section;
 
 /// Version of the normalized snapshot schema (architecture §6).
@@ -20,16 +21,26 @@ pub struct Snapshot {
     pub session: Section<SessionInfo>,
     /// Process environment, search roots and activation comparison.
     pub environment: Section<EnvironmentInfo>,
+    /// Parsed `portals.conf` state for the current desktop.
+    pub portal_config: Section<PortalConfigInfo>,
+    /// Discovered `.portal` backend descriptors.
+    pub portal_backends: Section<Vec<PortalBackend>>,
+    /// Resolved portal route table.
+    pub portal_routes: Section<Vec<PortalRoute>>,
 }
 
 impl Snapshot {
     /// Assemble a snapshot with the current schema version and collected sections.
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         collected_at: u64,
         system: Section<SystemInfo>,
         session: Section<SessionInfo>,
         environment: Section<EnvironmentInfo>,
+        portal_config: Section<PortalConfigInfo>,
+        portal_backends: Section<Vec<PortalBackend>>,
+        portal_routes: Section<Vec<PortalRoute>>,
     ) -> Self {
         Self {
             schema_version: SNAPSHOT_SCHEMA_VERSION,
@@ -37,6 +48,9 @@ impl Snapshot {
             system,
             session,
             environment,
+            portal_config,
+            portal_backends,
+            portal_routes,
         }
     }
 }
@@ -65,6 +79,9 @@ mod tests {
             }),
             Section::<crate::model::environment::SessionInfo>::unsupported("test"),
             Section::<crate::model::environment::EnvironmentInfo>::unavailable("test"),
+            Section::<crate::model::portal::PortalConfigInfo>::unsupported("test"),
+            Section::<Vec<crate::model::portal::PortalBackend>>::unsupported("test"),
+            Section::<Vec<crate::model::portal::PortalRoute>>::unsupported("test"),
         );
         let value = serde_json::to_value(&snapshot).unwrap();
         assert_eq!(value["schema_version"], json!(1));
@@ -72,5 +89,8 @@ mod tests {
         assert_eq!(value["system"]["status"], json!("available"));
         assert_eq!(value["session"]["status"], json!("unsupported"));
         assert_eq!(value["environment"]["status"], json!("unavailable"));
+        assert_eq!(value["portal_config"]["status"], json!("unsupported"));
+        assert_eq!(value["portal_backends"]["status"], json!("unsupported"));
+        assert_eq!(value["portal_routes"]["status"], json!("unsupported"));
     }
 }
