@@ -32,3 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Portal rules `XDP003`–`XDP005` and `CFG001`–`CFG004`.
   - `portaldoctor portal list | routes | explain <interface>`,
     `portaldoctor check portal`.
+- Phase 2 audit fixes: desktop names normalized to lowercase like upstream;
+  `org.freedesktop.impl.portal.Default` preference acts as fallback and is
+  overridden by interface-specific entries; route selection picks the first
+  usable backend (single `Selected`); fixture tests for every portal rule
+  (`XDP003`–`XDP005`, `CFG001`–`CFG004`).
