@@ -17,11 +17,33 @@ systemd user session).
 - machine-readable JSON output with a versioned schema,
 - privacy-safe, redacted reports.
 
+## Build
+
+```sh
+cargo build --release
+```
+
+## Usage
+
+```sh
+# run the passive diagnostic check (default command)
+portaldoctor check
+
+# machine-readable output
+portaldoctor check --json
+```
+
+Also accepts `--version` and `--help`.
+
 ## Documentation
 
 See [docs/PORTALDOCTOR_DOCS_INDEX.md](docs/PORTALDOCTOR_DOCS_INDEX.md) for the
 project documentation index (research, PRD, architecture, roadmap).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
-License not yet added — MIT is the target license.
+[`MIT`](LICENSE) — Copyright (c) 2026 PortalDoctor contributors.

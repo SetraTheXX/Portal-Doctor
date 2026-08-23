@@ -1,0 +1,23 @@
+[package]
+name = "portaldoctor"
+version = "0.1.0"
+edition = "2024"
+description = "Deterministic diagnostic CLI for XDG Desktop Portal, Wayland and PipeWire integration on Linux"
+license = "MIT"
+repository = "https://github.com/SetraTheXX/Portal-Doctor"
+keywords = ["xdg", "portal", "diagnostics", "wayland", "linux"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Model types intentionally mirror their module names (model/finding.rs -> Finding).
+module_name_repetitions = { level = "allow" }
