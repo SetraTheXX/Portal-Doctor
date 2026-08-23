@@ -42,8 +42,16 @@ pub fn parse_config(
             errors.push(format!("line {}: empty backend list for {key}", index + 1));
             continue;
         }
+        // The `default` key is the short form of the Default pseudo-interface;
+        // canonicalizing here keeps parser output and resolver fallback lookup
+        // byte-identical.
+        let interface = if key == "default" {
+            crate::resolver::portal_routes::DEFAULT_INTERFACE.to_owned()
+        } else {
+            key.to_owned()
+        };
         preferences.push(PortalPreference {
-            interface: key.to_owned(),
+            interface,
             backends,
             source_file: source_file.to_owned(),
             source_priority,
@@ -138,6 +146,30 @@ mod tests {
             0,
         );
         assert_eq!(prefs[0].backends, ["gnome", "gtk"]);
+    }
+
+    #[test]
+    fn parses_default_key_as_default_interface() {
+        let (prefs, errors) = parse_config("[preferred]\ndefault=gnome;gtk;\n", "portals.conf", 0);
+        assert!(errors.is_empty());
+        assert_eq!(prefs.len(), 1);
+        assert_eq!(
+            prefs[0].interface,
+            crate::resolver::portal_routes::DEFAULT_INTERFACE
+        );
+        // Trailing separator and whitespace are tolerated.
+        assert_eq!(prefs[0].backends, ["gnome", "gtk"]);
+    }
+
+    #[test]
+    fn long_form_default_interface_stays_unchanged() {
+        let (prefs, _) = parse_config(
+            "[preferred]\norg.freedesktop.impl.portal.Default=gtk\n",
+            "portals.conf",
+            0,
+        );
+        assert_eq!(prefs[0].interface, "org.freedesktop.impl.portal.Default");
+        assert_eq!(prefs[0].backends, ["gtk"]);
     }
 
     #[test]
