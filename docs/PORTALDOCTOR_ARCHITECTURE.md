@@ -616,25 +616,36 @@ Journal text can provide evidence but should not become the sole source of truth
 
 ```rust
 trait DiagnosticRule {
-    fn id(&self) -> FindingId;
+    /// Stable rule identifier, e.g. `"ENV001"`.
+    fn id(&self) -> &'static str;
     fn evaluate(&self, snapshot: &Snapshot) -> Vec<Finding>;
 }
 ```
 
 ### Finding model
 
+The field list is owned by the PRD (§8 "Initial Findings Contract"); the Phase 0
+implementation (`src/model/finding.rs`) is the reference shape. `impact` remains
+optional because some findings carry no distinct consequence beyond severity.
+
 ```rust
 struct Finding {
-    id: FindingId,
+    id: String,                     // stable rule identifier, e.g. "ENV001"
     severity: Severity,
     confidence: Confidence,
     title: String,
     summary: String,
+    explanation: String,
     evidence: Vec<Evidence>,
     impact: Option<String>,
-    recommendations: Vec<Recommendation>,
+    recommendation: Vec<String>,    // ordered next steps
+    source_component: String,       // collector/rule subsystem that produced the finding
 }
 ```
+
+Dedicated newtypes (`FindingId`, `Recommendation`) are intentionally deferred:
+plain strings keep JSON serialization stable. Introduce them only when real
+reuse pressure appears.
 
 ### Evidence model
 
