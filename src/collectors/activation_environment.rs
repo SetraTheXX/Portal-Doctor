@@ -1,15 +1,13 @@
 use std::collections::BTreeMap;
 use std::io::ErrorKind;
 use std::process::{Command, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
 
 use crate::collectors::environment::ALLOWLISTED_VARIABLES;
 use crate::model::section::Section;
 
 /// Bounded wait for `systemctl` so a wedged `systemd --user` cannot hang the
 /// whole run (PRD REL-003: no unbounded commands).
-const SYSTEMCTL_TIMEOUT: Duration = Duration::from_secs(2);
+const SYSTEMCTL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Parse `systemctl --user show-environment` output. Only allowlisted keys
 /// are retained; quoting and non-assignment lines are tolerated.
@@ -36,49 +34,24 @@ pub fn parse_show_environment(text: &str) -> BTreeMap<String, String> {
 /// Status distinguishes missing tooling (`Unsupported`), command failure
 /// (`Unavailable`) and timeout (`TimedOut`).
 pub fn collect() -> Section<BTreeMap<String, String>> {
-    let mut child = match Command::new("systemctl")
+    let mut command = Command::new("systemctl");
+    command
         .args(["--user", "show-environment"])
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-    {
-        Ok(child) => child,
+        .stderr(Stdio::null());
+    match crate::collectors::timeouts::output_bounded(SYSTEMCTL_TIMEOUT, command) {
         Err(err) if err.kind() == ErrorKind::NotFound => {
-            return Section::unsupported("systemctl is not installed".to_owned());
+            Section::unsupported("systemctl is not installed".to_owned())
         }
-        Err(err) => {
-            return Section::unavailable(format!("cannot run systemctl: {err}"));
+        Err(err) => Section::unavailable(format!("cannot run systemctl: {err}")),
+        Ok(None) => Section::timed_out("systemctl did not finish within 2s"),
+        Ok(Some(output)) if !output.status.success() => {
+            Section::unavailable(format!("systemctl exited with {}", output.status))
         }
-    };
-
-    let deadline = Instant::now() + SYSTEMCTL_TIMEOUT;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break Ok(status),
-            Ok(None) if Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break Err("systemctl did not finish within 2s".to_owned());
-            }
-            // The environment dump is small; reading stdout only after exit
-            // cannot fill the pipe buffer.
-            Ok(None) => thread::sleep(Duration::from_millis(10)),
-            Err(err) => break Err(format!("cannot poll systemctl: {err}")),
-        }
-    };
-
-    match status {
-        Ok(status) if status.success() => {
-            let Some(mut stdout) = child.stdout.take() else {
-                return Section::unavailable("systemctl produced no output stream".to_owned());
-            };
-            match std::io::read_to_string(&mut stdout) {
-                Ok(text) => Section::available(parse_show_environment(&text)),
-                Err(err) => Section::unavailable(format!("cannot read systemctl output: {err}")),
-            }
-        }
-        Ok(status) => Section::unavailable(format!("systemctl exited with {status}")),
-        Err(message) => Section::timed_out(message),
+        Ok(Some(output)) => match String::from_utf8(output.stdout) {
+            Ok(text) => Section::available(parse_show_environment(&text)),
+            Err(err) => Section::unavailable(format!("cannot read systemctl output: {err}")),
+        },
     }
 }
 
