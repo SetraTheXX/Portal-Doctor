@@ -410,6 +410,40 @@ mod tests {
     }
 
     #[test]
+    fn parsed_default_line_drives_fallback_routing() {
+        use crate::collectors::portal_config::parse_config;
+
+        // Real-world portals.conf line with trailing separator.
+        let (prefs, errors) = parse_config(
+            "[preferred]\ndefault=gnome;gtk;\n",
+            "/cfg/xdg-desktop-portal/portals.conf",
+            0,
+        );
+        assert!(errors.is_empty());
+        let config = config(prefs);
+        let backends = vec![
+            backend("gnome", "d.gnome", &[SCREENSHOT], &[]),
+            backend("gtk", "d.gtk", &[SCREENSHOT], &[]),
+        ];
+        let routes = resolve_routes(&["GNOME".to_owned()], &config, &backends);
+        let shot = route(SCREENSHOT, &routes);
+        // Parser key and resolver fallback lookup agree: fallback applied.
+        assert_eq!(shot.requested_candidates, ["gnome", "gtk"]);
+        assert_eq!(shot.selected_candidates, ["gnome"]);
+        assert!(
+            shot.evidence
+                .iter()
+                .any(|e| e.message.contains("default preference"))
+        );
+        // The pseudo-interface never appears as its own route.
+        assert!(
+            routes
+                .iter()
+                .all(|r| r.interface != "org.freedesktop.impl.portal.Default")
+        );
+    }
+
+    #[test]
     fn normalize_desktops_lowercases_and_trims() {
         use super::normalize_desktops;
         assert_eq!(

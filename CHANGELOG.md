@@ -37,3 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overridden by interface-specific entries; route selection picks the first
   usable backend (single `Selected`); fixture tests for every portal rule
   (`XDP003`–`XDP005`, `CFG001`–`CFG004`).
+- Correctness: `portals.conf` candidates now probe config roots followed by
+  data roots per desktop (upstream order) with lowercased desktop names;
+  the `default=` key is canonicalized to `org.freedesktop.impl.portal.Default`
+  so parser output and resolver fallback lookup match byte-for-byte.
