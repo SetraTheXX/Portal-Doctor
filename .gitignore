@@ -1,0 +1,43 @@
+# Rust build artifacts
+target/
+*.crate
+
+# Rust compiled output
+*.class
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# Cargo / tooling
+Cargo.lock
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sln~
+*.swp
+
+# Vim
+*~
+
+# Editor temp files
+*.tmp
+*.temp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated / local
+*.log
+.env
+.env.*
+
+# Backup files
+*.bak
