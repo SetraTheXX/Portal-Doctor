@@ -1,35 +1,212 @@
 use std::fmt::Write as _;
 
+use crate::model::environment::EnvironmentRelation;
+use crate::model::section::Section;
 use crate::report::{Renderer, Report};
 
-/// Renderer that emits concise terminal text (PRD §7.1).
+/// Renderer that emits concise terminal text (PRD §7.1); `--verbose` adds
+/// collected details and full finding explanations.
 pub struct TerminalRenderer;
 
 impl Renderer for TerminalRenderer {
-    fn render(&self, report: &Report) -> String {
+    fn render(&self, report: &Report, verbose: bool) -> String {
         let mut out = String::new();
         writeln!(out, "PortalDoctor {}", report.portaldoctor_version)
             .expect("writing to a String cannot fail");
         writeln!(out, "Snapshot schema v{}", report.schema_version)
             .expect("writing to a String cannot fail");
         out.push('\n');
-        if report.findings.is_empty() {
-            out.push_str("Findings: none detected.\n");
-        } else {
-            writeln!(out, "Findings: {}", report.findings.len())
-                .expect("writing to a String cannot fail");
-            for finding in &report.findings {
-                writeln!(
-                    out,
-                    "  [{}] {} ({})",
-                    finding.severity, finding.title, finding.id
-                )
-                .expect("writing to a String cannot fail");
-                if let Some(impact) = &finding.impact {
-                    writeln!(out, "    impact: {impact}").expect("writing to a String cannot fail");
-                }
-            }
-        }
+        write_system(&mut out, report);
+        write_session(&mut out, report);
+        write_environment(&mut out, report, verbose);
+        out.push('\n');
+        write_findings(&mut out, report, verbose);
         out
     }
+}
+
+fn write_system(out: &mut String, report: &Report) {
+    if let Some(system) = &report.snapshot.system.value {
+        let label = system
+            .pretty_name
+            .as_deref()
+            .or(system.name.as_deref())
+            .unwrap_or("unknown operating system");
+        if let Some(id) = &system.id {
+            let labeled = format!("System: {label} ({id})");
+            writeln!(out, "{labeled}").expect("writing to a String cannot fail");
+        } else {
+            let labeled = format!("System: {label}");
+            writeln!(out, "{labeled}").expect("writing to a String cannot fail");
+        }
+    } else {
+        let section = &report.snapshot.system;
+        let status_line = format!("System: {} {}", section.status, first_note(section));
+        writeln!(out, "{status_line}").expect("writing to a String cannot fail");
+    }
+}
+
+fn write_session(out: &mut String, report: &Report) {
+    let Some(session) = &report.snapshot.session.value else {
+        writeln!(out, "Session: unavailable").expect("writing to a String cannot fail");
+        return;
+    };
+    let mut parts = Vec::new();
+    parts.push(match session.session_type {
+        Some(session_type) => format!("{} session", session_type.as_str()),
+        None => match &session.session_type_raw {
+            Some(raw) => format!("unrecognized session type ({raw})"),
+            None => "session type unknown".to_owned(),
+        },
+    });
+    if let Some(desktop) = &session.current_desktop {
+        parts.push(format!("desktop {desktop}"));
+    }
+    if let Some(desktop) = &session.session_desktop
+        && session.current_desktop.as_deref() != Some(desktop)
+    {
+        parts.push(format!("session desktop {desktop}"));
+    }
+    let line = parts.join(" · ");
+    writeln!(out, "Session: {line}").expect("writing to a String cannot fail");
+}
+
+fn write_environment(out: &mut String, report: &Report, verbose: bool) {
+    let Some(environment) = &report.snapshot.environment.value else {
+        return;
+    };
+    let comparison = &environment.activation_comparison;
+    if !comparison.performed {
+        writeln!(out, "Activation environment: not compared")
+            .expect("writing to a String cannot fail");
+        for note in &report.snapshot.environment.errors {
+            let note_line = format!("  note: {}", note.message);
+            writeln!(out, "{note_line}").expect("writing to a String cannot fail");
+        }
+        return;
+    }
+    let mismatch_count = comparison
+        .entries
+        .iter()
+        .filter(|entry| entry.relation != EnvironmentRelation::Equal)
+        .count();
+    if mismatch_count == 0 {
+        let consistent = format!(
+            "Activation environment: consistent ({} variables compared)",
+            comparison.entries.len()
+        );
+        writeln!(out, "{consistent}").expect("writing to a String cannot fail");
+    } else {
+        let mismatch_line = format!(
+            "Activation environment: {mismatch_count} mismatch(es) across {} variables",
+            comparison.entries.len()
+        );
+        writeln!(out, "{mismatch_line}").expect("writing to a String cannot fail");
+    }
+
+    if !verbose {
+        return;
+    }
+    writeln!(out, "\nEnvironment variables (allowlisted):")
+        .expect("writing to a String cannot fail");
+    for (key, value) in &environment.process {
+        let var_line = format!("  {key}={value}");
+        writeln!(out, "{var_line}").expect("writing to a String cannot fail");
+    }
+    write_roots(
+        out,
+        "Config search roots",
+        &environment.search_roots.config_roots,
+    );
+    write_roots(
+        out,
+        "Data search roots",
+        &environment.search_roots.data_roots,
+    );
+    writeln!(out, "\nActivation environment details:").expect("writing to a String cannot fail");
+    for entry in &comparison.entries {
+        let detail = format!(
+            "  {}: {}",
+            entry.key,
+            describe_relation(
+                entry.relation,
+                entry.process_value.as_ref(),
+                entry.activation_value.as_ref(),
+            )
+        );
+        writeln!(out, "{detail}").expect("writing to a String cannot fail");
+    }
+}
+
+fn write_roots(out: &mut String, label: &str, roots: &[String]) {
+    let header = format!("\n{label}:");
+    writeln!(out, "{header}").expect("writing to a String cannot fail");
+    for root in roots {
+        let root_line = format!("  {root}");
+        writeln!(out, "{root_line}").expect("writing to a String cannot fail");
+    }
+}
+
+fn describe_relation(
+    relation: EnvironmentRelation,
+    process_value: Option<&String>,
+    activation_value: Option<&String>,
+) -> String {
+    match relation {
+        EnvironmentRelation::Equal => "equal".to_owned(),
+        EnvironmentRelation::Different => {
+            format!("different (process {process_value:?}, activation {activation_value:?})")
+        }
+        EnvironmentRelation::MissingProcess => {
+            format!("missing in this session (activation {activation_value:?})")
+        }
+        EnvironmentRelation::MissingActivation => {
+            format!("missing in activation environment (process {process_value:?})")
+        }
+        EnvironmentRelation::NotChecked => "not checked".to_owned(),
+    }
+}
+
+fn write_findings(out: &mut String, report: &Report, verbose: bool) {
+    if report.findings.is_empty() {
+        out.push_str("Findings: none detected.\n");
+        return;
+    }
+    let count_line = format!("Findings: {}", report.findings.len());
+    writeln!(out, "{count_line}").expect("writing to a String cannot fail");
+    for finding in &report.findings {
+        let headline = format!(
+            "\n  [{}] {} ({})",
+            finding.severity, finding.title, finding.id
+        );
+        writeln!(out, "{headline}").expect("writing to a String cannot fail");
+        let summary_line = format!("  {}", finding.summary);
+        writeln!(out, "{summary_line}").expect("writing to a String cannot fail");
+        if !verbose {
+            continue;
+        }
+        let confidence_line = format!("  confidence: {}", finding.confidence);
+        writeln!(out, "{confidence_line}").expect("writing to a String cannot fail");
+        let explanation_line = format!("  explanation: {}", finding.explanation);
+        writeln!(out, "{explanation_line}").expect("writing to a String cannot fail");
+        if let Some(impact) = &finding.impact {
+            let impact_line = format!("  impact: {impact}");
+            writeln!(out, "{impact_line}").expect("writing to a String cannot fail");
+        }
+        out.push_str("  recommendation:\n");
+        for step in &finding.recommendation {
+            let step_line = format!("    - {step}");
+            writeln!(out, "{step_line}").expect("writing to a String cannot fail");
+        }
+    }
+    if !verbose {
+        out.push_str("\nRun with --verbose for details.\n");
+    }
+}
+
+fn first_note<T>(section: &Section<T>) -> String {
+    section.errors.first().map_or_else(
+        || "- no details available".to_owned(),
+        |note| format!("- {}", note.message),
+    )
 }

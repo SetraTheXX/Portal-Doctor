@@ -1,28 +1,42 @@
 use serde::Serialize;
 
+use crate::model::environment::{EnvironmentInfo, SessionInfo, SystemInfo};
+use crate::model::section::Section;
+
 /// Version of the normalized snapshot schema (architecture §6).
 pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 
 /// Normalized snapshot: the single internal state collected during a run.
-///
-/// Phase 1 collectors add the system/session/environment sections; phase 0
-/// carries the schema anchor and collection time so the v1 pipeline is
-/// exercised end to end.
+/// Rules consume this snapshot only (architecture §15 rule purity).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Snapshot {
     /// Snapshot schema version.
     pub schema_version: u32,
     /// Collection start time as Unix epoch milliseconds.
     pub collected_at: u64,
+    /// Operating-system identity from `/etc/os-release`.
+    pub system: Section<SystemInfo>,
+    /// Desktop/session context from allowlisted variables.
+    pub session: Section<SessionInfo>,
+    /// Process environment, search roots and activation comparison.
+    pub environment: Section<EnvironmentInfo>,
 }
 
 impl Snapshot {
-    /// Create a snapshot with the given schema version and collection time.
+    /// Assemble a snapshot with the current schema version and collected sections.
     #[must_use]
-    pub fn new(schema_version: u32, collected_at: u64) -> Self {
+    pub fn new(
+        collected_at: u64,
+        system: Section<SystemInfo>,
+        session: Section<SessionInfo>,
+        environment: Section<EnvironmentInfo>,
+    ) -> Self {
         Self {
-            schema_version,
+            schema_version: SNAPSHOT_SCHEMA_VERSION,
             collected_at,
+            system,
+            session,
+            environment,
         }
     }
 }
@@ -30,6 +44,8 @@ impl Snapshot {
 #[cfg(test)]
 mod tests {
     use super::{SNAPSHOT_SCHEMA_VERSION, Snapshot};
+    use crate::model::environment::SystemInfo;
+    use crate::model::section::Section;
     use serde_json::json;
 
     #[test]
@@ -38,9 +54,23 @@ mod tests {
     }
 
     #[test]
-    fn serializes_schema_and_time_keys() {
-        let snapshot = Snapshot::new(SNAPSHOT_SCHEMA_VERSION, 42);
-        let value = serde_json::to_value(snapshot).unwrap();
-        assert_eq!(value, json!({ "schema_version": 1, "collected_at": 42 }));
+    fn serializes_schema_time_and_sections() {
+        let snapshot = Snapshot::new(
+            42,
+            Section::available(SystemInfo {
+                id: Some("ubuntu".to_owned()),
+                name: None,
+                pretty_name: None,
+                version_id: None,
+            }),
+            Section::<crate::model::environment::SessionInfo>::unsupported("test"),
+            Section::<crate::model::environment::EnvironmentInfo>::unavailable("test"),
+        );
+        let value = serde_json::to_value(&snapshot).unwrap();
+        assert_eq!(value["schema_version"], json!(1));
+        assert_eq!(value["collected_at"], json!(42));
+        assert_eq!(value["system"]["status"], json!("available"));
+        assert_eq!(value["session"]["status"], json!("unsupported"));
+        assert_eq!(value["environment"]["status"], json!("unavailable"));
     }
 }

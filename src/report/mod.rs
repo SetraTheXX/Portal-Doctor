@@ -39,40 +39,55 @@ impl Report {
     }
 }
 
-/// Renders a finished report into its final textual form.
+/// Renders a finished report into its final textual form. The `verbose` flag
+/// controls the level of collected detail; machine-readable renderers ignore it.
 pub trait Renderer {
     /// Render `report` into text ready for stdout.
-    fn render(&self, report: &Report) -> String;
+    fn render(&self, report: &Report, verbose: bool) -> String;
 }
 
 #[cfg(test)]
 mod tests {
     use super::{JsonRenderer, Renderer, Report, TerminalRenderer};
+    use crate::model::environment::EnvironmentInfo;
+    use crate::model::section::Section;
     use crate::model::snapshot::Snapshot;
     use serde_json::json;
 
-    #[test]
-    fn new_locks_top_level_schema_version() {
-        let report = Report::new(Snapshot::new(1, 42), Vec::new(), "0.1.0");
-        assert_eq!(report.schema_version, 1);
-        let value = serde_json::to_value(&report).unwrap();
-        assert_eq!(
-            value,
-            json!({
-                "schema_version": 1,
-                "portaldoctor_version": "0.1.0",
-                "snapshot": { "schema_version": 1, "collected_at": 42 },
-                "findings": []
-            })
-        );
+    fn empty_snapshot() -> Snapshot {
+        Snapshot::new(
+            42,
+            Section::<crate::model::environment::SystemInfo>::unsupported("test"),
+            Section::<crate::model::environment::SessionInfo>::unsupported("test"),
+            Section::<EnvironmentInfo>::unavailable("test"),
+        )
     }
 
     #[test]
-    fn renderers_emit_findings_state() {
-        let report = Report::new(Snapshot::new(1, 42), Vec::new(), "0.1.0");
-        let terminal = TerminalRenderer.render(&report);
-        assert!(terminal.contains("Findings: none detected."));
-        let json = JsonRenderer.render(&report);
-        assert!(json.contains("\"findings\": []"));
+    fn new_locks_top_level_schema_version() {
+        let report = Report::new(empty_snapshot(), Vec::new(), "0.1.0");
+        assert_eq!(report.schema_version, 1);
+        let value = serde_json::to_value(&report).unwrap();
+        assert_eq!(value["schema_version"], json!(1));
+        assert_eq!(value["portaldoctor_version"], json!("0.1.0"));
+        assert_eq!(value["snapshot"]["schema_version"], json!(1));
+        assert_eq!(value["findings"], json!([]));
+    }
+
+    #[test]
+    fn terminal_renderer_reports_findings_state() {
+        let report = Report::new(empty_snapshot(), Vec::new(), "0.1.0");
+        let terse = TerminalRenderer.render(&report, false);
+        assert!(terse.contains("Findings: none detected."));
+        let verbose = TerminalRenderer.render(&report, true);
+        assert!(verbose.contains("Findings: none detected."));
+    }
+
+    #[test]
+    fn json_renderer_ignores_verbose_and_stays_parseable() {
+        let report = Report::new(empty_snapshot(), Vec::new(), "0.1.0");
+        let text = JsonRenderer.render(&report, true);
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["snapshot"]["collected_at"], json!(42));
     }
 }

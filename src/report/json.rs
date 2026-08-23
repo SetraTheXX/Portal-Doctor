@@ -4,7 +4,7 @@ use crate::report::{Renderer, Report};
 pub struct JsonRenderer;
 
 impl Renderer for JsonRenderer {
-    fn render(&self, report: &Report) -> String {
+    fn render(&self, report: &Report, _verbose: bool) -> String {
         serde_json::to_string_pretty(report).expect("plain-data report serialization cannot fail")
     }
 }

@@ -15,5 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Core models: snapshot schema v1, collector status, finding, evidence,
     severity and confidence contracts.
   - Versioned JSON output contract (top-level `schema_version` v1).
-  - Terminal and JSON renderers behind a renderer interface.
   - Unit tests and GitHub Actions CI (fmt, clippy, test, release build).
+- Phase 1: environment and desktop discovery.
+  - Collectors: `/etc/os-release`, allowlisted `XDG`/session variables,
+    effective `XDG` search roots, `systemd` user activation environment
+    (bounded timeout).
+  - Environment rules `ENV001`–`ENV004` with deterministic fixture tests.
+  - `portaldoctor check environment [--verbose]`.
