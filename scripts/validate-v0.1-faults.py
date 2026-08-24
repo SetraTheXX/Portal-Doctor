@@ -31,6 +31,17 @@ REQUIRED_FINDING_FIELDS = {
     "source_component",
 }
 
+EXPECTED_FINDING_CONTRACT = {
+    "ENV001": ("warning", "high", "environment_mismatch"),
+    "ENV003": ("warning", "high", "environment_mismatch"),
+    "CFG002": ("warning", "high", "config_selection"),
+    "XDP003": ("warning", "high", "missing_provider"),
+    "XDP005": ("warning", "high", "config_selection"),
+    "DBUS001": ("warning", "high", "missing_provider"),
+    "XDP001": ("warning", "high", "missing_provider"),
+    "DBUS002": ("warning", "high", "service_state"),
+}
+
 
 def binary_path() -> str:
     configured = os.environ.get("PORTALDOCTOR_BIN")
@@ -92,6 +103,19 @@ def finding_ids(value: dict) -> list[str]:
     return [finding["id"] for finding in value["findings"]]
 
 
+def assert_expected_contract(value: dict, finding_id: str) -> dict:
+    finding = next(
+        (item for item in value["findings"] if item["id"] == finding_id),
+        None,
+    )
+    assert finding is not None, f"{finding_id} finding yok"
+    severity, confidence, evidence = EXPECTED_FINDING_CONTRACT[finding_id]
+    assert finding["severity"] == severity, (finding_id, finding["severity"])
+    assert finding["confidence"] == confidence, (finding_id, finding["confidence"])
+    assert evidence in finding["evidence"], (finding_id, finding["evidence"])
+    return finding
+
+
 def normalized(value: dict) -> dict:
     copy = json.loads(json.dumps(value))
     copy["snapshot"]["collected_at"] = 0
@@ -121,7 +145,11 @@ def run_repeated(
             value, stderr = run_json(binary, scenario_env, *args)
             values.append(value)
             stderr_values.append(stderr)
+        ids = finding_ids(values[0])
+        expected_finding = None
         if expected:
+            assert expected in ids, f"{name}: {expected} yok; actual={ids}"
+            expected_finding = assert_expected_contract(values[0], expected)
             text_result = subprocess.run(
                 [binary, *args],
                 env=scenario_env,
@@ -131,12 +159,10 @@ def run_repeated(
                 check=False,
             )
             assert text_result.returncode == 0, text_result.stderr
-            assert "next:" in text_result.stdout, (
-                f"{name}: terse output did not expose the first next recommendation"
+            next_line = f"next: {expected_finding['recommendation'][0]}"
+            assert next_line in text_result.stdout, (
+                f"{name}: terse output did not expose the expected next recommendation"
             )
-        ids = finding_ids(values[0])
-        if expected:
-            assert expected in ids, f"{name}: {expected} yok; actual={ids}"
         for value in values[1:]:
             assert normalized(value) == normalized(values[0]), (
                 f"{name}: tekrarlar deterministik değil: "
@@ -279,7 +305,7 @@ def main() -> int:
         run_repeated("invalid-session-bus", binary, invalid_bus, "DBUS001")
         # The runtime contract also expects the frontend finding; report it if present.
         value, _ = run_json(binary, invalid_bus)
-        assert "XDP001" in finding_ids(value)
+        assert_expected_contract(value, "XDP001")
 
     # 8. Private valid bus with no portal frontend owner.
     dbus_run_session = shutil.which("dbus-run-session")
@@ -300,7 +326,8 @@ def main() -> int:
         validate_finding_contract(value)
         values.append(value)
     ids = finding_ids(values[0])
-    assert "XDP001" in ids
+    assert_expected_contract(values[0], "XDP001")
+    assert_expected_contract(values[0], "DBUS002")
     assert "DBUS001" not in ids
     text_result = subprocess.run(
         [dbus_run_session, "--", binary, "check"],
@@ -311,7 +338,8 @@ def main() -> int:
         check=False,
     )
     assert text_result.returncode == 0, text_result.stderr
-    assert "next:" in text_result.stdout
+    xdp001 = next(f for f in values[0]["findings"] if f["id"] == "XDP001")
+    assert f"next: {xdp001['recommendation'][0]}" in text_result.stdout
     for value in values[1:]:
         assert normalized(value) == normalized(values[0])
     print(f"PASS private-bus-frontend-absent: {ids}")
