@@ -2,7 +2,7 @@
 name = "portaldoctor"
 version = "0.1.0"
 edition = "2024"
-description = "Deterministic diagnostic CLI for XDG Desktop Portal, Wayland and PipeWire integration on Linux"
+description = "Read-only Linux CLI for diagnosing XDG Desktop Portal, Wayland session, D-Bus and systemd user integration issues."
 license = "MIT"
 repository = "https://github.com/SetraTheXX/Portal-Doctor"
 keywords = ["xdg", "portal", "diagnostics", "wayland", "linux"]
