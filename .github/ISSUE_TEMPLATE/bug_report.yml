@@ -1,0 +1,59 @@
+name: Bug report
+description: Report an incorrect finding, crash or unexpected diagnostic result.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before posting JSON or logs, remove credentials, tokens and unrelated local paths.
+  - type: input
+    id: version
+    attributes:
+      label: PortalDoctor version
+      placeholder: "portaldoctor 0.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Distribution, desktop, session type and systemd user session.
+      placeholder: "Ubuntu 26.04, GNOME, Wayland, systemd --user"
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and output
+      description: Include the command and reviewed output. Prefer JSON for diagnostic details.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction or fixture
+      description: Include the smallest reproduction, config snippet or fixture scenario.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed credentials, tokens and unrelated private values.
+          required: true
+        - label: The report does not include a full unreviewed environment dump.
+          required: true

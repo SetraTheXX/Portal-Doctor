@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a bounded diagnostic or documentation improvement.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What user or maintainer problem should be solved?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the observable CLI, finding or documentation behavior.
+    validations:
+      required: true
+  - type: input
+    id: phase
+    attributes:
+      label: Roadmap phase
+      placeholder: "Phase 5, or maintenance/docs"
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+      description: State what is deliberately not included in the proposal.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Deterministic validation plan
+      description: Explain fixture, boundary and real-system validation for the change.
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      options:
+        - label: The proposal preserves read-only default behavior.
+          required: true
+        - label: The proposal does not advance a later roadmap phase early.
+          required: true
+        - label: The proposal does not require an unnecessary dependency.
+          required: true
