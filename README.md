@@ -158,7 +158,9 @@ See [compatibility and known limitations](docs/compatibility.md) for details.
 - [Compatibility and known limitations](docs/compatibility.md)
 - [v0.1.0 release notes draft](docs/release-notes-v0.1.0.md)
 - [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security](SECURITY.md)
+- [v0.1 fault-injection harness](scripts/validate-v0.1-faults.py)
 - [Project documentation index](docs/PORTALDOCTOR_DOCS_INDEX.md)
 
 ## License
