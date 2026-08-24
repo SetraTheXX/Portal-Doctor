@@ -93,7 +93,7 @@ pub fn output_bounded(
 #[cfg(test)]
 mod tests {
     use super::{Duration, output_bounded, run_bounded};
-    use std::process::{Command, Stdio};
+    use std::process::Command;
     use std::thread;
 
     #[test]
@@ -110,23 +110,43 @@ mod tests {
         assert_eq!(result, None);
     }
 
+    /// Wait until every pid reports gone via `kill(pid, 0)`, with a bounded
+    /// retry loop so kernel reaping latency cannot cause false failures.
+    #[cfg(unix)]
+    fn wait_gone(pids: &[i32]) -> bool {
+        for _ in 0..40 {
+            let alive = pids.iter().any(|pid| unsafe { libc::kill(*pid, 0) } == 0);
+            if !alive {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        !pids.iter().any(|pid| unsafe { libc::kill(*pid, 0) } == 0)
+    }
+
     #[test]
     #[cfg(unix)]
-    fn kills_child_on_timeout_leaving_no_orphan() {
-        use std::process::Command;
-
-        let mut command = Command::new("sleep");
-        command.arg("30");
+    fn kills_direct_child_on_timeout_leaving_no_orphan() {
+        // `sh -c 'echo $$ > f; exec sleep 30'` turns the shell into the real
+        // sleep process, so $$ is its exact pid and no grandchild exists.
+        let dir = std::env::temp_dir().join("portaldoctor_orphan_direct");
+        std::fs::create_dir_all(&dir).unwrap();
+        let pidfile = dir.join("child.pid");
+        // exec replaces the shell with the real sleep process: $$ is the
+        // exact pid that output_bounded must kill.
+        let body = format!("echo \"$$\" > {}\nexec sleep 30", pidfile.display());
+        let mut command = Command::new("sh");
+        command.arg("-c").arg(&body);
         let result = output_bounded(Duration::from_millis(120), command).unwrap();
         assert!(result.is_none());
-        // Give the kernel a moment to reap the killed child.
-        thread::sleep(Duration::from_millis(80));
-        let probe = Command::new("ps").arg("-o").arg("args=").output().unwrap();
-        let listing = String::from_utf8_lossy(&probe.stdout);
+
+        let pid_text = std::fs::read_to_string(&pidfile).unwrap();
+        let pid: i32 = pid_text.trim().parse().unwrap();
         assert!(
-            !listing.contains("sleep 30"),
-            "orphaned child survived the timeout: {listing}"
+            wait_gone(&[pid]),
+            "direct child {pid} survived the timeout kill"
         );
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -134,11 +154,21 @@ mod tests {
     fn group_kill_reaps_shell_wrapper_grandchildren() {
         // Shell wrappers fork a grandchild (the actual command); killing only
         // the direct child would leave it running as an orphan. The process-
-        // group kill must reap the whole tree.
-        let dir = std::env::temp_dir().join("portaldoctor_orphan_fixture");
+        // group kill must reap the whole tree, verified by exact pids.
+        let dir = std::env::temp_dir().join("portaldoctor_orphan_wrapper");
         std::fs::create_dir_all(&dir).unwrap();
         let script = dir.join("slow-systemctl");
-        std::fs::write(&script, "#!/bin/sh\nsleep 30\n").unwrap();
+        let pidfile_child = dir.join("child.pid");
+        let pidfile_grand = dir.join("grandchild.pid");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\necho \"$$\" > {}\nsleep 30 &\necho \"$!\" > {}\nwait\n",
+                pidfile_child.display(),
+                pidfile_grand.display()
+            ),
+        )
+        .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -150,18 +180,22 @@ mod tests {
         let result = output_bounded(Duration::from_millis(200), command).unwrap();
         assert!(result.is_none());
 
-        // Give the kernel and the reaper a moment.
-        thread::sleep(Duration::from_millis(120));
-        let probe = Command::new("sh")
-            .args(["-c", "ps -eo args | grep -c '[s]leep 30'"])
-            .stderr(Stdio::null())
-            .output()
-            .unwrap();
-        let count: i32 = String::from_utf8_lossy(&probe.stdout)
+        let child_pid: i32 = std::fs::read_to_string(&pidfile_child)
+            .unwrap()
             .trim()
             .parse()
-            .unwrap_or(i32::MAX);
-        assert_eq!(count, 0, "grandchild survived the group kill");
+            .unwrap();
+        let grand_pid: i32 = std::fs::read_to_string(&pidfile_grand)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+
+        // Bounded wait: SIGKILL is immediate but reaping may lag slightly.
+        assert!(
+            wait_gone(&[child_pid, grand_pid]),
+            "wrapper child {child_pid} or grandchild {grand_pid} survived the group kill"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }
