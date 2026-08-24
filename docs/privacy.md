@@ -15,8 +15,14 @@ XDG_DATA_HOME, XDG_DATA_DIRS, DBUS_SESSION_BUS_ADDRESS,
 XDG_RUNTIME_DIR
 ```
 
-Anything outside this list — including `PATH`, `HOME`, shell history,
-credentials and application state — is never read.
+Anything outside this list — including `PATH`, shell history, credentials
+and application state — is never collected or reported.
+
+The single exception to "never read" is `HOME`: it is consulted **only** to
+build the `XDG` base-directory default paths (e.g. `$HOME/.config`,
+`$HOME/.local/share`) when the corresponding `XDG_CONFIG_HOME` /
+`XDG_DATA_HOME` variables are unset. It is never collected as a diagnostic
+variable and never reported on its own.
 
 ## What is contacted
 
