@@ -121,6 +121,19 @@ def run_repeated(
             value, stderr = run_json(binary, scenario_env, *args)
             values.append(value)
             stderr_values.append(stderr)
+        if expected:
+            text_result = subprocess.run(
+                [binary, *args],
+                env=scenario_env,
+                text=True,
+                capture_output=True,
+                timeout=20,
+                check=False,
+            )
+            assert text_result.returncode == 0, text_result.stderr
+            assert "next:" in text_result.stdout, (
+                f"{name}: terse output did not expose the first next recommendation"
+            )
         ids = finding_ids(values[0])
         if expected:
             assert expected in ids, f"{name}: {expected} yok; actual={ids}"
@@ -289,6 +302,16 @@ def main() -> int:
     ids = finding_ids(values[0])
     assert "XDP001" in ids
     assert "DBUS001" not in ids
+    text_result = subprocess.run(
+        [dbus_run_session, "--", binary, "check"],
+        env=base,
+        text=True,
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    assert text_result.returncode == 0, text_result.stderr
+    assert "next:" in text_result.stdout
     for value in values[1:]:
         assert normalized(value) == normalized(values[0])
     print(f"PASS private-bus-frontend-absent: {ids}")
