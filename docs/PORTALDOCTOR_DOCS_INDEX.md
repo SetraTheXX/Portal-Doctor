@@ -4,7 +4,30 @@
 
 This folder contains the initial project-definition package for PortalDoctor.
 
-## Documents
+## Public release documents
+
+### `findings.md`
+
+The v0.1 finding catalog: IDs, severity, confidence and trigger conditions.
+
+### `json-schema.md`
+
+The publishable schema-v1 reference for `--json` output.
+
+### `privacy.md`
+
+The allowlist, read-only guarantees and report-sharing guidance.
+
+### `compatibility.md`
+
+The validated platform target and known limitations.
+
+### `release-notes-v0.1.0.md`
+
+Draft release notes for the first public release. No tag or GitHub Release has
+been created yet.
+
+## Project-definition documents
 
 ### `PORTALDOCTOR_RESEARCH.md`
 
@@ -44,7 +67,7 @@ It defines:
 - portal route resolver,
 - diagnostic rule engine,
 - D-Bus/systemd/PipeWire strategy,
-- privacy/redaction layer,
+- privacy/redaction strategy,
 - active probe architecture,
 - JSON versioning,
 - test architecture,
@@ -54,7 +77,8 @@ It defines:
 
 Use this as the execution plan.
 
-It defines Phase 0 through Phase 13, phase exit criteria, release mapping and the recommended first implementation vertical slice.
+It defines Phase 0 through Phase 13, phase exit criteria, release mapping and
+the recommended first implementation vertical slice.
 
 ---
 
@@ -73,13 +97,13 @@ Initial target: Ubuntu 26.04 + GNOME + Wayland + systemd user session
 Core design:    collectors -> snapshot -> resolver -> rules -> findings -> report
 D-Bus:          zbus
 Active probes:  ASHPD later
-PipeWire:       pw-dump JSON first
+PipeWire:       pw-dump JSON planned for Phase 5; not in v0.1
 v0.1:           no automatic fixes, no GUI, no broad desktop support claim
 ```
 
-## Recommended Next Step
+## Current status
 
-Begin implementation with **Phase 0 + the minimal Phase 1 vertical slice only**.
-
-Do not start PipeWire, active probes or multi-desktop compatibility before the core snapshot/rule/report pipeline is validated on the primary Linux machine.
+Phase 4 is complete and the repository is prepared for the v0.1.0 release
+gate. No tag, GitHub Release or package publish has been created. Phase 5
+PipeWire/WirePlumber work remains deferred.
 

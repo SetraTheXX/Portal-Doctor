@@ -1,73 +1,165 @@
 # PortalDoctor
 
-A deterministic, read-only diagnostic CLI for XDG Desktop Portals, Wayland,
-PipeWire and Linux desktop integration.
+Read-only, deterministic Linux CLI for diagnosing XDG Desktop Portal, Wayland
+session, D-Bus and systemd user integration issues.
 
-**Status:** Early development — no public release yet.
+**Status:** v0.1.0 public release preparation. No tag, GitHub Release or package
+publish has been created.
 
-**Platform scope:** Linux only (initial target: Ubuntu 26.04, GNOME, Wayland,
-systemd user session).
+**Validated target:** Ubuntu 26.04 + GNOME + Wayland + systemd user session.
 
-## Design principles
+## The problem
 
-- deterministic diagnostics with stable finding IDs,
-- read-only by default — no system modification,
-- no root/sudo requirement for normal checks,
-- no AI dependency in core behavior,
-- machine-readable JSON output with a versioned schema,
-- privacy-safe, redacted reports.
+Linux desktop integration failures are spread across several layers. Screen
+sharing, a file chooser or a screenshot portal can fail because the session
+environment is incomplete, `portals.conf` selects the wrong backend, a `.portal`
+descriptor is missing an interface, the portal frontend is absent from D-Bus,
+or a systemd user service is not healthy. Debugging this by hand means jumping
+between environment dumps, XDG paths, portal descriptors, D-Bus tools and
+`systemctl` output.
 
-## Build
+## What PortalDoctor does
+
+PortalDoctor reads those layers without modifying the system, builds one
+normalized snapshot, reconstructs portal routing, checks runtime reachability,
+and emits deterministic root-cause findings with evidence and a recommended
+next step.
+
+It can expose, for example:
+
+- wrong or missing portal backend routing,
+- a missing or malformed `portals.conf`,
+- a backend descriptor that exists but whose runtime D-Bus name is unreachable,
+- an unreachable XDG Desktop Portal frontend,
+- an unhealthy or missing systemd user service,
+- missing Wayland/session environment values,
+- a mismatch between process environment and systemd activation environment,
+- a configured backend that does not advertise the requested interface.
+
+**PipeWire and WirePlumber are not implemented in v0.1.** ScreenCast findings
+in this version stop at portal configuration and D-Bus/systemd reachability.
+PipeWire/WirePlumber correlation is planned for Phase 5.
+
+## Quick start / Installation
+
+### Install from this repository
 
 ```sh
+cargo install --git https://github.com/SetraTheXX/Portal-Doctor --locked
+```
+
+### Build from source
+
+```sh
+git clone https://github.com/SetraTheXX/Portal-Doctor.git
+cd Portal-Doctor
 cargo build --release
+./target/release/portaldoctor
 ```
 
 ## Usage
 
+Start with the default diagnostic run:
+
 ```sh
-# run all passive diagnostic checks (default command)
-portaldoctor check
+portaldoctor
+```
 
-# restrict to desktop/session/environment discovery
+Then inspect individual areas or machine-readable output:
+
+```sh
 portaldoctor check environment
-portaldoctor check environment --verbose
-
-# machine-readable output
+portaldoctor check portal
 portaldoctor check --json
-
-# portal inspection
 portaldoctor portal list
 portaldoctor portal routes
 portaldoctor portal explain ScreenCast
 ```
 
-Also accepts `--version` and `--help`.
+Use `--verbose` for collected values, route evidence and full finding details:
+
+```sh
+portaldoctor check environment --verbose
+```
+
+## Example
+
+Healthy Ubuntu 26.04 / GNOME / Wayland output:
+
+```text
+PortalDoctor 0.1.0
+Snapshot schema v1
+
+System: Ubuntu 26.04 LTS (ubuntu)
+Session: wayland session · desktop ubuntu:GNOME · session desktop ubuntu
+Activation environment: consistent (5 variables compared)
+D-Bus: connected · portal frontend reachable
+  backend org.freedesktop.impl.portal.desktop.gnome: reachable
+  backend org.freedesktop.impl.portal.desktop.gtk: reachable
+  backend org.freedesktop.secrets: reachable
+
+Findings: none detected.
+```
+
+When a finding exists, the default terminal view includes its first actionable
+`next:` recommendation; `--verbose` adds explanation, impact, evidence and all
+recommendations.
+
+## v0.1 capabilities
+
+- OS, desktop, session and allowlisted environment discovery.
+- Process versus systemd user activation-environment comparison.
+- XDG config/data search-path resolution.
+- Desktop-specific and generic `portals.conf` discovery and parsing.
+- `.portal` backend inventory with duplicate provenance.
+- Route resolution for interface-specific preferences, `default`, `*` and
+  `none`.
+- D-Bus frontend and selected backend name-owner checks with bounded timeouts.
+- Basic systemd user unit state collection.
+- 15 deterministic findings (`ENV`, `XDP`, `CFG` and `DBUS` families).
+- Terminal and versioned JSON output.
+- Fixture tests and CI quality gates.
+
+## Safety & privacy
+
+- Read-only by default; normal use does not require sudo or root.
+- No network access, telemetry or AI service.
+- Only 11 diagnostic environment variables are allowlisted and collected.
+- `HOME` is read only to derive XDG default roots such as `$HOME/.config` and
+  `$HOME/.local/share`; it is not collected or reported as a diagnostic
+  variable.
+- No shareable redaction layer is claimed in v0.1. Review JSON output before
+  attaching it to a bug report; deeper report redaction is later privacy work.
+- External D-Bus and subprocess work is bounded so a broken dependency cannot
+  hang the CLI.
+
+## Supported platform / limitations
+
+v0.1 is validated on **Ubuntu 26.04 + GNOME + Wayland + systemd user session**.
+No support claim is made for KDE, wlroots/Sway, Hyprland, Niri or other
+compositor/distribution combinations.
+
+Known limitations include:
+
+- no PipeWire/WirePlumber graph or media-stack health check,
+- no journal evidence correlation,
+- no active portal dialogs/probes,
+- `NameHasOwner` proves bus ownership, not method-level backend health,
+- conventional systemd unit-name mapping is assumed for discovered backends,
+- no automatic fixes and no GUI.
+
+See [compatibility and known limitations](docs/compatibility.md) for details.
 
 ## Documentation
 
-- [Finding catalog](docs/findings.md) — every rule, severity and trigger
-  (`ENV001`–`ENV004`, `XDP001`–`XDP005`, `CFG001`–`CFG004`, `DBUS001`–`DBUS002`)
-- [JSON schema v1](docs/json-schema.md) — the machine-readable report format
-- [Privacy statement](docs/privacy.md) — what is collected, what is contacted
-- [Compatibility & known limitations](docs/compatibility.md)
-- [Project docs index](docs/PORTALDOCTOR_DOCS_INDEX.md) — research, PRD,
-  architecture, roadmap
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Known limitations (v0.1)
-
-- Validated on Ubuntu 26.04 / GNOME / Wayland / systemd only; other setups are
-  untested (details in [compatibility](docs/compatibility.md)).
-- ScreenCast readiness is judged from configuration and D-Bus reachability;
-  PipeWire/WirePlumber state is a later phase.
-- No active portal probes, no journal evidence, no automatic fixes.
-
-See [compatibility & known limitations](docs/compatibility.md) for the full
-list.
+- [Finding catalog](docs/findings.md)
+- [JSON schema v1](docs/json-schema.md)
+- [Privacy statement](docs/privacy.md)
+- [Compatibility and known limitations](docs/compatibility.md)
+- [v0.1.0 release notes draft](docs/release-notes-v0.1.0.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
+- [Project documentation index](docs/PORTALDOCTOR_DOCS_INDEX.md)
 
 ## License
 

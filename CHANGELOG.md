@@ -1,63 +1,77 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
+All notable changes to PortalDoctor are documented here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
+No changes after the v0.1.0 release-preparation baseline yet. No tag, GitHub
+Release or package publish has been created.
 
-- Phase 0: project foundation.
-  - Rust CLI binary scaffold (`portaldoctor`).
-  - `check` subcommand (default command), `--json`, `--version`, `--help`.
-  - Core models: snapshot schema v1, collector status, finding, evidence,
-    severity and confidence contracts.
-  - Versioned JSON output contract (top-level `schema_version` v1).
-  - Unit tests and GitHub Actions CI (fmt, clippy, test, release build).
-- Phase 1: environment and desktop discovery.
-  - Collectors: `/etc/os-release`, allowlisted `XDG`/session variables,
-    effective `XDG` search roots, `systemd` user activation environment
-    (bounded timeout).
-  - Environment rules `ENV001`–`ENV004` with deterministic fixture tests.
-  - Environment rules `ENV001`–`ENV004` with deterministic fixture tests.
-  - `portaldoctor check environment [--verbose]`.
-- Phase 4: diagnostic engine v1 — v0.1 release gate.
-  - Finalized the v0.1 rule registry (15 rules) with a catalog test pinning
-    registration to the documented set.
-  - Every finding now carries the complete structured contract (explanation,
-    impact, recommendation) asserted across rule fixture tests.
-  - Default terminal output is actionable: each finding shows its first
-    recommended step without `--verbose`.
-  - Published JSON schema-v1 documentation (`docs/json-schema.md`) and the
-    finding catalog (`docs/findings.md`).
-- Phase 2: portal discovery and routing resolver.
-  - `portals.conf` discovery with desktop-specific names and `XDG` precedence;
-    parser supports `[preferred]`, `*`, `none` and provenance.
-  - `.portal` backend discovery across effective `XDG` data roots with
-    duplicate provenance.
-  - Route resolver producing explainable, source-backed route tables.
-  - Portal rules `XDP003`–`XDP005` and `CFG001`–`CFG004`.
-  - `portaldoctor portal list | routes | explain <interface>`,
-    `portaldoctor check portal`.
-- Fixed: bounded subprocess helper (`output_bounded`) kills the whole child
-  process group on timeout, so shell wrappers or grandchildren cannot survive
-  as orphans; systemd user-service collector migrated to it.
-- Phase 3: D-Bus and systemd runtime verification.
-  - `zbus`-based session bus checks: frontend and selected backend bus names,
-    classified outcomes (has owner, no owner, timeout, access denied,
-    activation failure), bounded by the central timeout policy.
-  - Portal-relevant systemd user unit states via bounded
-    `systemctl --user show`.
-  - Rules `DBUS001`–`DBUS002` and `XDP001`–`XDP002`; runtime findings included
-    in bare `check` output.
-- Phase 2 audit fixes: desktop names normalized to lowercase like upstream;
-  `org.freedesktop.impl.portal.Default` preference acts as fallback and is
-  overridden by interface-specific entries; route selection picks the first
-  usable backend (single `Selected`); fixture tests for every portal rule
-  (`XDP003`–`XDP005`, `CFG001`–`CFG004`).
-- Correctness: `portals.conf` candidates now probe config roots followed by
-  data roots per desktop (upstream order) with lowercased desktop names;
-  the `default=` key is canonicalized to `org.freedesktop.impl.portal.Default`
-  so parser output and resolver fallback lookup match byte-for-byte.
+## [0.1.0] — Unreleased
+
+This section is the complete v0.1.0 release-preparation history. The release
+number is reserved for the Phase 4 gate; it is not tagged yet.
+
+### Phase 0 — Project foundation
+
+- Rust CLI binary scaffold (`portaldoctor`).
+- `check` command (default command), `--json`, `--version` and `--help`.
+- Snapshot schema v1, collection status, finding, evidence, severity and
+  confidence models.
+- Versioned JSON output contract and terminal/JSON renderers.
+- MIT license, README, contributor/security docs and GitHub Actions CI.
+
+### Phase 1 — Environment and desktop discovery
+
+- `/etc/os-release` collection and parsing.
+- Allowlisted XDG/session environment collection and effective XDG config/data
+  roots.
+- Wayland/X11 session discovery and process versus systemd activation comparison.
+- Deterministic `ENV001`–`ENV004` rules and
+  `portaldoctor check environment [--verbose]`.
+
+### Phase 2 — Portal discovery and routing
+
+- Desktop-specific and generic `portals.conf` discovery across config and data
+  roots with upstream precedence and lowercase desktop names.
+- `[preferred]` parsing, including `default=`, interface-specific overrides,
+  `*`, `none` and source provenance.
+- `.portal` backend discovery across effective XDG data roots with duplicate
+  provenance.
+- Explainable route resolution and deterministic selection.
+- `XDP003`–`XDP005` and `CFG001`–`CFG004` rules.
+- `portal list`, `portal routes`, `portal explain <interface>` and
+  `check portal`.
+
+### Phase 3 — D-Bus and systemd runtime verification
+
+- `zbus` session-bus checks for the portal frontend and selected backend names.
+- Classified runtime outcomes: owner, no owner, no session bus, timeout,
+  access denied, activation failure and malformed response.
+- Bounded `systemctl --user show-environment` and portal-unit state collection.
+- Central timeout policy and process-group cleanup for timed-out subprocesses.
+- `DBUS001`–`DBUS002` and `XDP001`–`XDP002` rules.
+
+### Phase 4 — Diagnostic engine v1 and release gate
+
+- Finalized and tested the complete 15-rule v0.1 registry.
+- Completed structured finding fields: explanation, evidence, impact,
+  recommendations and source component.
+- Actionable terse terminal output with the first recommended next step.
+- Published finding catalog, JSON schema-v1 reference, privacy statement,
+  compatibility matrix and known limitations.
+- Public-facing README and v0.1.0 release notes draft.
+- Validation on Ubuntu 26.04 / GNOME / Wayland / systemd user session.
+
+## Deferred after v0.1
+
+- PipeWire/WirePlumber state and ScreenCast media-stack correlation (Phase 5).
+- Journal evidence engine.
+- Active portal probes.
+- KDE, wlroots/Sway, Hyprland and Niri compatibility claims.
+- Automatic fixes and GUI.
+
+[Unreleased]: https://github.com/SetraTheXX/Portal-Doctor/compare/main...HEAD
