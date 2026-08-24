@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""End-to-end v0.1 fault-injection acceptance validation.
+
+The harness changes only child-process environments and temporary files. It
+never edits system XDG configuration, stops services, or writes repository
+state.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Callable
+
+
+REQUIRED_FINDING_FIELDS = {
+    "id",
+    "severity",
+    "confidence",
+    "title",
+    "summary",
+    "explanation",
+    "evidence",
+    "impact",
+    "recommendation",
+    "source_component",
+}
+
+
+def binary_path() -> str:
+    configured = os.environ.get("PORTALDOCTOR_BIN")
+    if configured:
+        return configured
+    installed = shutil.which("portaldoctor")
+    if installed:
+        return installed
+    root = Path(__file__).resolve().parents[1]
+    candidate = root / "target" / "release" / "portaldoctor"
+    if candidate.is_file():
+        return str(candidate)
+    raise RuntimeError("portaldoctor bulunamadı; PORTALDOCTOR_BIN ayarlayın")
+
+
+def desktops(env: dict[str, str]) -> list[str]:
+    raw = env.get("XDG_CURRENT_DESKTOP", "")
+    return [part.strip().lower() for part in raw.split(":") if part.strip()]
+
+
+def run_json(binary: str, env: dict[str, str], *args: str) -> tuple[dict, str]:
+    result = subprocess.run(
+        [binary, *args, "--json"],
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"komut başarısız ({result.returncode}): {result.stderr.strip()}"
+        )
+    try:
+        value = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(f"JSON parse edilemedi: {exc}: {result.stdout}") from exc
+    validate_finding_contract(value)
+    return value, result.stderr
+
+
+def validate_finding_contract(value: dict) -> None:
+    assert set(value) == {
+        "schema_version",
+        "portaldoctor_version",
+        "snapshot",
+        "findings",
+    }
+    assert value["schema_version"] == 1
+    assert isinstance(value["findings"], list)
+    for finding in value["findings"]:
+        assert set(finding) == REQUIRED_FINDING_FIELDS
+        assert finding["evidence"]
+        assert finding["recommendation"]
+        assert finding["recommendation"][0]
+
+
+def finding_ids(value: dict) -> list[str]:
+    return [finding["id"] for finding in value["findings"]]
+
+
+def normalized(value: dict) -> dict:
+    copy = json.loads(json.dumps(value))
+    copy["snapshot"]["collected_at"] = 0
+    process = copy["snapshot"].get("environment", {}).get("value")
+    if process and "process" in process:
+        process["process"].pop("DBUS_SESSION_BUS_ADDRESS", None)
+    return copy
+
+
+def run_repeated(
+    name: str,
+    binary: str,
+    env: dict[str, str],
+    expected: str | None,
+    configure: Callable[[Path, dict[str, str]], None] | None = None,
+    args: tuple[str, ...] = ("check",),
+    extra_check: Callable[[dict, Path], None] | None = None,
+) -> None:
+    with tempfile.TemporaryDirectory(prefix=f"portaldoctor-{name}-") as temp:
+        root = Path(temp)
+        scenario_env = env.copy()
+        if configure:
+            configure(root, scenario_env)
+        values: list[dict] = []
+        stderr_values: list[str] = []
+        for _ in range(3):
+            value, stderr = run_json(binary, scenario_env, *args)
+            values.append(value)
+            stderr_values.append(stderr)
+        ids = finding_ids(values[0])
+        if expected:
+            assert expected in ids, f"{name}: {expected} yok; actual={ids}"
+        for value in values[1:]:
+            assert normalized(value) == normalized(values[0]), (
+                f"{name}: tekrarlar deterministik değil: "
+                f"{finding_ids(value)} != {ids}"
+            )
+        if extra_check:
+            extra_check(values[0], root)
+        print(f"PASS {name}: {ids}")
+
+
+def write_desktop_config(root: Path, env: dict[str, str], text: str) -> Path:
+    config_home = root / "config-home"
+    config_dirs = root / "config-dirs"
+    config_dir = config_home / "xdg-desktop-portal"
+    config_dir.mkdir(parents=True)
+    config_dirs.mkdir()
+    names = desktops(env) or ["unknown"]
+    path = config_dir / f"{names[0]}-portals.conf"
+    path.write_text(text, encoding="utf-8")
+    env["XDG_CONFIG_HOME"] = str(config_home)
+    env["XDG_CONFIG_DIRS"] = str(config_dirs)
+    return path
+
+
+def configure_malformed(root: Path, env: dict[str, str]) -> None:
+    write_desktop_config(root, env, "[preferred]\nthis-is-not-a-key-value-line\n")
+
+
+def configure_missing_backend(root: Path, env: dict[str, str]) -> None:
+    write_desktop_config(
+        root,
+        env,
+        "[preferred]\ndefault=definitely-missing-backend;\n",
+    )
+    data_home = root / "data-home" / "xdg-desktop-portal" / "portals"
+    data_home.mkdir(parents=True)
+    (data_home / "fake.portal").write_text(
+        "[portal]\n"
+        "DBusName=org.example.portal.desktop.fake\n"
+        "Interfaces=org.freedesktop.impl.portal.Screenshot;\n",
+        encoding="utf-8",
+    )
+    env["XDG_DATA_HOME"] = str(root / "data-home")
+    env["XDG_DATA_DIRS"] = str(root / "data-dirs")
+    Path(env["XDG_DATA_DIRS"]).mkdir()
+
+
+def configure_empty_roots(root: Path, env: dict[str, str]) -> None:
+    env["XDG_CONFIG_HOME"] = str(root / "config-home")
+    env["XDG_CONFIG_DIRS"] = str(root / "config-dirs")
+    env["XDG_DATA_HOME"] = str(root / "data-home")
+    env["XDG_DATA_DIRS"] = str(root / "data-dirs")
+    for key in ("XDG_CONFIG_HOME", "XDG_CONFIG_DIRS", "XDG_DATA_HOME", "XDG_DATA_DIRS"):
+        Path(env[key]).mkdir(parents=True)
+
+
+def check_cfg002(value: dict, root: Path) -> None:
+    finding = next(f for f in value["findings"] if f["id"] == "CFG002")
+    selected = value["snapshot"]["portal_config"]["value"]["selected_file"]
+    assert str(root) in selected
+    assert str(root) in finding["summary"]
+    assert finding["severity"] == "warning"
+    assert finding["confidence"] == "high"
+
+
+def check_xdp005(value: dict, root: Path) -> None:
+    assert any(f["id"] == "XDP005" for f in value["findings"])
+    routes = value["snapshot"]["portal_routes"]["value"]
+    screenshot = next(r for r in routes if r["interface"].endswith("Screenshot"))
+    assert screenshot["selected_candidates"] == []
+    assert "definitely-missing-backend" not in screenshot["selected_candidates"]
+
+
+def check_xdp003(value: dict, root: Path) -> None:
+    assert any(f["id"] == "XDP003" for f in value["findings"])
+    assert value["snapshot"]["portal_backends"]["value"] == []
+
+
+def main() -> int:
+    binary = binary_path()
+    base = os.environ.copy()
+    print(f"binary: {binary}")
+
+    # 1. Healthy baseline: text and JSON are both checked.
+    text = subprocess.run(
+        [binary], env=base, text=True, capture_output=True, timeout=20, check=False
+    )
+    assert text.returncode == 0
+    assert "PortalDoctor 0.1.0" in text.stdout
+    assert "Findings: none detected." in text.stdout
+    value, _ = run_json(binary, base)
+    assert finding_ids(value) == []
+    print("PASS healthy-baseline: []")
+
+    # 2. Missing desktop identity.
+    missing_desktop = base.copy()
+    missing_desktop.pop("XDG_CURRENT_DESKTOP", None)
+    run_repeated("missing-desktop", binary, missing_desktop, "ENV001")
+
+    # 3. Wayland without compositor socket.
+    broken_wayland = base.copy()
+    broken_wayland["XDG_SESSION_TYPE"] = "wayland"
+    broken_wayland.pop("WAYLAND_DISPLAY", None)
+    run_repeated("broken-wayland", binary, broken_wayland, "ENV003")
+
+    # 4. Malformed desktop-specific portals.conf.
+    run_repeated(
+        "malformed-portals-conf",
+        binary,
+        base,
+        "CFG002",
+        configure_malformed,
+        extra_check=check_cfg002,
+    )
+
+    # 5. Configured backend descriptor absent, while another fake descriptor exists.
+    run_repeated(
+        "missing-configured-backend",
+        binary,
+        base,
+        "XDP005",
+        configure_missing_backend,
+        extra_check=check_xdp005,
+    )
+
+    # 6. Empty isolated data/config roots.
+    run_repeated(
+        "empty-portal-descriptors",
+        binary,
+        base,
+        "XDP003",
+        configure_empty_roots,
+        extra_check=check_xdp003,
+    )
+
+    # 7. Invalid bus address: no session bus and frontend cannot be reached.
+    invalid_bus = base.copy()
+    with tempfile.TemporaryDirectory(prefix="portaldoctor-bus-") as temp:
+        invalid_bus["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={Path(temp) / 'missing-bus'}"
+        run_repeated("invalid-session-bus", binary, invalid_bus, "DBUS001")
+        # The runtime contract also expects the frontend finding; report it if present.
+        value, _ = run_json(binary, invalid_bus)
+        assert "XDP001" in finding_ids(value)
+
+    # 8. Private valid bus with no portal frontend owner.
+    dbus_run_session = shutil.which("dbus-run-session")
+    if not dbus_run_session:
+        raise RuntimeError("dbus-run-session bulunamadı; scenario 8 çalıştırılamadı")
+    values = []
+    for _ in range(3):
+        result = subprocess.run(
+            [dbus_run_session, "--", binary, "check", "--json"],
+            env=base,
+            text=True,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        value = json.loads(result.stdout)
+        validate_finding_contract(value)
+        values.append(value)
+    ids = finding_ids(values[0])
+    assert "XDP001" in ids
+    assert "DBUS001" not in ids
+    for value in values[1:]:
+        assert normalized(value) == normalized(values[0])
+    print(f"PASS private-bus-frontend-absent: {ids}")
+
+    print("E2E fault-injection validation: PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (AssertionError, RuntimeError) as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        raise SystemExit(1)
