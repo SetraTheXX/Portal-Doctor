@@ -1,7 +1,6 @@
-# PortalDoctor v0.1.0 — Release Notes Draft
+# PortalDoctor v0.1.0 — Release Notes
 
-> Draft for the first public release. No tag, GitHub Release or package
-> publish has been created yet.
+> First public release of the read-only PortalDoctor diagnostic CLI.
 
 ## What it solves
 
