@@ -7,8 +7,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No changes after the v0.1.0 release-preparation baseline yet. No tag, GitHub
-Release or package publish has been created.
+### Added
+
+- Reproducible three-scene README demo script and Terminalizer GIF.
+- Fault-injection acceptance harness execution in CI.
+
+### Changed
+
+- Normal diagnostic runs no longer emit informational tracing noise.
+- Acceptance validation prefers the binary built by the current checkout.
+- Snapshot rules are evaluated once per command run.
+
+No tag, GitHub Release or package publish has been created yet.
 
 ## [0.1.0] — Unreleased
 

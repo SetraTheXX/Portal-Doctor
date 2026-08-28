@@ -138,8 +138,6 @@ fn collect_snapshot() -> Collected {
     snapshot.dbus = dbus;
     snapshot.services = services;
 
-    let findings = rules::engine::evaluate(&snapshot);
-    tracing::debug!(findings = findings.len(), "evaluation finished");
     Collected { snapshot }
 }
 
