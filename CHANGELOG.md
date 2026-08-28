@@ -7,23 +7,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
+No changes since v0.1.0.
+
+## [0.1.0] — 2026-08-29
+
+This is the first public PortalDoctor release.
 
 - Reproducible three-scene README demo script and Terminalizer GIF.
 - Fault-injection acceptance harness execution in CI.
-
-### Changed
-
 - Normal diagnostic runs no longer emit informational tracing noise.
 - Acceptance validation prefers the binary built by the current checkout.
 - Snapshot rules are evaluated once per command run.
-
-No tag, GitHub Release or package publish has been created yet.
-
-## [0.1.0] — Unreleased
-
-This section is the complete v0.1.0 release-preparation history. The release
-number is reserved for the Phase 4 gate; it is not tagged yet.
 
 ### Phase 0 — Project foundation
 
@@ -73,7 +67,7 @@ number is reserved for the Phase 4 gate; it is not tagged yet.
 - Actionable terse terminal output with the first recommended next step.
 - Published finding catalog, JSON schema-v1 reference, privacy statement,
   compatibility matrix and known limitations.
-- Public-facing README and v0.1.0 release notes draft.
+- Public-facing README and v0.1.0 release notes.
 - Validation on Ubuntu 26.04 / GNOME / Wayland / systemd user session.
 
 ## Deferred after v0.1
@@ -84,4 +78,5 @@ number is reserved for the Phase 4 gate; it is not tagged yet.
 - KDE, wlroots/Sway, Hyprland and Niri compatibility claims.
 - Automatic fixes and GUI.
 
-[Unreleased]: https://github.com/SetraTheXX/Portal-Doctor/compare/main...HEAD
+[Unreleased]: https://github.com/SetraTheXX/Portal-Doctor/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/SetraTheXX/Portal-Doctor/releases/tag/v0.1.0
