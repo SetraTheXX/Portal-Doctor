@@ -235,6 +235,22 @@ def configure_empty_roots(root: Path, env: dict[str, str]) -> None:
         Path(env[key]).mkdir(parents=True)
 
 
+def configure_runtime_backend(root: Path, env: dict[str, str]) -> None:
+    """Create one selected descriptor so the private-bus case is portable."""
+    write_desktop_config(root, env, "[preferred]\ndefault=fake;\n")
+    data_home = root / "data-home" / "xdg-desktop-portal" / "portals"
+    data_home.mkdir(parents=True)
+    (data_home / "fake.portal").write_text(
+        "[portal]\n"
+        "DBusName=org.example.portal.desktop.fake\n"
+        "Interfaces=org.freedesktop.impl.portal.Screenshot;\n",
+        encoding="utf-8",
+    )
+    env["XDG_DATA_HOME"] = str(root / "data-home")
+    env["XDG_DATA_DIRS"] = str(root / "data-dirs")
+    Path(env["XDG_DATA_DIRS"]).mkdir()
+
+
 def check_cfg002(value: dict, root: Path) -> None:
     finding = next(f for f in value["findings"] if f["id"] == "CFG002")
     selected = value["snapshot"]["portal_config"]["value"]["selected_file"]
@@ -344,38 +360,41 @@ def main() -> int:
     dbus_run_session = shutil.which("dbus-run-session")
     if not dbus_run_session:
         raise RuntimeError("dbus-run-session bulunamadı; scenario 8 çalıştırılamadı")
-    values = []
-    for _ in range(3):
-        result = subprocess.run(
-            [dbus_run_session, "--", binary, "check", "--json"],
-            env=base,
+    with tempfile.TemporaryDirectory(prefix="portaldoctor-private-bus-") as temp:
+        private_env = base.copy()
+        configure_runtime_backend(Path(temp), private_env)
+        values = []
+        for _ in range(3):
+            result = subprocess.run(
+                [dbus_run_session, "--", binary, "check", "--json"],
+                env=private_env,
+                text=True,
+                capture_output=True,
+                timeout=20,
+                check=False,
+            )
+            assert result.returncode == 0, result.stderr
+            value = json.loads(result.stdout)
+            validate_finding_contract(value)
+            values.append(value)
+        ids = finding_ids(values[0])
+        assert_expected_contract(values[0], "XDP001")
+        assert_expected_contract(values[0], "DBUS002")
+        assert "DBUS001" not in ids
+        text_result = subprocess.run(
+            [dbus_run_session, "--", binary, "check"],
+            env=private_env,
             text=True,
             capture_output=True,
             timeout=20,
             check=False,
         )
-        assert result.returncode == 0, result.stderr
-        value = json.loads(result.stdout)
-        validate_finding_contract(value)
-        values.append(value)
-    ids = finding_ids(values[0])
-    assert_expected_contract(values[0], "XDP001")
-    assert_expected_contract(values[0], "DBUS002")
-    assert "DBUS001" not in ids
-    text_result = subprocess.run(
-        [dbus_run_session, "--", binary, "check"],
-        env=base,
-        text=True,
-        capture_output=True,
-        timeout=20,
-        check=False,
-    )
-    assert text_result.returncode == 0, text_result.stderr
-    xdp001 = next(f for f in values[0]["findings"] if f["id"] == "XDP001")
-    assert f"next: {xdp001['recommendation'][0]}" in text_result.stdout
-    for value in values[1:]:
-        assert normalized(value) == normalized(values[0])
-    print(f"PASS private-bus-frontend-absent: {ids}")
+        assert text_result.returncode == 0, text_result.stderr
+        xdp001 = next(f for f in values[0]["findings"] if f["id"] == "XDP001")
+        assert f"next: {xdp001['recommendation'][0]}" in text_result.stdout
+        for value in values[1:]:
+            assert normalized(value) == normalized(values[0])
+        print(f"PASS private-bus-frontend-absent: {ids}")
 
     print("E2E fault-injection validation: PASS")
     return 0
