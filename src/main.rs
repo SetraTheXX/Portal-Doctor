@@ -26,9 +26,12 @@ fn main() -> ExitCode {
 }
 
 fn init_tracing() {
-    // Logs go to `stderr` so the `JSON` report on `stdout` stays machine-readable.
+    // Keep normal terminal and JSON runs quiet. Diagnostics are the user-facing
+    // output; verbose runtime logging should not pollute a captured report or
+    // the README demo. Logs still go to `stderr` if warning/error events are
+    // added later.
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
-        .with_max_level(tracing::Level::INFO)
+        .with_max_level(tracing::Level::WARN)
         .init();
 }

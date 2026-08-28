@@ -3,6 +3,16 @@
 Read-only, deterministic Linux CLI for diagnosing XDG Desktop Portal, Wayland
 session, D-Bus and systemd user integration issues.
 
+[![CI](https://github.com/SetraTheXX/Portal-Doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/SetraTheXX/Portal-Doctor/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> Find out why Linux screen sharing, file chooser and screenshot portals fail —
+> without digging through five different tools.
+
+![PortalDoctor demo](docs/assets/portaldoctor-demo.gif)
+
+The demo shows a healthy passive check, explainable `ScreenCast` routing and a
+controlled missing-`WAYLAND_DISPLAY` diagnosis.
+
 **Status:** v0.1.0 public release preparation. No tag, GitHub Release or package
 publish has been created.
 
@@ -55,6 +65,22 @@ git clone https://github.com/SetraTheXX/Portal-Doctor.git
 cd Portal-Doctor
 cargo build --release
 ./target/release/portaldoctor
+```
+
+To reproduce the README demo locally:
+
+```sh
+cargo build --release
+PORTALDOCTOR_BIN="$PWD/target/release/portaldoctor" ./scripts/demo.sh
+```
+
+With Terminalizer installed, record and render the same flow again:
+
+```sh
+terminalizer record /tmp/portaldoctor-demo \
+  --command 'bash scripts/demo.sh' --skip-sharing
+terminalizer render /tmp/portaldoctor-demo \
+  -o docs/assets/portaldoctor-demo.gif -q 90
 ```
 
 ## Usage
