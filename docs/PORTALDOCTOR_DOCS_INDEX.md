@@ -24,8 +24,7 @@ The validated platform target and known limitations.
 
 ### `release-notes-v0.1.0.md`
 
-Draft release notes for the first public release. No tag or GitHub Release has
-been created yet.
+Release notes for the first public release.
 
 ## Project-definition documents
 
@@ -103,7 +102,5 @@ v0.1:           no automatic fixes, no GUI, no broad desktop support claim
 
 ## Current status
 
-Phase 4 is complete and the repository is prepared for the v0.1.0 release
-gate. No tag, GitHub Release or package publish has been created. Phase 5
-PipeWire/WirePlumber work remains deferred.
-
+Phase 4 is complete and the repository is prepared for the v0.1.0 release.
+Phase 5 PipeWire/WirePlumber work remains deferred.

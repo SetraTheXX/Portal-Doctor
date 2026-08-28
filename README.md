@@ -13,8 +13,8 @@ session, D-Bus and systemd user integration issues.
 The demo shows a healthy passive check, explainable `ScreenCast` routing and a
 controlled missing-`WAYLAND_DISPLAY` diagnosis.
 
-**Status:** v0.1.0 public release preparation. No tag, GitHub Release or package
-publish has been created.
+**Status:** v0.1.0 release candidate. GitHub Release and package publication are
+pending.
 
 **Validated target:** Ubuntu 26.04 + GNOME + Wayland + systemd user session.
 
