@@ -102,5 +102,6 @@ v0.1:           no automatic fixes, no GUI, no broad desktop support claim
 
 ## Current status
 
-Phase 4 is complete and the repository is prepared for the v0.1.0 release.
-Phase 5 PipeWire/WirePlumber work remains deferred.
+Phase 4 is complete and the v0.1.0 GitHub Release is published. Crates.io
+publication remains pending registry credentials. Phase 5 PipeWire/WirePlumber
+work remains deferred.

@@ -13,8 +13,7 @@ session, D-Bus and systemd user integration issues.
 The demo shows a healthy passive check, explainable `ScreenCast` routing and a
 controlled missing-`WAYLAND_DISPLAY` diagnosis.
 
-**Status:** v0.1.0 release candidate. GitHub Release and package publication are
-pending.
+**Status:** v0.1.0 released on GitHub. Crates.io publication is pending.
 
 **Validated target:** Ubuntu 26.04 + GNOME + Wayland + systemd user session.
 
@@ -55,7 +54,7 @@ PipeWire/WirePlumber correlation is planned for Phase 5.
 ### Install from this repository
 
 ```sh
-cargo install --git https://github.com/SetraTheXX/Portal-Doctor --locked
+cargo install --git https://github.com/SetraTheXX/Portal-Doctor --tag v0.1.0 --locked
 ```
 
 ### Build from source
@@ -182,7 +181,7 @@ See [compatibility and known limitations](docs/compatibility.md) for details.
 - [JSON schema v1](docs/json-schema.md)
 - [Privacy statement](docs/privacy.md)
 - [Compatibility and known limitations](docs/compatibility.md)
-- [v0.1.0 release notes draft](docs/release-notes-v0.1.0.md)
+- [v0.1.0 release notes](docs/release-notes-v0.1.0.md)
 - [Contributing](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security](SECURITY.md)
