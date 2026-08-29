@@ -9,18 +9,107 @@ if [[ ! -x "$BINARY" ]]; then
     exit 1
 fi
 
-# Avoid relying on TERM being set when the demo is smoke-tested outside a PTY.
-printf '\033[2J\033[H'
-printf '\033[1;36mPortalDoctor\033[0m — Linux portal diagnostics in seconds\n\n'
-printf '\033[2m$ portaldoctor\033[0m\n'
-"$BINARY"
-sleep 1
+# The demo is intentionally styled here instead of changing the CLI's plain
+# output contract. This keeps README captures expressive while JSON and normal
+# terminal output remain stable for scripts and CI.
+RESET=$'\033[0m'
+BOLD=$'\033[1m'
+DIM=$'\033[2m'
+CYAN=$'\033[38;5;116m'
+BLUE=$'\033[38;5;111m'
+GREEN=$'\033[38;5;114m'
+YELLOW=$'\033[38;5;221m'
+MAGENTA=$'\033[38;5;183m'
+WHITE=$'\033[38;5;255m'
 
-printf '\n\033[2m$ portaldoctor portal explain ScreenCast\033[0m\n'
-"$BINARY" portal explain ScreenCast
-sleep 1
+clear_screen() {
+    # Do not rely on TERM being set when this script is smoke-tested outside a
+    # real terminal. Terminalizer records these ANSI sequences correctly.
+    printf '\033[2J\033[H'
+}
 
-printf '\n\033[2m$ env -u WAYLAND_DISPLAY portaldoctor check environment\033[0m\n'
-printf '\033[2m(simulated missing Wayland display)\033[0m\n'
-env -u WAYLAND_DISPLAY "$BINARY" check environment
-sleep 2
+header() {
+    printf '%s\n' "${BOLD}${CYAN}PortalDoctor${RESET} ${DIM}· explainable Linux desktop diagnostics${RESET}"
+    printf '%s\n\n' "${DIM}Wayland · XDG portals · D-Bus · systemd user session${RESET}"
+}
+
+command_line() {
+    printf '%s\n' "${MAGENTA}${BOLD}❯${RESET} ${DIM}$1${RESET}"
+}
+
+colorize_report() {
+    while IFS= read -r line; do
+        case "$line" in
+            "PortalDoctor "*)
+                printf '%s\n' "${BOLD}${CYAN}${line}${RESET}" ;;
+            "Snapshot schema "*)
+                printf '%s\n' "${DIM}${line}${RESET}" ;;
+            "System: "*|"Session: "*)
+                printf '%s\n' "${BLUE}${line}${RESET}" ;;
+            "Activation environment: consistent"*)
+                printf '%s\n' "${GREEN}${line}${RESET}" ;;
+            "Activation environment: "*)
+                printf '%s\n' "${YELLOW}${line}${RESET}" ;;
+            "D-Bus: connected · portal frontend reachable"*)
+                printf '%s\n' "${GREEN}${line}${RESET}" ;;
+            "D-Bus: "*)
+                printf '%s\n' "${YELLOW}${line}${RESET}" ;;
+            "  backend "*": reachable"*)
+                printf '%s\n' "${GREEN}${line}${RESET}" ;;
+            "  backend "*)
+                printf '%s\n' "${YELLOW}${line}${RESET}" ;;
+            "Findings: none detected."*)
+                printf '%s\n' "${BOLD}${GREEN}${line}${RESET}" ;;
+            "Findings: "*)
+                printf '%s\n' "${BOLD}${YELLOW}${line}${RESET}" ;;
+            "  [WARNING]"*)
+                printf '%s\n' "${BOLD}${YELLOW}${line}${RESET}" ;;
+            "    next: "*)
+                printf '%s\n' "${BLUE}${line}${RESET}" ;;
+            "Interface: "*|"Status: selected"*|"Requested: "*|"Available: "*|"Selected: "*)
+                printf '%s\n' "${CYAN}${line}${RESET}" ;;
+            "Evidence:"*)
+                printf '%s\n' "${MAGENTA}${BOLD}${line}${RESET}" ;;
+            "  - "*)
+                printf '%s\n' "${DIM}${line}${RESET}" ;;
+            *)
+                printf '%s\n' "$line" ;;
+        esac
+    done
+}
+
+run_report() {
+    "$BINARY" "$@" | colorize_report
+}
+
+run_environment_fault() {
+    env -u WAYLAND_DISPLAY "$BINARY" check environment | colorize_report
+}
+
+clear_screen
+header
+printf '%s\n' "${BLUE}${BOLD}[1/3]${RESET} ${WHITE}${BOLD}HEALTH CHECK${RESET}"
+command_line '$ portaldoctor'
+sleep 1.2
+run_report
+sleep 3.2
+
+clear_screen
+header
+printf '%s\n' "${BLUE}${BOLD}[2/3]${RESET} ${WHITE}${BOLD}ROUTING EXPLAINED${RESET}"
+command_line '$ portaldoctor portal explain ScreenCast'
+sleep 1.2
+run_report portal explain ScreenCast
+sleep 3.2
+
+clear_screen
+header
+printf '%s\n' "${BLUE}${BOLD}[3/3]${RESET} ${WHITE}${BOLD}CONTROLLED FAULT${RESET}"
+command_line '$ env -u WAYLAND_DISPLAY portaldoctor check environment'
+printf '%s\n\n' "${DIM}simulated missing Wayland display${RESET}"
+sleep 1.2
+run_environment_fault
+sleep 4.2
+# Emit a final invisible reset after the pause so the last diagnostic frame is
+# held long enough to read before the recording exits.
+printf '%s' "$RESET"
