@@ -46,10 +46,10 @@ Other environments are not claimed as supported by this release.
 
 ## Installation
 
-From the repository:
+From crates.io:
 
 ```sh
-cargo install --git https://github.com/SetraTheXX/Portal-Doctor --tag v0.1.0 --locked
+cargo install portaldoctor --version 0.1.0 --locked
 ```
 
 Or build from source:
