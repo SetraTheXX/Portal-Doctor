@@ -7,7 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No changes since v0.1.0.
+- Reworked the README into a product-focused quick-start and reference guide.
+- Re-recorded the Terminalizer demo with a larger canvas, slower pacing,
+  readable color accents, and no renderer title bar.
+- Added the checked-in `docs/demo/terminalizer.yml` recording configuration.
 
 ## [0.1.0] — 2026-08-29
 
