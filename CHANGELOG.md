@@ -16,6 +16,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 This is the first public PortalDoctor release.
 
+- Published the `portaldoctor` package to crates.io.
 - Reproducible three-scene README demo script and Terminalizer GIF.
 - Fault-injection acceptance harness execution in CI.
 - Normal diagnostic runs no longer emit informational tracing noise.
