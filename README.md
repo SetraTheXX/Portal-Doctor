@@ -2,7 +2,7 @@
 
 Read-only diagnostics for the Linux desktop portal stack.
 
-[![CI](https://github.com/SetraTheXX/Portal-Doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/SetraTheXX/Portal-Doctor/actions/workflows/ci.yml) [![Crates.io](https://img.shields.io/crates/v/portaldoctor.svg)](https://crates.io/crates/portaldoctor) [![docs.rs](https://docs.rs/portaldoctor/badge.svg)](https://docs.rs/portaldoctor) [![Release](https://img.shields.io/github/v/release/SetraTheXX/Portal-Doctor?sort=semver)](https://github.com/SetraTheXX/Portal-Doctor/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/SetraTheXX/Portal-Doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/SetraTheXX/Portal-Doctor/actions/workflows/ci.yml) [![Crates.io](https://img.shields.io/crates/v/portaldoctor.svg)](https://crates.io/crates/portaldoctor) [![Release](https://img.shields.io/github/v/release/SetraTheXX/Portal-Doctor?sort=semver)](https://github.com/SetraTheXX/Portal-Doctor/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <p align="center">
   <img src="./docs/assets/portaldoctor-demo.gif" alt="PortalDoctor diagnosing Linux desktop portal health and routing" width="100%">
@@ -188,6 +188,7 @@ removes the renderer title from the frame.
 
 ## Documentation
 
+- [Package page on docs.rs](https://docs.rs/portaldoctor/0.1.0) *(PortalDoctor is a binary-only CLI, so docs.rs does not provide a public library API.)*
 - [Finding catalog](docs/findings.md)
 - [JSON schema v1](docs/json-schema.md)
 - [Compatibility and known limitations](docs/compatibility.md)
