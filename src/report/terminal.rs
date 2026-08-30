@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 use crate::model::dbus::{DbusOutcome, PORTAL_FRONTEND_NAME};
 use crate::model::environment::EnvironmentRelation;
 use crate::model::section::Section;
+use crate::model::status::CollectorState;
 use crate::report::{Renderer, Report};
 
 /// Renderer that emits concise terminal text (PRD §7.1); `--verbose` adds
@@ -22,6 +23,7 @@ impl Renderer for TerminalRenderer {
         write_environment(&mut out, report, verbose);
         write_runtime(&mut out, report, verbose);
         write_media(&mut out, report);
+        write_journal(&mut out, report, verbose);
         out.push('\n');
         write_findings(&mut out, report, verbose);
         out
@@ -301,6 +303,63 @@ fn write_media(out: &mut String, report: &Report) {
             "WirePlumber: {} {}",
             section.status,
             first_note(section)
+        )
+        .expect("writing to a String cannot fail");
+    }
+}
+
+fn write_journal(out: &mut String, report: &Report, verbose: bool) {
+    let section = &report.snapshot.journal;
+    if section.status == CollectorState::Unsupported
+        && section
+            .errors
+            .iter()
+            .any(|note| note.message == "not requested")
+    {
+        return;
+    }
+
+    let Some(info) = &section.value else {
+        writeln!(out, "Journal: {} {}", section.status, first_note(section))
+            .expect("writing to a String cannot fail");
+        return;
+    };
+
+    writeln!(
+        out,
+        "Journal: current boot · {} min · {} relevant entr{} · {}",
+        info.window_minutes,
+        info.entries.len(),
+        if info.entries.len() == 1 { "y" } else { "ies" },
+        info.match_state.as_str()
+    )
+    .expect("writing to a String cannot fail");
+
+    if info.entries.is_empty() {
+        writeln!(
+            out,
+            "  scanned {} record(s); no sanitized excerpts retained",
+            info.scanned_entry_count
+        )
+        .expect("writing to a String cannot fail");
+        return;
+    }
+
+    if !verbose {
+        writeln!(out, "  use --verbose for sanitized journal excerpts")
+            .expect("writing to a String cannot fail");
+        return;
+    }
+
+    writeln!(out, "  sanitized journal excerpts:").expect("writing to a String cannot fail");
+    for entry in &info.entries {
+        writeln!(
+            out,
+            "    [{}] {} · {}: {}",
+            entry.priority,
+            entry.unit,
+            entry.classification.as_str(),
+            entry.message
         )
         .expect("writing to a String cannot fail");
     }

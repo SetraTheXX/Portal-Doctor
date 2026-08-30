@@ -1,6 +1,7 @@
 pub mod activation_environment;
 pub mod dbus;
 pub mod environment;
+pub mod journal;
 pub mod os_release;
 pub mod pipewire;
 pub mod portal_config;

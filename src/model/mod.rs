@@ -2,6 +2,7 @@ pub mod dbus;
 pub mod environment;
 pub mod evidence;
 pub mod finding;
+pub mod journal;
 pub mod pipewire;
 pub mod portal;
 pub mod section;

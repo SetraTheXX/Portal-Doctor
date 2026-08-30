@@ -23,8 +23,9 @@ they are untested in v0.1 and no support is claimed.
   ScreenCast routing from configuration and D-Bus only. The Phase 5
   PipeWire/WirePlumber collector is implemented on `main` but is not part of
   the published v0.1.0 artifact.
-- **Journal evidence** — log correlation is a later phase; findings cite
-  configuration and runtime reachability only.
+- **Journal evidence in the published artifact** — v0.1.0 does not include
+  journal correlation. The unreleased `main` build has an opt-in
+  `--journal` collector, which depends on a readable systemd user journal.
 - **Active probes** — v0.1 never calls portal interfaces, so end-to-end
   behavior of FileChooser/Screenshot/ScreenCast dialogs is not exercised.
 - **KDE / wlroots / Hyprland / Niri** — no support claims; route resolution
@@ -45,6 +46,10 @@ they are untested in v0.1 and no support is claimed.
 4. The unreleased Phase 5 collector caps each `pw-dump`/`wpctl` stream at
    16 MiB and treats overflow as unavailable. Normal desktop graphs are much
    smaller; no raw graph is retained in the snapshot.
+5. The unreleased Phase 6 journal collector is available only for sessions
+   where `journalctl --user` can read a current-boot user journal. Missing or
+   restricted journals are reported as a section status; they do not make the
+   normal passive check fail. Journal excerpts are limited and sanitized.
 
 ## Reporting gaps
 

@@ -1,5 +1,6 @@
 use crate::model::evidence::Evidence;
 use crate::model::finding::{Confidence, Finding, Severity};
+use crate::model::journal::JournalClassification;
 use crate::model::portal::{PortalRoute, RouteStatus};
 use crate::model::section::Section;
 use crate::model::snapshot::Snapshot;
@@ -108,7 +109,11 @@ impl DiagnosticRule for Pw001 {
                 .explanation(
                     "ScreenCast needs a reachable PipeWire session after the portal backend is selected. A missing `pw-dump` tool or an unavailable PipeWire endpoint prevents the media path from being verified.",
                 )
-                .evidence(vec![Evidence::PipeWireState])
+                .evidence(add_journal_evidence(
+                    snapshot,
+                    vec![Evidence::PipeWireState],
+                    &[JournalClassification::PipeWire],
+                ))
                 .impact("ScreenCast readiness cannot be confirmed and capture may fail before a stream is created.")
                 .recommendation(
                     "Install the package that provides `pw-dump`, then verify that the user PipeWire session is running.",
@@ -147,7 +152,11 @@ impl DiagnosticRule for Pw002 {
                 .explanation(
                     "WirePlumber provides the session-manager side of the PipeWire desktop media stack. Portal routing may be correct while the session manager is missing, unreachable or unable to answer a bounded status query.",
                 )
-                .evidence(vec![Evidence::WirePlumberState])
+                .evidence(add_journal_evidence(
+                    snapshot,
+                    vec![Evidence::WirePlumberState],
+                    &[JournalClassification::WirePlumber],
+                ))
                 .impact("The media graph may not be prepared for a ScreenCast stream.")
                 .recommendation(
                     "Check the user WirePlumber service and rerun `wpctl status` from the same graphical session.",
@@ -190,7 +199,11 @@ impl DiagnosticRule for Pw003 {
                 .explanation(
                     "PortalDoctor separates a failed state query from a confirmed missing PipeWire endpoint. The result may be caused by a timeout, permission boundary or an output format that could not be parsed safely.",
                 )
-                .evidence(vec![Evidence::PipeWireState])
+                .evidence(add_journal_evidence(
+                    snapshot,
+                    vec![Evidence::PipeWireState],
+                    &[JournalClassification::PipeWire],
+                ))
                 .impact("The media path is unknown; a ScreenCast failure cannot be localized yet.")
                 .recommendation(
                     "Run `pw-dump --no-colors` manually, check the user PipeWire session and review the command boundary before retrying.",
@@ -222,7 +235,14 @@ impl DiagnosticRule for Sc001 {
                 .explanation(
                     "ScreenCast requests need a backend that advertises the ScreenCast interface and survives the desktop-specific routing rules. Installed backends for other interfaces do not satisfy this requirement.",
                 )
-                .evidence(vec![Evidence::ScreenCastRoute])
+                .evidence(add_journal_evidence(
+                    snapshot,
+                    vec![Evidence::ScreenCastRoute],
+                    &[
+                        JournalClassification::ScreenCast,
+                        JournalClassification::Portal,
+                    ],
+                ))
                 .impact("Applications cannot create a ScreenCast session through the portal stack.")
                 .recommendation(
                     "Install or select a backend that implements `org.freedesktop.impl.portal.ScreenCast`, then rerun `portaldoctor portal explain ScreenCast`.",
@@ -279,7 +299,16 @@ impl DiagnosticRule for Sc002 {
                 .explanation(
                     "A selected portal backend proves only the D-Bus route. ScreenCast also needs a reachable PipeWire graph and a functioning session manager before an active probe can create a usable stream.",
                 )
-                .evidence(evidence)
+                .evidence(add_journal_evidence(
+                    snapshot,
+                    evidence,
+                    &[
+                        JournalClassification::ScreenCast,
+                        JournalClassification::Portal,
+                        JournalClassification::PipeWire,
+                        JournalClassification::WirePlumber,
+                    ],
+                ))
                 .impact("The portal may open a source selector but fail before returning a usable media stream.")
                 .recommendation(
                     "Repair the reported PipeWire/WirePlumber condition, then rerun the passive check before debugging the calling application.",
@@ -296,6 +325,22 @@ fn screencast_route(snapshot: &Snapshot) -> Option<&PortalRoute> {
         .as_ref()?
         .iter()
         .find(|route| route.interface == SCREENCAST_INTERFACE)
+}
+
+fn add_journal_evidence(
+    snapshot: &Snapshot,
+    mut evidence: Vec<Evidence>,
+    classifications: &[JournalClassification],
+) -> Vec<Evidence> {
+    let has_matching_excerpt = snapshot.journal.value.as_ref().is_some_and(|journal| {
+        classifications
+            .iter()
+            .any(|classification| journal.has_classification(*classification))
+    });
+    if has_matching_excerpt {
+        evidence.push(Evidence::JournalExcerpt);
+    }
+    evidence
 }
 
 fn is_not_collected<T>(section: &Section<T>) -> bool {
@@ -339,7 +384,11 @@ fn no_usable_screencast_route(snapshot: &Snapshot) -> bool {
 mod tests {
     use super::{Pw001, Pw002, Pw003, Sc001, Sc002};
     use crate::model::environment::{SessionInfo, SessionType};
+    use crate::model::evidence::Evidence;
     use crate::model::finding::Finding;
+    use crate::model::journal::{
+        JournalClassification, JournalEntry, JournalInfo, JournalMatchState,
+    };
     use crate::model::pipewire::{PipeWireInfo, WirePlumberInfo};
     use crate::model::portal::{PortalBackend, PortalRoute, RouteStatus};
     use crate::model::section::Section;
@@ -537,6 +586,32 @@ mod tests {
         let findings = evaluated(Sc002.evaluate(&snapshot));
         assert_eq!(ids(&findings), ["SC002"]);
         assert_eq!(findings[0].evidence.len(), 3);
+    }
+
+    #[test]
+    fn matching_journal_excerpt_is_attached_as_supporting_evidence() {
+        let mut snapshot = snapshot(
+            CollectorState::Unavailable,
+            CollectorState::TimedOut,
+            RouteStatus::Selected,
+        );
+        snapshot.journal = Section::available(JournalInfo {
+            model_version: 1,
+            window_minutes: 30,
+            max_entries: 80,
+            scanned_entry_count: 1,
+            ignored_entry_count: 0,
+            match_state: JournalMatchState::Matched,
+            entries: vec![JournalEntry {
+                unit: "pipewire.service".to_owned(),
+                priority: 3,
+                classification: JournalClassification::PipeWire,
+                message: "PipeWire failed".to_owned(),
+            }],
+        });
+        let findings = evaluated(Sc002.evaluate(&snapshot));
+        assert_eq!(ids(&findings), ["SC002"]);
+        assert!(findings[0].evidence.contains(&Evidence::JournalExcerpt));
     }
 
     #[test]

@@ -190,6 +190,26 @@ Every section is an object with:
       "wireplumber_client_count": 2
     },
     "errors": []
+  },
+  "journal": {
+    "status": "available",
+    "value": {
+      "model_version": 1,
+      "window_minutes": 30,
+      "max_entries": 80,
+      "scanned_entry_count": 2,
+      "ignored_entry_count": 1,
+      "match_state": "matched",
+      "entries": [
+        {
+          "unit": "pipewire.service",
+          "priority": 3,
+          "classification": "pipewire",
+          "message": "PipeWire failed for <path> user=<redacted>"
+        }
+      ]
+    },
+    "errors": []
   }
 }
 ```
@@ -207,6 +227,21 @@ The `wireplumber` section is populated from bounded `wpctl status` output and
 retains only the PipeWire version and a minimal WirePlumber client count. Both
 models carry their own `model_version` so future additive normalization can be
 reviewed independently of the top-level schema.
+
+The `journal` section is populated only when `--journal` is supplied. It asks
+`journalctl --user` for the current boot's last 30 minutes and only the
+allowlisted `xdg-desktop-portal*.service`, `pipewire*.service`, and
+`wireplumber.service` units. The query is bounded to 80 records and 512 KiB.
+Only `_SYSTEMD_USER_UNIT`/`_SYSTEMD_UNIT`, `PRIORITY`, and `MESSAGE` are
+considered; retained messages must match a stable portal-relevant error
+pattern and are sanitized before serialization. `match_state` is `matched`,
+`no_relevant_evidence`, or `insufficient_evidence`.
+
+Without `--journal`, the section is `unsupported` with a `not requested` note.
+If the journal is unavailable, denied, times out, exceeds the output limit, or
+returns malformed data, `value` is omitted and the section status explains the
+boundary. Journal evidence augments authoritative state and route findings;
+it is never the sole source of a diagnosis.
 
 When a command is missing, denied, times out, exceeds the output limit, exits
 unsuccessfully or returns malformed data, `value` is omitted and the section's

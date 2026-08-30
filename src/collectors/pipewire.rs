@@ -372,40 +372,70 @@ mod tests {
     use std::ffi::OsStr;
     use std::time::Duration;
 
+    fn fixture(name: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join(name)
+    }
+
     #[cfg(unix)]
-    struct TemporaryScript(std::path::PathBuf);
+    struct TemporaryScript {
+        directory: std::path::PathBuf,
+        path: std::path::PathBuf,
+    }
 
     #[cfg(unix)]
     impl TemporaryScript {
         fn new(body: &str) -> Self {
-            let unique = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("system clock should be after the Unix epoch")
-                .as_nanos();
-            let path = std::env::temp_dir().join(format!(
-                "portaldoctor-pipewire-test-{}-{unique}.sh",
-                std::process::id()
-            ));
-            std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+            use std::io::Write as _;
+            use std::sync::atomic::{AtomicU64, Ordering};
+
+            static NEXT_SCRIPT_ID: AtomicU64 = AtomicU64::new(0);
+            let (directory, path) = loop {
+                let unique = NEXT_SCRIPT_ID.fetch_add(1, Ordering::Relaxed);
+                let directory = std::env::temp_dir().join(format!(
+                    "portaldoctor-pipewire-test-{}-{unique}",
+                    std::process::id()
+                ));
+                match std::fs::create_dir(&directory) {
+                    Ok(()) => break (directory.clone(), directory.join("fixture.sh")),
+                    Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(err) => panic!("create temporary PipeWire fixture directory: {err}"),
+                }
+            };
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .unwrap();
+            file.write_all(format!("#!/bin/sh\n{body}\n").as_bytes())
+                .unwrap();
+            file.sync_all().unwrap();
+            drop(file);
             std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o755))
                 .unwrap();
-            Self(path)
+            Self { directory, path }
         }
 
         fn path(&self) -> &std::path::Path {
-            &self.0
+            &self.path
         }
 
         fn set_mode(&self, mode: u32) {
-            std::fs::set_permissions(&self.0, std::os::unix::fs::PermissionsExt::from_mode(mode))
-                .unwrap();
+            std::fs::set_permissions(
+                &self.path,
+                std::os::unix::fs::PermissionsExt::from_mode(mode),
+            )
+            .unwrap();
         }
     }
 
     #[cfg(unix)]
     impl Drop for TemporaryScript {
         fn drop(&mut self) {
-            std::fs::remove_file(&self.0).ok();
+            std::fs::remove_file(&self.path).ok();
+            std::fs::remove_dir(&self.directory).ok();
         }
     }
 
@@ -494,23 +524,10 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn collects_normalized_sections_from_bounded_commands() {
-        let command = TemporaryScript::new(
-            r#"
-case "$1" in
-  --no-colors)
-    printf '%s\n' '[{"id":0,"type":"PipeWire:Interface:Core","info":{"version":"1.6.2"}},{"id":10,"type":"PipeWire:Interface:Node","info":{"state":"running","props":{"media.class":"Stream/Output/Video","node.name":"private-desktop"}}},{"id":30,"type":"PipeWire:Interface:Client","info":{"props":{"pipewire.access.portal.is_portal":true}}}]'
-    ;;
-  status)
-    printf '%s\n' "PipeWire 'pipewire-0' [1.6.2, private-host]"
-    printf '%s\n' '  33. WirePlumber [1.6.2, private-host]'
-    ;;
-  *) exit 2 ;;
-esac
-"#,
-        );
+        let command = fixture("pipewire-command.sh");
         let (pipewire, wireplumber) = collect_with_timeout(
-            command.path().as_os_str(),
-            command.path().as_os_str(),
+            command.as_os_str(),
+            command.as_os_str(),
             Duration::from_secs(1),
         );
 
@@ -530,10 +547,10 @@ esac
     #[test]
     #[cfg(unix)]
     fn classifies_broken_commands_as_timed_out_without_hanging() {
-        let command = TemporaryScript::new("sleep 30");
+        let command = fixture("slow-command.sh");
         let (pipewire, wireplumber) = collect_with_timeout(
-            command.path().as_os_str(),
-            command.path().as_os_str(),
+            command.as_os_str(),
+            command.as_os_str(),
             Duration::from_millis(120),
         );
         assert_eq!(pipewire.status, CollectorState::TimedOut);

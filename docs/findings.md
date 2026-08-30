@@ -5,7 +5,9 @@ Every diagnostic rule produces a stable, structured finding (PRD §8): `id`,
 `impact`, `recommendation[]` and `source_component`. The first 15 IDs are the
 published v0.1.0 catalog. The five media-stack IDs below are implemented on
 `main` as the unreleased Phase 5 work for v0.2.0; the rule-engine test suite
-asserts that the complete current registry is stable and unique.
+asserts that the complete current registry is stable and unique. Phase 6 adds
+optional journal excerpts as supporting evidence; it does not add a
+journal-only diagnosis.
 
 ## Environment
 
@@ -67,6 +69,20 @@ route alone is never treated as proof that a capture stream can work. A
 completely absent backend descriptor remains the responsibility of `XDP003`,
 and an explicitly disabled route does not trigger `SC001`.
 
+## Optional journal correlation (unreleased Phase 6)
+
+`portaldoctor --journal` reads only the current user boot's last 30 minutes
+from an allowlist of portal, PipeWire, and WirePlumber units. The collector
+requests structured journal records, limits the query to 80 entries and 512
+KiB, keeps only stable portal-relevant error patterns, and sanitizes paths,
+identities, host labels, and message length before the snapshot is built.
+
+When a classified excerpt supports an existing `PW001`–`PW003` or `SC001`–`SC002`
+finding, that finding receives `journal_excerpt` in addition to its
+authoritative state/route evidence. Unknown or insufficient text is retained
+as no evidence; it never becomes a diagnosis by itself. Use `--verbose` to
+display the sanitized excerpts.
+
 ## Notes
 
 - Findings are deterministic: the same snapshot always yields the same
@@ -76,4 +92,5 @@ and an explicitly disabled route does not trigger `SC001`.
   `dbus_timeout`, `service_state`, `pipewire_state`, `wireplumber_state`,
   `screencast_route`, `journal_excerpt`) and at least one recommended next
   step.
-- `journal_excerpt` evidence is reserved for the Phase 6 journal collector.
+- `journal_excerpt` is emitted only when `--journal` collected a matching,
+  sanitized excerpt for the finding.
