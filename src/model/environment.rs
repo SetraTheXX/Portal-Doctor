@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Operating-system identity parsed from `/etc/os-release`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SystemInfo {
     pub id: Option<String>,
     pub name: Option<String>,
@@ -12,7 +12,7 @@ pub struct SystemInfo {
 }
 
 /// Graphical session type reported via `XDG_SESSION_TYPE`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionType {
     Wayland,
@@ -41,7 +41,7 @@ impl SessionType {
 }
 
 /// Desktop/session context discovered from allowlisted environment variables.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionInfo {
     /// Raw `XDG_CURRENT_DESKTOP`; colon-separated desktop names are preserved.
     pub current_desktop: Option<String>,
@@ -56,7 +56,7 @@ pub struct SessionInfo {
 }
 
 /// Effective `XDG` search roots in precedence order (`XDG` base directory spec).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchRoots {
     pub config_roots: Vec<String>,
     pub data_roots: Vec<String>,
@@ -64,7 +64,7 @@ pub struct SearchRoots {
 
 /// Relation between the process/session value and the `systemd` user
 /// activation value for one allowlisted variable (architecture §7).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EnvironmentRelation {
     Equal,
@@ -92,7 +92,7 @@ impl EnvironmentRelation {
 }
 
 /// Per-variable comparison entry (architecture §7).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnvironmentValue {
     pub key: String,
     pub process_value: Option<String>,
@@ -101,7 +101,7 @@ pub struct EnvironmentValue {
 }
 
 /// Comparison result between the two environments.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnvironmentComparison {
     /// `false` when the activation environment was not collectable.
     pub performed: bool,
@@ -109,7 +109,7 @@ pub struct EnvironmentComparison {
 }
 
 /// Collected desktop/environment state for one run.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnvironmentInfo {
     /// Allowlisted variables observed in the process environment.
     pub process: BTreeMap<String, String>,

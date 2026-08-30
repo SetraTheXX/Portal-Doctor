@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// Deterministic diagnostic `CLI` for `XDG` Desktop Portals, `Wayland` and `PipeWire`
 /// integration on `Linux`.
@@ -29,6 +29,8 @@ pub enum Command {
     Check(CheckArgs),
     /// Inspect portal backends and routing.
     Portal(PortalArgs),
+    /// Generate a privacy-aware report suitable for sharing in an issue.
+    Report(ReportArgs),
 }
 
 /// Options for the `check` command.
@@ -37,6 +39,26 @@ pub struct CheckArgs {
     /// Restrict the run to a single diagnostic domain.
     #[command(subcommand)]
     pub domain: Option<CheckDomain>,
+}
+
+/// Options for the explicit shareable report command.
+#[derive(Debug, Clone, Args)]
+pub struct ReportArgs {
+    /// Output format for the shareable report.
+    #[arg(long, value_enum, default_value_t = ReportFormat::Terminal)]
+    pub format: ReportFormat,
+
+    /// Replace the current hostname with `<hostname>` in the report.
+    #[arg(long)]
+    pub suppress_hostname: bool,
+}
+
+/// Formats supported by `portaldoctor report`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ReportFormat {
+    Terminal,
+    Json,
+    Markdown,
 }
 
 /// Diagnostic domains selectable under `check`.
@@ -75,7 +97,7 @@ pub enum PortalCmd {
 
 #[cfg(test)]
 mod tests {
-    use super::{CheckDomain, Cli, Command};
+    use super::{CheckDomain, Cli, Command, ReportFormat};
     use clap::Parser;
 
     #[test]
@@ -92,5 +114,28 @@ mod tests {
         let cli = Cli::parse_from(["portaldoctor", "--journal", "check"]);
         assert!(cli.journal);
         assert!(matches!(cli.command, Some(Command::Check(_))));
+    }
+
+    #[test]
+    fn parses_shareable_report_options() {
+        let cli = Cli::parse_from([
+            "portaldoctor",
+            "report",
+            "--format",
+            "markdown",
+            "--suppress-hostname",
+        ]);
+        let Some(Command::Report(args)) = cli.command else {
+            panic!("expected report command");
+        };
+        assert_eq!(args.format, ReportFormat::Markdown);
+        assert!(args.suppress_hostname);
+    }
+
+    #[test]
+    fn global_json_flag_can_select_report_json() {
+        let cli = Cli::parse_from(["portaldoctor", "report", "--json"]);
+        assert!(cli.json);
+        assert!(matches!(cli.command, Some(Command::Report(_))));
     }
 }

@@ -1,13 +1,13 @@
 use std::fmt;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Structured evidence attached to findings (architecture §15).
 ///
 /// Variants are added alongside the rule family that consumes them; the
 /// published v0.1.0 report uses the first six, while later phases add
 /// media-stack and opt-in journal evidence.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(dead_code)] // constructed by the diagnostic rule engine
 pub enum Evidence {

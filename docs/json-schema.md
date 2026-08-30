@@ -21,6 +21,50 @@ any) go to stderr; stdout is always valid JSON.
 | `snapshot` | object | Normalized state collected during the run (architecture §6). |
 | `findings` | array | Deterministic diagnostic results, sorted by rule ID. |
 
+## Shareable report envelope
+
+The explicit report command emits a privacy-aware document with a separate
+document version:
+
+```sh
+portaldoctor report
+portaldoctor report --json
+portaldoctor report --format markdown
+```
+
+`--json` selects the JSON format for the report command. Its top-level JSON
+shape is:
+
+```json
+{
+  "report_version": 1,
+  "schema_version": 1,
+  "portaldoctor_version": "0.1.0",
+  "privacy": {
+    "redacted": true,
+    "home_normalized": true,
+    "hostname_suppressed": false,
+    "raw_journal": "excluded",
+    "raw_pipewire": "excluded"
+  },
+  "snapshot": { "...": "redacted snapshot v1" },
+  "findings": []
+}
+```
+
+`report_version` versions the shareable envelope; `schema_version` continues
+to version the normalized snapshot contract. The report path applies the
+environment allowlist, `$HOME` normalization and obvious secret masking
+before this document is serialized. Add `--suppress-hostname` when the
+hostname should also be replaced. Raw journal and raw PipeWire dumps are
+excluded rather than embedded; only bounded normalized evidence can appear.
+There is intentionally no raw-export flag in this shareable envelope because
+the collectors discard those streams after bounded parsing.
+
+The legacy `portaldoctor --json` and `portaldoctor check --json` output keeps
+the original v1 top-level shape for machine compatibility. Treat that form as
+diagnostic data to review, not as the public-issue-safe report format.
+
 ## Snapshot sections
 
 Every section is an object with:

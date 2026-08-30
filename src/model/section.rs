@@ -1,10 +1,10 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::status::CollectorState;
 
 /// A non-fatal collection problem attached to a snapshot section
 /// (architecture §6).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollectionNote {
     pub message: String,
 }
@@ -12,7 +12,7 @@ pub struct CollectionNote {
 /// Snapshot section carrying the collection status next to optional data
 /// (architecture §6). This keeps "not supported" and "failed unexpectedly"
 /// distinct conditions.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Section<T> {
     pub status: CollectorState,
     pub value: Option<T>,

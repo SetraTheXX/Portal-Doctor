@@ -1,11 +1,11 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Version of the normalized journal model embedded in snapshot schema v1.
 pub const JOURNAL_MODEL_VERSION: u32 = 1;
 
 /// Safe result of matching stable journal patterns. The collector does not
 /// turn unknown text into a diagnosis.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JournalMatchState {
     Matched,
@@ -26,7 +26,7 @@ impl JournalMatchState {
 }
 
 /// Stable, portal-relevant categories recognized from journal messages.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JournalClassification {
     #[serde(rename = "portal")]
@@ -53,7 +53,7 @@ impl JournalClassification {
 }
 
 /// Normalized current-boot/user-session journal evidence.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JournalInfo {
     pub model_version: u32,
     pub window_minutes: u64,
@@ -75,7 +75,7 @@ impl JournalInfo {
 }
 
 /// A sanitized journal excerpt safe to expose through the normalized snapshot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JournalEntry {
     pub unit: String,
     pub priority: u8,

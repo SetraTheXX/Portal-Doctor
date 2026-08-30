@@ -88,9 +88,24 @@ portaldoctor --json > portaldoctor.json
 portaldoctor --journal --verbose
 ```
 
+Generate a report intended for an issue or support request. The explicit
+`report` command applies the privacy layer before serialization:
+
+```sh
+portaldoctor report
+portaldoctor report --format markdown --suppress-hostname > portaldoctor-report.md
+portaldoctor report --json > portaldoctor-report.json
+```
+
+`--json` is also accepted as the global shorthand for the JSON report format.
+The report command normalizes home-directory paths, keeps the existing
+environment allowlist, and marks raw journal/PipeWire dumps as excluded.
+Review the generated document once before publishing it.
+
 `--journal` is opt-in. It adds a bounded current-boot/user-session journal
 check for portal, PipeWire, and WirePlumber units; `--verbose` displays only
-the short, sanitized excerpts that match stable error patterns.
+the short, sanitized excerpts that match stable error patterns. The same
+option can be used with `report` when journal evidence should be included.
 
 ## What it checks
 
@@ -105,6 +120,7 @@ the short, sanitized excerpts that match stable error patterns.
 - bounded PipeWire/WirePlumber health and privacy-safe video topology,
 - optional bounded journal evidence for portal, PipeWire, and WirePlumber
   failures,
+- shareable terminal, JSON and Markdown reports with report-level redaction,
 - 20 deterministic findings on `main` across the `ENV`, `XDP`, `CFG`, `DBUS`,
   `PW`, and `SC` families (the published v0.1.0 package contains the first
   15).
@@ -144,7 +160,8 @@ ID, a concise explanation, and the first actionable `next:` recommendation.
   cannot hang a diagnostic run.
 - **Privacy-aware:** only a small allowlist of diagnostic environment variables
   is collected; arbitrary environment dumps and unrelated journal records are
-  not part of the report. Journal excerpts are sanitized before exposure.
+  not part of the report. Shareable reports normalize `$HOME`, redact obvious
+  secret patterns, and can suppress the hostname before serialization.
 - **Automation-friendly:** terminal output is concise, while JSON output is
   versioned as snapshot schema v1.
 
@@ -167,6 +184,7 @@ v0.1 until they have a dedicated validation matrix.
 
 - the unreleased Phase 5 PipeWire and WirePlumber media-graph health checks,
 - the unreleased Phase 6 opt-in journal evidence collector and correlation,
+- the unreleased Phase 7 shareable report command and report-level redaction,
 - active portal method/dialog probes,
 - validated KDE, wlroots, Sway, Hyprland, or Niri behavior,
 - automatic fixes and GUI workflows.
@@ -235,12 +253,12 @@ for the fixture scenarios.
 
 ## Roadmap
 
-The next expansion is deliberately layered:
+Phase 7 is implemented on `main`; the next expansion is deliberately layered:
 
-1. add privacy-aware shareable Markdown reports and stronger redaction,
-2. introduce safe active probes for selected portal interfaces,
-3. expand validation across KDE and wlroots-based sessions,
-4. harden the compatibility matrix and release artifacts.
+1. introduce safe active probes for selected portal interfaces,
+2. expand validation across KDE and wlroots-based sessions,
+3. harden the compatibility matrix and release artifacts,
+4. prepare the v0.2.0 release gate after acceptance and privacy review.
 
 The full implementation roadmap lives in
 [docs/PORTALDOCTOR_ROADMAP.md](docs/PORTALDOCTOR_ROADMAP.md).

@@ -44,7 +44,7 @@ journal-only diagnosis.
 | `DBUS001` | WARNING | HIGH | No session bus could be reached; runtime verification was skipped. |
 | `DBUS002` | WARNING | HIGH | A configured backend bus name has no owner or fails to activate while the session bus itself is reachable. |
 
-## PipeWire and WirePlumber (unreleased Phase 5)
+## PipeWire and WirePlumber (main, unreleased v0.2.0)
 
 These checks are passive. They run bounded `pw-dump --no-colors` and
 `wpctl status` commands, retain only normalized portal-relevant facts, and do
@@ -56,7 +56,7 @@ not start a capture session or export the raw media graph.
 | `PW002` | WARNING | HIGH | WirePlumber reachability cannot be verified through the bounded `wpctl status` query. |
 | `PW003` | WARNING | MEDIUM | PipeWire was invoked but the query timed out, hit a permission boundary, or returned payload that could not be parsed safely. |
 
-## ScreenCast correlation (unreleased Phase 5)
+## ScreenCast correlation (main, unreleased v0.2.0)
 
 | ID | Severity | Confidence | Fires when |
 |---|---|---|---|
@@ -69,7 +69,7 @@ route alone is never treated as proof that a capture stream can work. A
 completely absent backend descriptor remains the responsibility of `XDP003`,
 and an explicitly disabled route does not trigger `SC001`.
 
-## Optional journal correlation (unreleased Phase 6)
+## Optional journal correlation (main, unreleased Phase 6)
 
 `portaldoctor --journal` reads only the current user boot's last 30 minutes
 from an allowlist of portal, PipeWire, and WirePlumber units. The collector

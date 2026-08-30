@@ -102,7 +102,7 @@ Every rule must produce stable, structured output with:
 
 ### G6 — Produce shareable reports safely
 
-PortalDoctor should generate human-readable, JSON and later Markdown reports with privacy-aware redaction suitable for GitHub issues and support requests.
+PortalDoctor should generate human-readable, JSON and Markdown reports with privacy-aware redaction suitable for GitHub issues and support requests.
 
 ### G7 — Remain useful without network access or AI
 
@@ -683,4 +683,3 @@ PortalDoctor reaches 1.0 when the project has:
 - packaged/reproducible installation path.
 
 Automatic remediation is **not** required for 1.0.
-

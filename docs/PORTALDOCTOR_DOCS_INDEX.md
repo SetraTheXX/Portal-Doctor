@@ -1,6 +1,6 @@
 # PortalDoctor — Documentation Index
 
-**Baseline date:** 2026-08-22
+**Baseline date:** 2026-08-30
 
 This folder contains the initial project-definition package for PortalDoctor.
 
@@ -98,11 +98,14 @@ D-Bus:          zbus
 Active probes:  ASHPD later
 PipeWire:       pw-dump JSON implemented on main; not in published v0.1
 Journal:        bounded user-journal evidence implemented on main; opt-in
+Reports:        terminal/JSON/Markdown shareable reports implemented on main
 v0.1:           no automatic fixes, no GUI, no broad desktop support claim
 ```
 
 ## Current status
 
 Phase 4 is complete and v0.1.0 is published on both GitHub Releases and
-crates.io. Phase 5 (PipeWire/WirePlumber) and Phase 6 (opt-in bounded journal
-evidence) are implemented on `main`; Phase 7 shareable-report work remains.
+crates.io. Phase 5 (PipeWire/WirePlumber), Phase 6 (opt-in bounded journal
+evidence) and Phase 7 (shareable reports/privacy) are implemented on `main`;
+the v0.2.0 release gate remains open for acceptance, privacy and compatibility
+validation.

@@ -1,7 +1,7 @@
 # PortalDoctor — Development Roadmap
 
 **Status:** Implementation roadmap baseline  
-**Date:** 2026-08-22  
+**Date:** 2026-08-30
 **Strategy:** Narrow vertical slice first, then expand subsystem coverage and desktop compatibility
 
 ---
@@ -453,8 +453,8 @@ The Phase 5 passive collector and correlation rules are implemented on `main`:
 - `PW001`–`PW003` and `SC001`–`SC002`,
 - deterministic parser/rule/renderer tests and live GNOME/Wayland validation.
 
-The v0.2.0 release remains gated on the subsequent Phase 6 journal and Phase 7
-shareable-report work plus their acceptance and privacy checks.
+Phase 5 is complete on `main`; the v0.2.0 release remains gated on the Phase 6
+journal and Phase 7 report acceptance, privacy review and compatibility checks.
 
 ---
 
@@ -496,8 +496,8 @@ Phase 6 is implemented on `main`:
 - fixtures for empty, unavailable, timeout, malformed, noisy and representative
   journal input.
 
-The v0.2.0 release remains gated on Phase 7 shareable-report/redaction work,
-its acceptance checks, and the final release audit.
+Phase 6 is complete on `main`; the v0.2.0 release remains gated on the Phase 7
+report acceptance checks and the final release audit.
 
 ---
 
@@ -517,16 +517,37 @@ portaldoctor report --format markdown
 
 ## Tasks
 
-- redaction engine,
-- `$HOME` normalization,
+- explicit `report` command with terminal, JSON and Markdown formats,
+- redaction engine before shareable serialization,
+- `$HOME` normalization and obvious secret-pattern masking,
 - optional hostname suppression,
-- environment allowlist enforcement,
-- report schema/version,
-- report fixtures.
+- enforcement of the existing environment allowlist,
+- separate report version and snapshot schema version metadata,
+- explicit raw-journal/raw-PipeWire exclusion metadata,
+- fixtures and golden tests for stable shareable output,
+- documentation of collected data, redaction rules and pre-sharing review.
 
 ## Exit criteria
 
 Generated report can be attached to a public GitHub issue without exposing obvious secrets or irrelevant personal data by default.
+
+## Implementation checkpoint — 2026-08-30
+
+Phase 7 is implemented on `main`:
+
+- `portaldoctor report` emits a redacted terminal report by default,
+- `--format json`/`--json` emits a versioned shareable envelope,
+- `--format markdown` emits a stable issue-friendly report,
+- process environment data is restricted to the existing allowlist and home
+  paths normalize to `$HOME`,
+- obvious secret labels are masked and `--suppress-hostname` replaces the
+  current hostname and host labels,
+- raw journal and raw PipeWire dumps remain excluded and are marked as such,
+- redaction, format and Markdown golden-fixture tests are checked in.
+
+The v0.2.0 release remains gated on Phase 7 acceptance/privacy review and the
+final compatibility and release audit. The next implementation phase is
+Phase 8 active portal probes.
 
 ## Release
 
@@ -800,9 +821,11 @@ Validated matrix includes at least:
 
 ---
 
-# Recommended Immediate Implementation Slice
+# Recommended Immediate Implementation Slice (historical)
 
-Do **not** start by building all phases.
+This section records the original project bootstrap sequence. Phases 0–7 are
+now complete on `main`; the next implementation slice is Phase 8 active portal
+probes.
 
 The first Codex implementation goal should be:
 
