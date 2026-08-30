@@ -8,7 +8,7 @@ any) go to stderr; stdout is always valid JSON.
 ```json
 {
   "schema_version": 1,
-  "portaldoctor_version": "0.1.0",
+  "portaldoctor_version": "0.2.0",
   "snapshot": { "...": "see below" },
   "findings": [ { "...": "see below" } ]
 }
@@ -39,7 +39,7 @@ shape is:
 {
   "report_version": 1,
   "schema_version": 1,
-  "portaldoctor_version": "0.1.0",
+  "portaldoctor_version": "0.2.0",
   "privacy": {
     "redacted": true,
     "home_normalized": true,

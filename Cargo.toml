@@ -1,6 +1,6 @@
 [package]
 name = "portaldoctor"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Read-only Linux CLI for diagnosing XDG Desktop Portal, Wayland session, D-Bus and systemd user integration issues."
 license = "MIT"

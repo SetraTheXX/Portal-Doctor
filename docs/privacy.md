@@ -85,6 +85,7 @@ diagnostic topology can still be useful system fingerprints.
 - Read-only by default; no system modification, no root requirement.
 - All external interactions are bounded by timeouts (2–3 s) and output limits,
   so a wedged dependency cannot hang the tool.
-- Reports contain no secrets by construction: only allowlisted variables and
-  their redacted values are serialized in shareable mode, raw process dumps
-  are never emitted, and raw journal/PipeWire output is excluded.
+- Shareable reports are designed to exclude obvious secrets: only allowlisted
+  variables and their redacted values are serialized, raw process dumps are
+  never emitted, and raw journal/PipeWire output is excluded. Review the
+  generated attachment before publishing it.

@@ -243,7 +243,7 @@ Minimum top-level contract:
 ```json
 {
   "schema_version": 1,
-  "portaldoctor_version": "0.1.0",
+  "portaldoctor_version": "0.2.0",
   "snapshot": {},
   "findings": []
 }
@@ -251,7 +251,7 @@ Minimum top-level contract:
 
 ### 7.5 Report output
 
-Later release:
+v0.2.0 release:
 
 ```bash
 portaldoctor report

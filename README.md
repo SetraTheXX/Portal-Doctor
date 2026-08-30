@@ -14,7 +14,7 @@ PortalDoctor is a deterministic Rust CLI that turns scattered XDG Desktop
 Portal, Wayland, D-Bus, and systemd user-session state into one
 evidence-backed diagnostic report.
 
-> **v0.1.0** — First public GitHub release. The validated baseline is Ubuntu
+> **v0.2.0** — Passive ScreenCast-readiness release. The validated baseline is Ubuntu
 > 26.04 with GNOME, Wayland, and a systemd user session.
 
 ## Why PortalDoctor?
@@ -43,11 +43,11 @@ evidence and an actionable next step.
 ### Install from crates.io
 
 ```sh
-cargo install portaldoctor --version 0.1.0 --locked
+cargo install portaldoctor --version 0.2.0 --locked
 portaldoctor
 ```
 
-For the latest published version, omit `--version 0.1.0`.
+For the latest published version, omit the `--version` flag.
 
 ### Build from source
 
@@ -121,16 +121,15 @@ option can be used with `report` when journal evidence should be included.
 - optional bounded journal evidence for portal, PipeWire, and WirePlumber
   failures,
 - shareable terminal, JSON and Markdown reports with report-level redaction,
-- 20 deterministic findings on `main` across the `ENV`, `XDP`, `CFG`, `DBUS`,
-  `PW`, and `SC` families (the published v0.1.0 package contains the first
-  15).
+- 20 deterministic findings across the `ENV`, `XDP`, `CFG`, `DBUS`, `PW`, and
+  `SC` families.
 
 ## Example
 
 A healthy GNOME/Wayland session produces a compact report like this:
 
 ```text
-PortalDoctor 0.1.0
+PortalDoctor 0.2.0
 Snapshot schema v1
 
 System: Ubuntu 26.04 LTS (ubuntu)
@@ -169,7 +168,7 @@ ID, a concise explanation, and the first actionable `next:` recommendation.
 
 ### Validated baseline
 
-| Component | v0.1 baseline |
+| Component | v0.2 baseline |
 | --- | --- |
 | Distribution | Ubuntu 26.04 |
 | Desktop | GNOME, including `ubuntu:GNOME` identifiers |
@@ -178,13 +177,10 @@ ID, a concise explanation, and the first actionable `next:` recommendation.
 | Portal frontend | `org.freedesktop.portal.Desktop` |
 
 Other distributions and desktops may work, but they are not support claims for
-v0.1 until they have a dedicated validation matrix.
+v0.2 until they have a dedicated validation matrix.
 
-### Outside the published v0.1.0 boundary
+### Outside the published v0.2.0 boundary
 
-- the unreleased Phase 5 PipeWire and WirePlumber media-graph health checks,
-- the unreleased Phase 6 opt-in journal evidence collector and correlation,
-- the unreleased Phase 7 shareable report command and report-level redaction,
 - active portal method/dialog probes,
 - validated KDE, wlroots, Sway, Hyprland, or Niri behavior,
 - automatic fixes and GUI workflows.
@@ -222,13 +218,14 @@ removes the renderer title from the frame.
 
 ## Documentation
 
-- [Package page on docs.rs](https://docs.rs/portaldoctor/0.1.0) *(PortalDoctor is a binary-only CLI, so docs.rs does not provide a public library API.)*
+- [Package page on docs.rs](https://docs.rs/portaldoctor/0.2.0) *(PortalDoctor is a binary-only CLI, so docs.rs does not provide a public library API.)*
 - [Finding catalog](docs/findings.md)
 - [JSON schema v1](docs/json-schema.md)
 - [Compatibility and known limitations](docs/compatibility.md)
 - [Privacy statement](docs/privacy.md)
 - [Architecture](docs/PORTALDOCTOR_ARCHITECTURE.md)
 - [Development roadmap](docs/PORTALDOCTOR_ROADMAP.md)
+- [v0.2.0 release notes](docs/release-notes-v0.2.0.md)
 - [v0.1.0 release notes](docs/release-notes-v0.1.0.md)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
@@ -247,18 +244,21 @@ PORTALDOCTOR_BIN=target/release/portaldoctor \
   python3 scripts/validate-v0.1-faults.py
 ```
 
-The fault-injection harness exercises the public v0.1 findings without
-modifying the host system. See [the harness](scripts/validate-v0.1-faults.py)
-for the fixture scenarios.
+The fault-injection harness exercises the v0.1-compatible finding contract
+included in v0.2.0 without modifying the host system. See the
+[fault-injection harness](scripts/validate-v0.1-faults.py) for the fixture
+scenarios.
 
 ## Roadmap
 
-Phase 7 is implemented on `main`; the next expansion is deliberately layered:
+The v0.2.0 release completes the passive diagnostic vertical slice; the next
+expansion is deliberately layered:
 
 1. introduce safe active probes for selected portal interfaces,
 2. expand validation across KDE and wlroots-based sessions,
 3. harden the compatibility matrix and release artifacts,
-4. prepare the v0.2.0 release gate after acceptance and privacy review.
+4. document and ship the next compatible release only after its acceptance
+   gate passes.
 
 The full implementation roadmap lives in
 [docs/PORTALDOCTOR_ROADMAP.md](docs/PORTALDOCTOR_ROADMAP.md).

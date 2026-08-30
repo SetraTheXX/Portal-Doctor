@@ -64,6 +64,7 @@ mod tests {
         EnvironmentComparison, EnvironmentInfo, EnvironmentRelation, EnvironmentValue, SearchRoots,
         SessionInfo, SessionType,
     };
+    use crate::model::evidence::Evidence;
     use crate::model::finding::{Confidence, Finding, Severity};
     use crate::model::journal::{
         JournalClassification, JournalEntry, JournalInfo, JournalMatchState,
@@ -273,5 +274,32 @@ mod tests {
                 "/tests/fixtures/shareable-report.md"
             ))
         );
+    }
+
+    #[test]
+    fn markdown_report_explains_pipewire_failure_and_next_step() {
+        let options = fixture_options();
+        let mut report = redaction_fixture_report();
+        report.findings = vec![Finding {
+            id: "PW001".to_owned(),
+            severity: Severity::Warning,
+            confidence: Confidence::High,
+            title: "PipeWire is unavailable".to_owned(),
+            summary: "PipeWire state could not be collected: command unavailable".to_owned(),
+            explanation: "ScreenCast needs a reachable PipeWire session.".to_owned(),
+            evidence: vec![Evidence::PipeWireState],
+            impact: Some("ScreenCast readiness cannot be confirmed.".to_owned()),
+            recommendation: vec![
+                "Install the package that provides `pw-dump`, then verify the user PipeWire session is running.".to_owned(),
+            ],
+            source_component: "pipewire".to_owned(),
+        }];
+        let redacted = redact_report(&report, &options);
+        let document = ShareableReport::from_report(&redacted, &options);
+        let rendered = MarkdownRenderer::render(&document, false);
+
+        assert!(rendered.contains("PipeWire is unavailable"));
+        assert!(rendered.contains("pipewire state"));
+        assert!(rendered.contains("Install the package that provides `pw-dump`"));
     }
 }

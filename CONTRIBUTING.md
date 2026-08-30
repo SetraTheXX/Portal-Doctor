@@ -16,7 +16,7 @@ its PRD, architecture and roadmap are the source of truth.
 ## Prerequisites
 
 - Stable Rust toolchain with `rustfmt` and `clippy` components.
-- Linux is required for the real-system validation; the validated v0.1 target
+- Linux is required for the real-system validation; the validated v0.2 target
   is Ubuntu 26.04 / GNOME / Wayland / systemd user session.
 
 ## Development loop
@@ -31,7 +31,7 @@ cargo build --release
 CI runs the same Rust quality gates. Do not use `cargo fmt` as a hidden fix in
 a PR; format locally, then commit the resulting source intentionally.
 
-For the v0.1 end-to-end acceptance matrix on the validated Linux target:
+For the v0.2 end-to-end acceptance matrix on the validated Linux target:
 
 ```sh
 cargo build --release

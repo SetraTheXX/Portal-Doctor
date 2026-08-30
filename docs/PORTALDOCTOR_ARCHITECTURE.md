@@ -582,7 +582,7 @@ The product is not an audio diagnostics suite; keep only portal-relevant facts.
 
 ## 14. Journal Collector
 
-Phase 6 is implemented on `main` as an explicit opt-in collector. The default
+Phase 6 shipped in v0.2.0 as an explicit opt-in collector. The default
 diagnostic run does not invoke `journalctl`.
 
 ### Requirements
