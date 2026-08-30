@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use crate::model::dbus::DbusInfo;
 use crate::model::environment::{EnvironmentInfo, SessionInfo, SystemInfo};
+use crate::model::pipewire::{PipeWireInfo, WirePlumberInfo};
 use crate::model::portal::{PortalBackend, PortalConfigInfo, PortalRoute};
 use crate::model::section::Section;
 use crate::model::service::ServiceInfo;
@@ -33,6 +34,10 @@ pub struct Snapshot {
     pub dbus: Section<DbusInfo>,
     /// Portal-relevant systemd user unit states.
     pub services: Section<ServiceInfo>,
+    /// Normalized `PipeWire` graph facts.
+    pub pipewire: Section<PipeWireInfo>,
+    /// Normalized `WirePlumber` reachability facts.
+    pub wireplumber: Section<WirePlumberInfo>,
 }
 
 impl Snapshot {
@@ -51,6 +56,8 @@ impl Snapshot {
             portal_routes: Section::unsupported("not collected"),
             dbus: Section::unsupported("not collected"),
             services: Section::unsupported("not collected"),
+            pipewire: Section::unsupported("not collected"),
+            wireplumber: Section::unsupported("not collected"),
         }
     }
 }

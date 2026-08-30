@@ -51,6 +51,7 @@ pub trait Renderer {
 #[cfg(test)]
 mod tests {
     use super::{JsonRenderer, Renderer, Report, TerminalRenderer};
+    use crate::model::pipewire::{PipeWireInfo, WirePlumberInfo};
     use crate::model::section::Section;
     use crate::model::snapshot::Snapshot;
     use serde_json::json;
@@ -79,6 +80,31 @@ mod tests {
         assert!(terse.contains("Findings: none detected."));
         let verbose = TerminalRenderer.render(&report, true);
         assert!(verbose.contains("Findings: none detected."));
+    }
+
+    #[test]
+    fn terminal_renderer_reports_media_health() {
+        let mut snapshot = empty_snapshot();
+        snapshot.pipewire = Section::available(PipeWireInfo {
+            model_version: 1,
+            version: Some("1.6.2".to_owned()),
+            object_count: 81,
+            node_count: 10,
+            link_count: 3,
+            portal_client_count: 1,
+            screen_cast_source_count: 1,
+            nodes: Vec::new(),
+            links: Vec::new(),
+        });
+        snapshot.wireplumber = Section::available(WirePlumberInfo {
+            model_version: 1,
+            pipewire_version: Some("1.6.2".to_owned()),
+            wireplumber_client_count: 2,
+        });
+        let report = Report::new(snapshot, Vec::new(), "0.1.0");
+        let text = TerminalRenderer.render(&report, false);
+        assert!(text.contains("PipeWire: reachable · 1.6.2 · 81 objects · 10 nodes · 3 links"));
+        assert!(text.contains("WirePlumber: reachable · 1.6.2 · 2 client(s)"));
     }
 
     #[test]

@@ -40,6 +40,7 @@ fn run_check(args: &CheckArgs, json: bool, verbose: bool) -> Result<(), Error> {
         None => findings,
         Some(CheckDomain::Environment) => filter_findings(findings, is_environment_finding),
         Some(CheckDomain::Portal) => filter_findings(findings, is_portal_finding),
+        Some(CheckDomain::PipeWire) => filter_findings(findings, is_pipewire_finding),
     };
     let report = Report::new(collected.snapshot, findings, env!("CARGO_PKG_VERSION"));
     write_report(&report, json, verbose)
@@ -123,10 +124,15 @@ fn collect_snapshot() -> Collected {
     let selected_backend_names = selected_backend_dbus_names(&portal_routes, &portal_backends);
     let dbus = collectors::dbus::collect(&selected_backend_names);
     let mut unit_names = vec![ServiceInfo::frontend_unit().to_owned()];
+    unit_names.push("pipewire.service".to_owned());
+    unit_names.push("wireplumber.service".to_owned());
     if let Some(backends) = &portal_backends.value {
         unit_names.extend(backends.iter().map(|b| ServiceInfo::backend_unit(&b.id)));
     }
+    unit_names.sort_unstable();
+    unit_names.dedup();
     let services = collectors::systemd_user::collect(&unit_names);
+    let (pipewire, wireplumber) = collectors::pipewire::collect();
 
     let mut snapshot = Snapshot::new(unix_epoch_ms());
     snapshot.system = system;
@@ -137,6 +143,8 @@ fn collect_snapshot() -> Collected {
     snapshot.portal_routes = portal_routes;
     snapshot.dbus = dbus;
     snapshot.services = services;
+    snapshot.pipewire = pipewire;
+    snapshot.wireplumber = wireplumber;
 
     Collected { snapshot }
 }
@@ -180,7 +188,15 @@ fn is_environment_finding(finding: &Finding) -> bool {
 }
 
 fn is_portal_finding(finding: &Finding) -> bool {
-    finding.id.starts_with("XDP") || finding.id.starts_with("CFG") || finding.id.starts_with("DBUS")
+    finding.id.starts_with("XDP")
+        || finding.id.starts_with("CFG")
+        || finding.id.starts_with("DBUS")
+        || finding.id.starts_with("PW")
+        || finding.id.starts_with("SC")
+}
+
+fn is_pipewire_finding(finding: &Finding) -> bool {
+    finding.id.starts_with("PW") || finding.id.starts_with("SC")
 }
 
 fn filter_findings(findings: Vec<Finding>, keep: fn(&Finding) -> bool) -> Vec<Finding> {

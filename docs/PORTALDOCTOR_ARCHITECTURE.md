@@ -657,6 +657,9 @@ Evidence::ConfigSelection { ... }
 Evidence::MissingProvider { ... }
 Evidence::DbusTimeout { ... }
 Evidence::ServiceState { ... }
+Evidence::PipeWireState { ... }
+Evidence::WirePlumberState { ... }
+Evidence::ScreenCastRoute { ... }
 Evidence::JournalExcerpt { ... }
 ```
 
@@ -928,4 +931,3 @@ Initial versions should provide copyable recommendations without executing them.
 | Reporting | terminal + JSON first, Markdown later |
 | Tests | fixtures + deterministic rules + selective live integration |
 | Fixes | deferred, dry-run-first if ever added |
-

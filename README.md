@@ -35,6 +35,7 @@ evidence and an actionable next step.
 | Routing | Which backend is selected for `ScreenCast`, `FileChooser`, and other interfaces — and why? |
 | Runtime reachability | Does the portal frontend and selected backend own their D-Bus names? |
 | systemd user session | Are discovered portal units present and healthy? |
+| ScreenCast media path | Is PipeWire reachable, is WirePlumber answering, and is normalized video topology visible? |
 | Findings | What is wrong, how confident is the signal, and what should be checked next? |
 
 ## Quick start
@@ -72,6 +73,7 @@ Narrow the investigation when you already know which layer is involved:
 ```sh
 portaldoctor check environment
 portaldoctor check portal
+portaldoctor check pipewire
 portaldoctor portal list
 portaldoctor portal routes
 portaldoctor portal explain ScreenCast
@@ -95,7 +97,10 @@ portaldoctor --json > portaldoctor.json
 - interface-specific, default, wildcard, and disabled route preferences,
 - D-Bus name ownership for the portal frontend and selected backends,
 - basic systemd user-unit state for the discovered portal services,
-- 15 deterministic findings across the `ENV`, `XDP`, `CFG`, and `DBUS` families.
+- bounded PipeWire/WirePlumber health and privacy-safe video topology,
+- 20 deterministic findings on `main` across the `ENV`, `XDP`, `CFG`, `DBUS`,
+  `PW`, and `SC` families (the published v0.1.0 package contains the first
+  15).
 
 ## Example
 
@@ -111,6 +116,9 @@ Activation environment: consistent (5 variables compared)
 D-Bus: connected · portal frontend reachable
   backend org.freedesktop.impl.portal.desktop.gnome: reachable
   backend org.freedesktop.impl.portal.desktop.gtk: reachable
+PipeWire: reachable · 1.6.2 · 81 objects · 10 nodes · 3 links
+  video sources: 1 · ScreenCast sources: 1 · portal clients: 1
+WirePlumber: reachable · 1.6.2 · 2 client(s)
 
 Findings: none detected.
 ```
@@ -147,9 +155,9 @@ ID, a concise explanation, and the first actionable `next:` recommendation.
 Other distributions and desktops may work, but they are not support claims for
 v0.1 until they have a dedicated validation matrix.
 
-### Outside the v0.1 boundary
+### Outside the published v0.1.0 boundary
 
-- PipeWire and WirePlumber media-graph health,
+- the unreleased Phase 5 PipeWire and WirePlumber media-graph health checks,
 - journal evidence correlation,
 - active portal method/dialog probes,
 - validated KDE, wlroots, Sway, Hyprland, or Niri behavior,
@@ -221,11 +229,10 @@ for the fixture scenarios.
 
 The next expansion is deliberately layered:
 
-1. correlate PipeWire/WirePlumber state with `ScreenCast` findings,
-2. add journal evidence without making logs a mandatory dependency,
-3. introduce safe active probes for selected portal interfaces,
-4. expand validation across KDE and wlroots-based sessions,
-5. add shareable Markdown reports and stronger redaction guarantees.
+1. add bounded journal evidence without making logs a mandatory dependency,
+2. introduce safe active probes for selected portal interfaces,
+3. expand validation across KDE and wlroots-based sessions,
+4. add shareable Markdown reports and stronger redaction guarantees.
 
 The full implementation roadmap lives in
 [docs/PORTALDOCTOR_ROADMAP.md](docs/PORTALDOCTOR_ROADMAP.md).

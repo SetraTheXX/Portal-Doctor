@@ -1,6 +1,7 @@
 pub mod dbus;
 pub mod engine;
 pub mod environment;
+pub mod pipewire;
 pub mod portal;
 
 /// Shared fixture-test helper enforcing the PRD §8/G5 finding contract.

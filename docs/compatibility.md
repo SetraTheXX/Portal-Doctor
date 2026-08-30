@@ -19,9 +19,10 @@ they are untested in v0.1 and no support is claimed.
 
 ## What v0.1 does NOT cover
 
-- **PipeWire / WirePlumber state** — ScreenCast routing is reported from
-  configuration and D-Bus only; actual media-graph readiness arrives with the
-  Phase 5 collector (`pw-dump`).
+- **Published v0.1.0 media contract** — the crates.io package reports
+  ScreenCast routing from configuration and D-Bus only. The Phase 5
+  PipeWire/WirePlumber collector is implemented on `main` but is not part of
+  the published v0.1.0 artifact.
 - **Journal evidence** — log correlation is a later phase; findings cite
   configuration and runtime reachability only.
 - **Active probes** — v0.1 never calls portal interfaces, so end-to-end
@@ -41,10 +42,9 @@ they are untested in v0.1 and no support is claimed.
 3. `UseIn` matching is ASCII case-insensitive. Upstream comparisons are
    historically case-sensitive; practical desktop/descriptor pairs differ in
    case, so strict matching would misreport common setups.
-4. Subprocess stdout larger than the pipe buffer (~64 KiB) causes that probe
-   to be treated as timed out instead of captured. `systemctl show` and
-   `show-environment` emit only small dumps, so this does not affect the
-   built-in checks.
+4. The unreleased Phase 5 collector caps each `pw-dump`/`wpctl` stream at
+   16 MiB and treats overflow as unavailable. Normal desktop graphs are much
+   smaller; no raw graph is retained in the snapshot.
 
 ## Reporting gaps
 

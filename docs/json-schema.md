@@ -150,9 +150,69 @@ Every section is an object with:
       ]
     },
     "errors": []
+  },
+  "pipewire": {
+    "status": "available",
+    "value": {
+      "model_version": 1,
+      "version": "1.6.2",
+      "object_count": 81,
+      "node_count": 10,
+      "link_count": 3,
+      "portal_client_count": 1,
+      "screen_cast_source_count": 1,
+      "nodes": [
+        {
+          "id": 42,
+          "media_class": "Stream/Output/Video",
+          "state": "running",
+          "is_video_source": false,
+          "is_screen_cast_source": true
+        }
+      ],
+      "links": [
+        {
+          "id": 77,
+          "output_node_id": 42,
+          "input_node_id": 43,
+          "media_type": "video",
+          "state": "active"
+        }
+      ]
+    },
+    "errors": []
+  },
+  "wireplumber": {
+    "status": "available",
+    "value": {
+      "model_version": 1,
+      "pipewire_version": "1.6.2",
+      "wireplumber_client_count": 2
+    },
+    "errors": []
   }
 }
 ```
+
+### PipeWire and WirePlumber sections
+
+The `pipewire` section is populated from a bounded `pw-dump --no-colors`
+query. `object_count`, `node_count` and `link_count` describe the complete
+graph without serializing it. `nodes` and `links` contain only normalized
+video-relevant topology: numeric IDs, media class/type, state and boolean
+ScreenCast/source flags. Arbitrary node names, application names, host names
+and raw properties are intentionally discarded.
+
+The `wireplumber` section is populated from bounded `wpctl status` output and
+retains only the PipeWire version and a minimal WirePlumber client count. Both
+models carry their own `model_version` so future additive normalization can be
+reviewed independently of the top-level schema.
+
+When a command is missing, denied, times out, exceeds the output limit, exits
+unsuccessfully or returns malformed data, `value` is omitted and the section's
+`status` plus `errors` explain the boundary. The default check remains
+passive: no portal dialog, capture session or full media-graph export is
+started.
 
 ### Route statuses
 
@@ -187,7 +247,8 @@ Each finding follows PRD §8:
 - `severity`: `info` | `warning` | `error` | `critical`
 - `confidence`: `low` | `medium` | `high`
 - `evidence`: one or more of `environment_mismatch`, `config_selection`,
-  `missing_provider`, `dbus_timeout`, `service_state`, `journal_excerpt`
+  `missing_provider`, `dbus_timeout`, `service_state`, `pipewire_state`,
+  `wireplumber_state`, `screencast_route`, `journal_excerpt`
 - `impact` may be `null` when severity already conveys the consequence.
 - `recommendation` is ordered; the first entry is the primary next step.
 

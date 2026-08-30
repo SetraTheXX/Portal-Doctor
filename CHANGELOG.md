@@ -7,6 +7,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- Added bounded, passive PipeWire (`pw-dump`) and WirePlumber (`wpctl status`)
+  collection with privacy-safe normalized video topology.
+- Added deterministic Phase 5 findings `PW001`–`PW003` and `SC001`–`SC002`,
+  keeping portal routing evidence separate from media-stack evidence.
+- Added snapshot schema documentation for the new `pipewire` and `wireplumber`
+  sections; the top-level schema remains v1 because the fields are additive.
 - Reworked the README into a product-focused quick-start and reference guide.
 - Re-recorded the Terminalizer demo with a larger canvas, slower pacing,
   readable color accents, and no renderer title bar.
@@ -74,9 +80,8 @@ This is the first public PortalDoctor release.
 - Public-facing README and v0.1.0 release notes.
 - Validation on Ubuntu 26.04 / GNOME / Wayland / systemd user session.
 
-## Deferred after v0.1
+## Remaining after Phase 5
 
-- PipeWire/WirePlumber state and ScreenCast media-stack correlation (Phase 5).
 - Journal evidence engine.
 - Active portal probes.
 - KDE, wlroots/Sway, Hyprland and Niri compatibility claims.
