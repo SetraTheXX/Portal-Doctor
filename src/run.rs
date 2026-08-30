@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::cli::{CheckArgs, CheckDomain, Cli, PortalArgs, PortalCmd};
+use crate::cli::{CheckArgs, CheckDomain, Cli, PortalArgs, PortalCmd, ReportArgs, ReportFormat};
 use crate::collectors;
 use crate::error::Error;
 use crate::model::finding::Finding;
@@ -10,8 +10,9 @@ use crate::model::section::Section;
 use crate::model::service::ServiceInfo;
 use crate::model::snapshot::Snapshot;
 use crate::report::{
-    JsonRenderer, PortalExplainRenderer, PortalListRenderer, PortalRoutesRenderer, Renderer,
-    Report, TerminalRenderer,
+    JsonRenderer, MarkdownRenderer, PortalExplainRenderer, PortalListRenderer,
+    PortalRoutesRenderer, RedactionOptions, Renderer, Report, ShareableJsonRenderer,
+    ShareableReport, TerminalRenderer, redact_report,
 };
 use crate::resolver;
 use crate::rules;
@@ -30,6 +31,7 @@ pub fn run(cli: &Cli) -> Result<(), Error> {
     match command {
         crate::cli::Command::Check(args) => run_check(&args, cli.json, cli.verbose, cli.journal),
         crate::cli::Command::Portal(args) => run_portal(&args, cli.json, cli.journal),
+        crate::cli::Command::Report(args) => run_report(&args, cli.json, cli.verbose, cli.journal),
     }
 }
 
@@ -70,6 +72,42 @@ fn run_portal(args: &PortalArgs, json: bool, include_journal: bool) -> Result<()
     } else {
         write_stdout(&rendered)
     }
+}
+
+fn run_report(
+    args: &ReportArgs,
+    json: bool,
+    verbose: bool,
+    include_journal: bool,
+) -> Result<(), Error> {
+    let collected = collect_snapshot(include_journal);
+    let findings = rules::engine::evaluate(&collected.snapshot);
+    let report = Report::new(collected.snapshot, findings, env!("CARGO_PKG_VERSION"));
+    let options = RedactionOptions::from_environment(args.suppress_hostname);
+    let redacted = redact_report(&report, &options);
+    let shareable = ShareableReport::from_report(&redacted, &options);
+    let format = if json {
+        ReportFormat::Json
+    } else {
+        args.format
+    };
+    let rendered = match format {
+        ReportFormat::Terminal => {
+            let hostname = if shareable.privacy.hostname_suppressed {
+                "suppressed"
+            } else {
+                "not suppressed"
+            };
+            format!(
+                "PortalDoctor shareable report v{}\nPrivacy: redacted · HOME normalized · hostname {hostname}\nRaw journal/PipeWire: excluded\n\n{}",
+                shareable.report_version,
+                TerminalRenderer.render(&redacted, verbose)
+            )
+        }
+        ReportFormat::Json => ShareableJsonRenderer::render(&shareable),
+        ReportFormat::Markdown => MarkdownRenderer::render(&shareable, verbose),
+    };
+    write_stdout(&rendered)
 }
 
 /// Everything the current run collected, in one snapshot.

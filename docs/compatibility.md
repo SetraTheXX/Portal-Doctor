@@ -26,6 +26,9 @@ they are untested in v0.1 and no support is claimed.
 - **Journal evidence in the published artifact** — v0.1.0 does not include
   journal correlation. The unreleased `main` build has an opt-in
   `--journal` collector, which depends on a readable systemd user journal.
+- **Shareable reports in the published artifact** — the explicit `report`
+  command and its privacy-aware terminal/JSON/Markdown envelope are currently
+  implemented on `main` and are not part of the published v0.1.0 package.
 - **Active probes** — v0.1 never calls portal interfaces, so end-to-end
   behavior of FileChooser/Screenshot/ScreenCast dialogs is not exercised.
 - **KDE / wlroots / Hyprland / Niri** — no support claims; route resolution
@@ -53,6 +56,13 @@ they are untested in v0.1 and no support is claimed.
 
 ## Reporting gaps
 
-If you hit an unsupported setup, please open an issue with the JSON report
-(`portaldoctor check --json`) attached — see SECURITY.md/README for where to
-report.
+If you hit an unsupported setup, generate the shareable report and review it
+before attaching it to an issue:
+
+```sh
+portaldoctor report --format markdown --suppress-hostname > portaldoctor-report.md
+```
+
+Use `portaldoctor report --json` when a machine-readable attachment is more
+useful. The older `portaldoctor check --json` form remains the compatibility
+snapshot output and should be reviewed manually before public sharing.

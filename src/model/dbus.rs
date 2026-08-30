@@ -1,9 +1,9 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Outcome of one D-Bus name check, following the architecture §11 failure
 /// taxonomy (no session bus, name absent, activation failure, timeout,
 /// access denied, malformed response are kept distinct).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DbusOutcome {
     /// The name exists and has an owner.
@@ -21,14 +21,14 @@ pub enum DbusOutcome {
 }
 
 /// One probed D-Bus name (the portal frontend or a selected backend).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DbusCheck {
     pub name: String,
     pub outcome: DbusOutcome,
 }
 
 /// Runtime D-Bus state collected during a run (architecture §11).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DbusInfo {
     /// Whether a session bus connection was established.
     pub connected: bool,

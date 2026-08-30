@@ -1,18 +1,22 @@
 mod json;
+mod markdown;
 pub mod portal;
+mod redact;
 pub mod terminal;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::finding::Finding;
 use crate::model::snapshot::{SNAPSHOT_SCHEMA_VERSION, Snapshot};
 
-pub use json::JsonRenderer;
+pub use json::{JsonRenderer, ShareableJsonRenderer};
+pub use markdown::MarkdownRenderer;
 pub use portal::{PortalExplainRenderer, PortalListRenderer, PortalRoutesRenderer};
+pub use redact::{RedactionOptions, ShareableReport, redact_report};
 pub use terminal::TerminalRenderer;
 
 /// Top-level run output; matches the v1 `JSON` contract (PRD §7.4).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Report {
     /// Top-level JSON schema version.
     pub schema_version: u32,
@@ -50,7 +54,17 @@ pub trait Renderer {
 
 #[cfg(test)]
 mod tests {
-    use super::{JsonRenderer, Renderer, Report, TerminalRenderer};
+    use std::collections::BTreeMap;
+
+    use super::{
+        JsonRenderer, MarkdownRenderer, RedactionOptions, Renderer, Report, ShareableJsonRenderer,
+        ShareableReport, TerminalRenderer, redact_report,
+    };
+    use crate::model::environment::{
+        EnvironmentComparison, EnvironmentInfo, EnvironmentRelation, EnvironmentValue, SearchRoots,
+        SessionInfo, SessionType,
+    };
+    use crate::model::finding::{Confidence, Finding, Severity};
     use crate::model::journal::{
         JournalClassification, JournalEntry, JournalInfo, JournalMatchState,
     };
@@ -143,5 +157,121 @@ mod tests {
         let text = JsonRenderer.render(&report, true);
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(value["snapshot"]["collected_at"], json!(42));
+    }
+
+    fn redaction_fixture_report() -> Report {
+        let mut snapshot = empty_snapshot();
+        snapshot.session = Section::available(SessionInfo {
+            current_desktop: Some("GNOME".to_owned()),
+            session_desktop: Some("gnome".to_owned()),
+            session_type: Some(SessionType::Wayland),
+            session_type_raw: Some("wayland".to_owned()),
+            wayland_display: Some("wayland-0".to_owned()),
+            display: None,
+        });
+        snapshot.environment = Section::available(EnvironmentInfo {
+            process: BTreeMap::from([
+                ("PATH".to_owned(), "/home/alice/bin:/usr/bin".to_owned()),
+                (
+                    "XDG_CONFIG_HOME".to_owned(),
+                    "/home/alice/.config".to_owned(),
+                ),
+                ("NOT_ALLOWED".to_owned(), "secret-value".to_owned()),
+            ]),
+            search_roots: SearchRoots {
+                config_roots: vec!["/home/alice/.config".to_owned()],
+                data_roots: vec!["/home/alice/.local/share".to_owned()],
+            },
+            activation_comparison: EnvironmentComparison {
+                performed: true,
+                entries: vec![EnvironmentValue {
+                    key: "XDG_CONFIG_HOME".to_owned(),
+                    process_value: Some("/home/alice/.config".to_owned()),
+                    activation_value: Some("/home/alice/.config".to_owned()),
+                    relation: EnvironmentRelation::Equal,
+                }],
+            },
+        });
+        Report::new(
+            snapshot,
+            vec![Finding {
+                id: "TEST001".to_owned(),
+                severity: Severity::Warning,
+                confidence: Confidence::High,
+                title: "Host workstation needs review".to_owned(),
+                summary: "A path /home/alice was observed".to_owned(),
+                explanation: "token=abc host=workstation".to_owned(),
+                evidence: Vec::new(),
+                impact: None,
+                recommendation: vec!["Review /home/alice before sharing".to_owned()],
+                source_component: "test".to_owned(),
+            }],
+            "0.1.0",
+        )
+    }
+
+    fn fixture_options() -> RedactionOptions {
+        RedactionOptions {
+            home: Some("/home/alice".to_owned()),
+            suppress_hostname: true,
+            hostname: Some("workstation".to_owned()),
+        }
+    }
+
+    #[test]
+    fn shareable_redaction_enforces_allowlist_and_normalizes_sensitive_values() {
+        let report = redaction_fixture_report();
+        let redacted = redact_report(&report, &fixture_options());
+        let value = serde_json::to_value(redacted).unwrap();
+        let process = &value["snapshot"]["environment"]["value"]["process"];
+        assert!(process.get("NOT_ALLOWED").is_none());
+        assert!(process.get("PATH").is_none());
+        assert_eq!(process["XDG_CONFIG_HOME"], json!("$HOME/.config"));
+        assert_eq!(
+            value["findings"][0]["explanation"],
+            json!("token=<redacted> host=<hostname>")
+        );
+        let encoded = serde_json::to_string(&value).unwrap();
+        assert!(!encoded.contains("/home/alice"));
+        assert!(!encoded.contains("workstation"));
+        assert!(!encoded.contains("secret-value"));
+    }
+
+    #[test]
+    fn shareable_json_has_explicit_version_and_privacy_envelope() {
+        let options = fixture_options();
+        let redacted = redact_report(&redaction_fixture_report(), &options);
+        let document = ShareableReport::from_report(&redacted, &options);
+        let text = ShareableJsonRenderer::render(&document);
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["report_version"], json!(1));
+        assert_eq!(value["schema_version"], json!(1));
+        assert_eq!(value["privacy"]["redacted"], json!(true));
+        assert_eq!(value["privacy"]["raw_journal"], json!("excluded"));
+        assert!(
+            value["snapshot"]["environment"]["value"]["process"]
+                .get("NOT_ALLOWED")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn markdown_renderer_matches_shareable_golden_fixture() {
+        let options = RedactionOptions {
+            home: Some("/home/alice".to_owned()),
+            suppress_hostname: true,
+            hostname: Some("workstation".to_owned()),
+        };
+        let report = Report::new(empty_snapshot(), Vec::new(), "0.1.0");
+        let redacted = redact_report(&report, &options);
+        let document = ShareableReport::from_report(&redacted, &options);
+        let rendered = MarkdownRenderer::render(&document, false);
+        assert_eq!(
+            rendered,
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/shareable-report.md"
+            ))
+        );
     }
 }

@@ -1,7 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Runtime state of one systemd user unit (architecture §12).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitStatus {
     pub unit: String,
     pub state: UnitState,
@@ -12,7 +12,7 @@ pub struct UnitStatus {
 }
 
 /// Coarse load/active state of a unit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnitState {
     Active,
@@ -56,7 +56,7 @@ impl UnitState {
 
 /// Collected systemd user-service state for portal-relevant units
 /// (architecture §12).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServiceInfo {
     pub units: Vec<UnitStatus>,
 }

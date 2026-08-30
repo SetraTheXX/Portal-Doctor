@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::dbus::DbusInfo;
 use crate::model::environment::{EnvironmentInfo, SessionInfo, SystemInfo};
@@ -13,7 +13,7 @@ pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 
 /// Normalized snapshot: the single internal state collected during a run.
 /// Rules consume this snapshot only (architecture §15 rule purity).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Snapshot {
     /// Snapshot schema version.
     pub schema_version: u32,

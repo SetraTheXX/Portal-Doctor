@@ -1,11 +1,11 @@
 use std::fmt;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::evidence::Evidence;
 
 /// Impact severity of a finding (PRD §8).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(dead_code)] // variants are constructed by Phase 1 rules
 pub enum Severity {
@@ -35,7 +35,7 @@ impl fmt::Display for Severity {
 }
 
 /// How strongly collected evidence supports a finding (PRD §8).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(dead_code)] // variants are constructed by Phase 1 rules
 pub enum Confidence {
@@ -63,7 +63,7 @@ impl fmt::Display for Confidence {
 }
 
 /// One deterministic diagnostic result (PRD §8 finding contract).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Finding {
     /// Stable rule identifier, e.g. `ENV001`.
     pub id: String,

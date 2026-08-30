@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Version of the normalized `PipeWire` model embedded in snapshot schema v1.
 pub const PIPEWIRE_MODEL_VERSION: u32 = 1;
@@ -8,7 +8,7 @@ pub const PIPEWIRE_MODEL_VERSION: u32 = 1;
 /// The raw `PipeWire` graph is intentionally not retained. Counts describe the
 /// complete graph, while `nodes` and `links` contain only video-relevant
 /// topology and privacy-safe properties needed for `ScreenCast` diagnosis.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PipeWireInfo {
     pub model_version: u32,
     pub version: Option<String>,
@@ -24,7 +24,7 @@ pub struct PipeWireInfo {
 /// Normalized video node properties. Names and arbitrary application metadata
 /// are deliberately omitted; those values are handled by the later privacy
 /// and report phases rather than entering the base snapshot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PipeWireNode {
     pub id: u64,
     pub media_class: Option<String>,
@@ -34,7 +34,7 @@ pub struct PipeWireNode {
 }
 
 /// Normalized video link topology without the raw format/property payload.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PipeWireLink {
     pub id: u64,
     pub output_node_id: Option<u64>,
@@ -47,7 +47,7 @@ pub struct PipeWireLink {
 pub const WIREPLUMBER_MODEL_VERSION: u32 = 1;
 
 /// Portal-relevant health facts normalized from bounded `wpctl status` output.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WirePlumberInfo {
     pub model_version: u32,
     pub pipewire_version: Option<String>,

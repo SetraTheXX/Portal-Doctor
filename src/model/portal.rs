@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A portal backend descriptor parsed from a `.portal` file (architecture §9).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PortalBackend {
     /// Backend identifier; the `.portal` file stem.
     pub id: String,
@@ -19,7 +19,7 @@ pub struct PortalBackend {
 }
 
 /// One parsed preference from the selected `portals.conf` (architecture §8).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PortalPreference {
     pub interface: String,
     /// Ordered backend tokens; may include `*` or `none`.
@@ -29,7 +29,7 @@ pub struct PortalPreference {
 }
 
 /// Parsed portal configuration state (architecture §8).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PortalConfigInfo {
     /// Every candidate file in precedence order (desktop-specific first).
     pub candidate_files: Vec<String>,
@@ -40,7 +40,7 @@ pub struct PortalConfigInfo {
 }
 
 /// Outcome of route resolution for one portal interface (architecture §10).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PortalRoute {
     pub interface: String,
     /// Backend tokens requested by configuration; empty means "any".
@@ -54,13 +54,13 @@ pub struct PortalRoute {
 }
 
 /// One provenance step of a resolved route.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RouteEvidence {
     pub message: String,
 }
 
 /// Why a route ended in its current state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RouteStatus {
     /// At least one backend is selected.

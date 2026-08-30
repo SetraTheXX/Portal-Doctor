@@ -19,6 +19,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   sanitization, and `journal_excerpt` correlation on existing media findings.
 - Added fixture coverage for empty, unavailable, timed-out, noisy, malformed,
   and representative journal input.
+- Added the explicit `portaldoctor report` command with terminal, JSON and
+  Markdown output formats plus report/schema version metadata.
+- Added report-level redaction: environment allowlist enforcement, `$HOME`
+  normalization, secret-pattern masking, and optional hostname suppression.
+- Marked raw journal and raw PipeWire dumps as excluded in shareable report
+  metadata; only bounded normalized evidence is emitted.
+- Added shareable-report redaction tests and a stable Markdown golden fixture.
 - Reworked the README into a product-focused quick-start and reference guide.
 - Re-recorded the Terminalizer demo with a larger canvas, slower pacing,
   readable color accents, and no renderer title bar.
@@ -86,9 +93,8 @@ This is the first public PortalDoctor release.
 - Public-facing README and v0.1.0 release notes.
 - Validation on Ubuntu 26.04 / GNOME / Wayland / systemd user session.
 
-## Remaining after Phase 6
+## Remaining after Phase 7
 
-- Shareable Markdown reports and report-level redaction.
 - Active portal probes.
 - KDE, wlroots/Sway, Hyprland and Niri compatibility claims.
 - Automatic fixes and GUI.

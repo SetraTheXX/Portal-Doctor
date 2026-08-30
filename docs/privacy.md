@@ -44,12 +44,41 @@ by default.
 
 The allowlisted variables themselves can contain user identifiers (for
 example `/run/user/1000` or flatpak export paths under the home directory).
-These are part of what makes reports useful; report-level redaction of these
-values in shareable Markdown output is planned for the v0.2 privacy work
-(PRD §10). JSON output is intended to be reviewed before sharing. Opt-in
-journal messages are sanitized before entering the snapshot: absolute paths,
-`user=`/`host=` labels, email-like identities, unrelated records, and overly
-long messages are not retained.
+These values can still be useful for diagnosis, so the explicit shareable
+report command applies a second privacy boundary before serialization:
+
+```sh
+portaldoctor report
+portaldoctor report --format markdown --suppress-hostname > portaldoctor-report.md
+portaldoctor report --json > portaldoctor-report.json
+```
+
+Shareable reports:
+
+- keep only the existing environment allowlist; arbitrary variables such as
+  `PATH` are removed even if a future collector accidentally supplies them,
+- normalize the current home directory and embedded home paths to `$HOME`,
+- mask obvious `token=`, `secret=`, `password=`, credential and authorization
+  values,
+- replace the current hostname and `host=`/`hostname=` labels when
+  `--suppress-hostname` is supplied,
+- include explicit `report_version`, `schema_version` and `privacy` metadata,
+  including the fact that raw journal/PipeWire dumps are excluded.
+
+There is intentionally no `--include-raw` switch in the shareable command:
+the collectors discard raw journal/PipeWire streams after their bounded parse,
+which is stricter than making a raw export merely opt-in.
+
+Opt-in journal messages are sanitized before entering the snapshot: absolute
+paths, `user=`/`host=` labels, email-like identities, unrelated records, and
+overly long messages are not retained. The normalized PipeWire model never
+retains the raw `pw-dump` property graph.
+
+The legacy `portaldoctor --json` and `portaldoctor check --json` forms remain
+available as the v1 machine-readable compatibility output. Use `portaldoctor
+report` when the output is intended for a public issue, and review it once
+before attaching it: display values, OS identity, numeric runtime IDs and
+diagnostic topology can still be useful system fingerprints.
 
 ## Guarantees
 
@@ -57,5 +86,5 @@ long messages are not retained.
 - All external interactions are bounded by timeouts (2–3 s) and output limits,
   so a wedged dependency cannot hang the tool.
 - Reports contain no secrets by construction: only allowlisted variables and
-  their values are serialized, raw process dumps are never emitted, and raw
-  journal output is never serialized.
+  their redacted values are serialized in shareable mode, raw process dumps
+  are never emitted, and raw journal/PipeWire output is excluded.

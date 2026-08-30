@@ -1,12 +1,12 @@
 use std::fmt;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Outcome of a collector execution (architecture §3.3).
 ///
 /// This status is shared by every collector and remains explicit when a
 /// dependency is unavailable, blocked or returns data that cannot be parsed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(dead_code)] // constructed by collectors
 pub enum CollectorState {

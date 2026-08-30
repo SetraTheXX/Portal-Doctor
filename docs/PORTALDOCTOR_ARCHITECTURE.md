@@ -1,7 +1,7 @@
 # PortalDoctor — Technical Architecture
 
 **Status:** Architecture baseline  
-**Date:** 2026-08-22  
+**Date:** 2026-08-30
 **Language:** Rust  
 **Initial platform:** Linux / Ubuntu 26.04 / GNOME / Wayland / systemd user session
 
@@ -733,11 +733,21 @@ Use two representations:
 - truncate long messages,
 - never serialize arbitrary command environment.
 
-### Design rule
+### Implemented shareable boundary — Phase 7
 
-A new collector does not automatically become reportable. Phase 6 exposes only
-the reviewed normalized journal fields; report-level redaction remains a
-separate Phase 7 responsibility.
+`portaldoctor report` clones the normalized `Report`, serializes it into a
+temporary structured tree, applies the redaction policy, reconstructs the
+typed report and only then renders terminal/JSON/Markdown output. This keeps
+renderers free of collection logic and preserves the legacy
+`check --json`/default report shape for compatibility.
+
+The shareable envelope carries `report_version`, the underlying
+`schema_version`, and privacy metadata. The policy filters the process
+environment against `ALLOWLISTED_VARIABLES`, normalizes the current home path
+to `$HOME`, masks obvious secret labels, optionally masks the current hostname,
+and states that raw journal/PipeWire dumps are excluded. Journal and PipeWire
+collectors already discard their raw streams, so the shareable layer cannot
+accidentally serialize them.
 
 ---
 
