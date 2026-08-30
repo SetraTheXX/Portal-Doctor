@@ -42,6 +42,9 @@ pub enum CheckDomain {
     Environment,
     /// Portal configuration, backends and routing checks.
     Portal,
+    /// `PipeWire`, `WirePlumber` and `ScreenCast` media-path checks.
+    #[command(name = "pipewire")]
+    PipeWire,
 }
 
 /// Options for the `portal` command.
@@ -64,4 +67,19 @@ pub enum PortalCmd {
         /// `org.freedesktop.impl.portal.ScreenCast`.
         interface: String,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CheckDomain, Cli, Command};
+    use clap::Parser;
+
+    #[test]
+    fn parses_pipewire_check_domain() {
+        let cli = Cli::parse_from(["portaldoctor", "check", "pipewire"]);
+        let Command::Check(args) = cli.command.unwrap() else {
+            panic!("expected check command");
+        };
+        assert_eq!(args.domain, Some(CheckDomain::PipeWire));
+    }
 }

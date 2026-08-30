@@ -444,6 +444,18 @@ Add/refine:
 
 PortalDoctor can explain basic ScreenCast stack readiness without starting an actual user capture session.
 
+## Implementation checkpoint — 2026-08-30
+
+The Phase 5 passive collector and correlation rules are implemented on `main`:
+
+- bounded `pw-dump --no-colors` and `wpctl status` collection,
+- normalized, privacy-safe PipeWire/WirePlumber snapshot sections,
+- `PW001`–`PW003` and `SC001`–`SC002`,
+- deterministic parser/rule/renderer tests and live GNOME/Wayland validation.
+
+The v0.2.0 release remains gated on the subsequent Phase 6 journal and Phase 7
+shareable-report work plus their acceptance and privacy checks.
+
 ---
 
 # Phase 6 — Journal Evidence
@@ -800,4 +812,3 @@ Concretely:
 Only after this vertical slice is clean should Phase 2 portal routing begin.
 
 This prevents the project from turning into a large untested parser collection before the diagnostic architecture is proven.
-

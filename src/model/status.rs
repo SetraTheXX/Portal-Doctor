@@ -4,8 +4,8 @@ use serde::Serialize;
 
 /// Outcome of a collector execution (architecture §3.3).
 ///
-/// Collectors run from Phase 1 on; this anchors the collection-status
-/// contract until then.
+/// This status is shared by every collector and remains explicit when a
+/// dependency is unavailable, blocked or returns data that cannot be parsed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(dead_code)] // constructed by Phase 1 collectors

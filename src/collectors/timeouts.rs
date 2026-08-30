@@ -1,7 +1,7 @@
-use std::io::Read as _;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt as _;
 use std::process::{Command, Output, Stdio};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -49,10 +49,95 @@ fn kill_group(child: &mut std::process::Child) {
     let _ = child.wait();
 }
 
-pub fn output_bounded(
+#[cfg(not(unix))]
+fn kill_group(child: &mut std::process::Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Result of a bounded command whose output may be capped before parsing.
+#[derive(Debug, PartialEq, Eq)]
+pub enum BoundedOutput {
+    /// The child exited and both captured streams were drained successfully.
+    Completed(Output),
+    /// The child or one of its output streams did not finish before `timeout`.
+    TimedOut,
+    /// A captured stream exceeded the caller-provided byte limit.
+    OutputLimitExceeded,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PipeKind {
+    Stdout,
+    Stderr,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PipeReadResult {
+    Complete(Vec<u8>),
+    TooLarge,
+}
+
+/// Drain one child stream on a worker so a large `pw-dump` response cannot
+/// fill the OS pipe while the parent waits for the child to exit.
+fn spawn_pipe_reader<R>(
+    kind: PipeKind,
+    mut reader: R,
+    max_output_bytes: usize,
+    sender: Sender<(PipeKind, std::io::Result<PipeReadResult>)>,
+) -> thread::JoinHandle<()>
+where
+    R: std::io::Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let result = read_pipe(&mut reader, max_output_bytes);
+        let _ = sender.send((kind, result));
+    })
+}
+
+fn read_pipe<R>(reader: &mut R, max_output_bytes: usize) -> std::io::Result<PipeReadResult>
+where
+    R: std::io::Read,
+{
+    let mut captured = Vec::new();
+    let mut buffer = [0_u8; 16 * 1024];
+    loop {
+        let count = reader.read(&mut buffer)?;
+        if count == 0 {
+            return Ok(PipeReadResult::Complete(captured));
+        }
+        if count > max_output_bytes.saturating_sub(captured.len()) {
+            return Ok(PipeReadResult::TooLarge);
+        }
+        captured.extend_from_slice(&buffer[..count]);
+    }
+}
+
+fn join_reader(handle: thread::JoinHandle<()>) -> std::io::Result<()> {
+    handle
+        .join()
+        .map_err(|_| std::io::Error::other("child output reader thread panicked"))
+}
+
+fn limit_exceeded(
+    stdout: Option<&std::io::Result<PipeReadResult>>,
+    stderr: Option<&std::io::Result<PipeReadResult>>,
+) -> bool {
+    [stdout, stderr]
+        .into_iter()
+        .flatten()
+        .any(|result| matches!(result, Ok(PipeReadResult::TooLarge)))
+}
+
+/// Spawn `command`, bound its completion and drain stdout/stderr concurrently.
+/// The process is always killed and reaped on timeout or output overflow. A
+/// separate output limit keeps a pathological `PipeWire` graph from becoming an
+/// unbounded allocation in the diagnostic process.
+pub fn output_bounded_with_limit(
     timeout: Duration,
+    max_output_bytes: usize,
     mut command: Command,
-) -> Result<Option<Output>, std::io::Error> {
+) -> Result<BoundedOutput, std::io::Error> {
     // Isolate the child in its own process group so shell wrappers cannot
     // leave unrelated grandchildren attached to our session.
     #[cfg(unix)]
@@ -62,37 +147,115 @@ pub fn output_bounded(
         let _ = command.process_group(0);
     }
     let mut child = command.stdout(Stdio::piped()).spawn()?;
+    let Some(stdout) = child.stdout.take() else {
+        kill_group(&mut child);
+        return Err(std::io::Error::other("child stdout pipe was not created"));
+    };
+    let stderr = child.stderr.take();
+    let has_stderr = stderr.is_some();
+    let (sender, receiver) = mpsc::channel();
+    let stdout_reader =
+        spawn_pipe_reader(PipeKind::Stdout, stdout, max_output_bytes, sender.clone());
+    let stderr_reader = stderr
+        .map(|pipe| spawn_pipe_reader(PipeKind::Stderr, pipe, max_output_bytes, sender.clone()));
+    drop(sender);
+
     let deadline = Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            // The environment dumps are small; draining stdout after exit
-            // cannot fill the pipe buffer.
-            Ok(None) if Instant::now() >= deadline => {
-                kill_group(&mut child);
-                return Ok(None);
+    let mut child_status = None;
+    let mut stdout_result = None;
+    let mut stderr_result = None;
+    loop {
+        receive_pipe_results(&receiver, &mut stdout_result, &mut stderr_result);
+        if limit_exceeded(stdout_result.as_ref(), stderr_result.as_ref()) {
+            kill_group(&mut child);
+            drop(stdout_reader);
+            drop(stderr_reader);
+            return Ok(BoundedOutput::OutputLimitExceeded);
+        }
+
+        if child_status.is_none() {
+            match child.try_wait() {
+                Ok(Some(status)) => child_status = Some(status),
+                Ok(None) => {}
+                Err(err) => {
+                    kill_group(&mut child);
+                    drop(stdout_reader);
+                    drop(stderr_reader);
+                    return Err(err);
+                }
             }
-            Ok(None) => thread::sleep(Duration::from_millis(10)),
-            Err(err) => return Err(err),
+        }
+
+        let output_drained = stdout_result.is_some() && (!has_stderr || stderr_result.is_some());
+        if child_status.is_some() && output_drained {
+            break;
+        }
+        if Instant::now() >= deadline {
+            kill_group(&mut child);
+            drop(stdout_reader);
+            drop(stderr_reader);
+            return Ok(BoundedOutput::TimedOut);
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    // The result channel is complete, so joins cannot block on a live pipe.
+    join_reader(stdout_reader)?;
+    if let Some(reader) = stderr_reader {
+        join_reader(reader)?;
+    }
+    receive_pipe_results(&receiver, &mut stdout_result, &mut stderr_result);
+
+    let stdout = match stdout_result {
+        Some(Ok(PipeReadResult::Complete(bytes))) => bytes,
+        Some(Ok(PipeReadResult::TooLarge)) => return Ok(BoundedOutput::OutputLimitExceeded),
+        Some(Err(err)) => return Err(err),
+        None => {
+            return Err(std::io::Error::other(
+                "child stdout result was not received",
+            ));
         }
     };
-    let Some(mut stdout) = child.stdout.take() else {
-        return Ok(None);
+    let stderr = match stderr_result {
+        Some(Ok(PipeReadResult::Complete(bytes))) => bytes,
+        Some(Ok(PipeReadResult::TooLarge)) => return Ok(BoundedOutput::OutputLimitExceeded),
+        Some(Err(err)) => return Err(err),
+        None => Vec::new(),
     };
-    let mut captured = Vec::new();
-    if stdout.read_to_end(&mut captured).is_err() {
-        return Ok(None);
-    }
-    Ok(Some(Output {
+    let status = child_status.expect("child status is set when output is drained");
+    Ok(BoundedOutput::Completed(Output {
         status,
-        stdout: captured,
-        stderr: Vec::new(),
+        stdout,
+        stderr,
     }))
+}
+
+fn receive_pipe_results(
+    receiver: &Receiver<(PipeKind, std::io::Result<PipeReadResult>)>,
+    stdout_result: &mut Option<std::io::Result<PipeReadResult>>,
+    stderr_result: &mut Option<std::io::Result<PipeReadResult>>,
+) {
+    for (kind, result) in receiver.try_iter() {
+        match kind {
+            PipeKind::Stdout => *stdout_result = Some(result),
+            PipeKind::Stderr => *stderr_result = Some(result),
+        }
+    }
+}
+
+pub fn output_bounded(
+    timeout: Duration,
+    command: Command,
+) -> Result<Option<Output>, std::io::Error> {
+    match output_bounded_with_limit(timeout, usize::MAX, command)? {
+        BoundedOutput::Completed(output) => Ok(Some(output)),
+        BoundedOutput::TimedOut | BoundedOutput::OutputLimitExceeded => Ok(None),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Duration, output_bounded, run_bounded};
+    use super::{BoundedOutput, Duration, output_bounded, output_bounded_with_limit, run_bounded};
     use std::process::Command;
     use std::thread;
 
@@ -108,6 +271,32 @@ mod tests {
             7
         });
         assert_eq!(result, None);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn drains_output_larger_than_the_pipe_buffer() {
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("dd if=/dev/zero bs=131072 count=1 2>/dev/null");
+        let result = output_bounded_with_limit(Duration::from_secs(2), 200_000, command).unwrap();
+        let BoundedOutput::Completed(output) = result else {
+            panic!("large command output did not complete");
+        };
+        assert!(output.status.success());
+        assert_eq!(output.stdout.len(), 131_072);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn stops_and_kills_when_output_exceeds_limit() {
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("dd if=/dev/zero bs=131072 count=1 2>/dev/null");
+        let result = output_bounded_with_limit(Duration::from_secs(2), 1024, command).unwrap();
+        assert_eq!(result, BoundedOutput::OutputLimitExceeded);
     }
 
     /// Wait until every pid reports gone via `kill(pid, 0)`, with a bounded

@@ -48,6 +48,18 @@ impl<T> Section<T> {
         Self::with_error(CollectorState::TimedOut, message)
     }
 
+    /// Section for a collection blocked by permissions.
+    #[must_use]
+    pub fn permission_denied(message: impl Into<String>) -> Self {
+        Self::with_error(CollectorState::PermissionDenied, message)
+    }
+
+    /// Section for successfully running a collector whose payload was invalid.
+    #[must_use]
+    pub fn parse_error(message: impl Into<String>) -> Self {
+        Self::with_error(CollectorState::ParseError, message)
+    }
+
     /// Append a note to an existing section.
     pub fn push_note(&mut self, message: impl Into<String>) {
         self.errors.push(CollectionNote {

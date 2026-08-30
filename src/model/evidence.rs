@@ -4,17 +4,21 @@ use serde::Serialize;
 
 /// Structured evidence attached to findings (architecture §15).
 ///
-/// Variant payloads are finalized together with the Phase 1 rule engine;
-/// phase 0 defines the variant set only.
+/// Variants are added alongside the rule family that consumes them; the
+/// published v0.1.0 report uses the first six, while Phase 5 adds media-stack
+/// evidence and Phase 6 reserves journal excerpts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-#[allow(dead_code)] // constructed by the Phase 1 rule engine
+#[allow(dead_code)] // constructed by the diagnostic rule engine
 pub enum Evidence {
     EnvironmentMismatch,
     ConfigSelection,
     MissingProvider,
     DbusTimeout,
     ServiceState,
+    PipeWireState,
+    WirePlumberState,
+    ScreenCastRoute,
     JournalExcerpt,
 }
 
@@ -28,6 +32,9 @@ impl Evidence {
             Self::MissingProvider => "missing provider",
             Self::DbusTimeout => "dbus timeout",
             Self::ServiceState => "service state",
+            Self::PipeWireState => "pipewire state",
+            Self::WirePlumberState => "wireplumber state",
+            Self::ScreenCastRoute => "screencast route",
             Self::JournalExcerpt => "journal excerpt",
         }
     }

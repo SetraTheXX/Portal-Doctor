@@ -54,6 +54,12 @@ colorize_report() {
                 printf '%s\n' "${GREEN}${line}${RESET}" ;;
             "D-Bus: "*)
                 printf '%s\n' "${YELLOW}${line}${RESET}" ;;
+            "PipeWire: reachable"*|"WirePlumber: reachable"*)
+                printf '%s\n' "${GREEN}${line}${RESET}" ;;
+            "PipeWire: "*|"WirePlumber: "*)
+                printf '%s\n' "${YELLOW}${line}${RESET}" ;;
+            "  video sources: "*)
+                printf '%s\n' "${CYAN}${line}${RESET}" ;;
             "  backend "*": reachable"*)
                 printf '%s\n' "${GREEN}${line}${RESET}" ;;
             "  backend "*)

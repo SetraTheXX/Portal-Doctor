@@ -21,6 +21,7 @@ impl Renderer for TerminalRenderer {
         write_session(&mut out, report);
         write_environment(&mut out, report, verbose);
         write_runtime(&mut out, report, verbose);
+        write_media(&mut out, report);
         out.push('\n');
         write_findings(&mut out, report, verbose);
         out
@@ -253,6 +254,55 @@ fn write_runtime(out: &mut String, report: &Report, verbose: bool) {
                 writeln!(out, "    sub-state: {sub}").expect("writing to a String cannot fail");
             }
         }
+    }
+}
+
+fn write_media(out: &mut String, report: &Report) {
+    if let Some(info) = &report.snapshot.pipewire.value {
+        let version = info.version.as_deref().unwrap_or("unknown version");
+        writeln!(
+            out,
+            "PipeWire: reachable · {version} · {} objects · {} nodes · {} links",
+            info.object_count, info.node_count, info.link_count
+        )
+        .expect("writing to a String cannot fail");
+        let video_source_count = info
+            .nodes
+            .iter()
+            .filter(|node| node.is_video_source)
+            .count();
+        writeln!(
+            out,
+            "  video sources: {video_source_count} · ScreenCast sources: {} · portal clients: {}",
+            info.screen_cast_source_count, info.portal_client_count
+        )
+        .expect("writing to a String cannot fail");
+    } else {
+        let section = &report.snapshot.pipewire;
+        writeln!(out, "PipeWire: {} {}", section.status, first_note(section))
+            .expect("writing to a String cannot fail");
+    }
+
+    if let Some(info) = &report.snapshot.wireplumber.value {
+        let version = info
+            .pipewire_version
+            .as_deref()
+            .unwrap_or("unknown version");
+        writeln!(
+            out,
+            "WirePlumber: reachable · {version} · {} client(s)",
+            info.wireplumber_client_count
+        )
+        .expect("writing to a String cannot fail");
+    } else {
+        let section = &report.snapshot.wireplumber;
+        writeln!(
+            out,
+            "WirePlumber: {} {}",
+            section.status,
+            first_note(section)
+        )
+        .expect("writing to a String cannot fail");
     }
 }
 

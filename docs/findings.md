@@ -1,10 +1,11 @@
-# Finding Catalog (v0.1)
+# Finding Catalog
 
 Every diagnostic rule produces a stable, structured finding (PRD §8): `id`,
 `severity`, `confidence`, `title`, `summary`, `explanation`, `evidence`,
-`impact`, `recommendation[]` and `source_component`. This catalog lists the
-complete v0.1 registry; the rule engine test suite asserts that exactly these
-IDs are registered.
+`impact`, `recommendation[]` and `source_component`. The first 15 IDs are the
+published v0.1.0 catalog. The five media-stack IDs below are implemented on
+`main` as the unreleased Phase 5 work for v0.2.0; the rule-engine test suite
+asserts that the complete current registry is stable and unique.
 
 ## Environment
 
@@ -41,12 +42,38 @@ IDs are registered.
 | `DBUS001` | WARNING | HIGH | No session bus could be reached; runtime verification was skipped. |
 | `DBUS002` | WARNING | HIGH | A configured backend bus name has no owner or fails to activate while the session bus itself is reachable. |
 
+## PipeWire and WirePlumber (unreleased Phase 5)
+
+These checks are passive. They run bounded `pw-dump --no-colors` and
+`wpctl status` commands, retain only normalized portal-relevant facts, and do
+not start a capture session or export the raw media graph.
+
+| ID | Severity | Confidence | Fires when |
+|---|---|---|---|
+| `PW001` | WARNING | HIGH | `pw-dump` is unavailable or the PipeWire endpoint exits without providing a usable state result. |
+| `PW002` | WARNING | HIGH | WirePlumber reachability cannot be verified through the bounded `wpctl status` query. |
+| `PW003` | WARNING | MEDIUM | PipeWire was invoked but the query timed out, hit a permission boundary, or returned payload that could not be parsed safely. |
+
+## ScreenCast correlation (unreleased Phase 5)
+
+| ID | Severity | Confidence | Fires when |
+|---|---|---|---|
+| `SC001` | WARNING | HIGH | The resolved `ScreenCast` route has no provider, or discovered providers do not advertise the `ScreenCast` interface. |
+| `SC002` | WARNING | HIGH | A `ScreenCast` provider is selected, but an attempted PipeWire/WirePlumber collection is not available. |
+
+`SC002` keeps route evidence (`screencast_route`) alongside the separate
+media-stack evidence (`pipewire_state` and/or `wireplumber_state`). A selected
+route alone is never treated as proof that a capture stream can work. A
+completely absent backend descriptor remains the responsibility of `XDP003`,
+and an explicitly disabled route does not trigger `SC001`.
+
 ## Notes
 
 - Findings are deterministic: the same snapshot always yields the same
   findings in the same order (sorted by ID).
 - Every finding carries at least one structured evidence item
   (`environment_mismatch`, `config_selection`, `missing_provider`,
-  `dbus_timeout`, `service_state`, `journal_excerpt`) and at least one
-  recommended next step.
+  `dbus_timeout`, `service_state`, `pipewire_state`, `wireplumber_state`,
+  `screencast_route`, `journal_excerpt`) and at least one recommended next
+  step.
 - `journal_excerpt` evidence is reserved for the Phase 6 journal collector.

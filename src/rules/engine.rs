@@ -25,6 +25,11 @@ fn registered() -> Vec<Box<dyn DiagnosticRule>> {
         Box::new(super::portal::Xdp003),
         Box::new(super::portal::Xdp004),
         Box::new(super::portal::Xdp005),
+        Box::new(super::pipewire::Pw001),
+        Box::new(super::pipewire::Pw002),
+        Box::new(super::pipewire::Pw003),
+        Box::new(super::pipewire::Sc001),
+        Box::new(super::pipewire::Sc002),
         Box::new(super::dbus::Dbus001),
         Box::new(super::dbus::Dbus002),
         Box::new(super::dbus::Xdp001),
@@ -32,9 +37,9 @@ fn registered() -> Vec<Box<dyn DiagnosticRule>> {
     ]
 }
 
-/// Stable IDs of the complete v0.1 rule registry, in deterministic
-/// evaluation order (lexicographic). The finding catalog documentation
-/// (`docs/findings.md`) must list exactly these IDs.
+/// Stable IDs of the current rule registry, in deterministic evaluation order
+/// (lexicographic). The finding catalog documentation (`docs/findings.md`) must
+/// list exactly these IDs.
 // Exercised by the registry tests below; kept public for the docs workflow.
 #[allow(dead_code)]
 pub fn rule_ids() -> Vec<&'static str> {
@@ -57,14 +62,16 @@ pub fn evaluate(snapshot: &Snapshot) -> Vec<Finding> {
 mod tests {
     use super::rule_ids;
 
-    /// Phase 4 gate: the v0.1 registry is exactly the documented catalog,
-    /// with no duplicates and no undocumented rules.
+    /// The registry is exactly the documented catalog, with no duplicates and
+    /// no undocumented rules.
     #[test]
-    fn v01_registry_matches_documented_catalog() {
+    fn registry_matches_documented_catalog() {
         let expected = [
             "CFG001", "CFG002", "CFG003", "CFG004", //
             "DBUS001", "DBUS002", //
             "ENV001", "ENV002", "ENV003", "ENV004", //
+            "PW001", "PW002", "PW003", //
+            "SC001", "SC002", //
             "XDP001", "XDP002", "XDP003", "XDP004", "XDP005",
         ];
         assert_eq!(rule_ids(), expected);
