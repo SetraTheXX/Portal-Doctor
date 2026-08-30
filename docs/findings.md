@@ -2,12 +2,11 @@
 
 Every diagnostic rule produces a stable, structured finding (PRD §8): `id`,
 `severity`, `confidence`, `title`, `summary`, `explanation`, `evidence`,
-`impact`, `recommendation[]` and `source_component`. The first 15 IDs are the
-published v0.1.0 catalog. The five media-stack IDs below are implemented on
-`main` as the unreleased Phase 5 work for v0.2.0; the rule-engine test suite
-asserts that the complete current registry is stable and unique. Phase 6 adds
-optional journal excerpts as supporting evidence; it does not add a
-journal-only diagnosis.
+`impact`, `recommendation[]` and `source_component`. The first 15 IDs were
+published in v0.1.0. The five media-stack IDs were added for v0.2.0; the
+rule-engine test suite asserts that the complete 20-ID registry is stable and
+unique. Bounded journal excerpts are supporting evidence only; they do not
+create a journal-only diagnosis.
 
 ## Environment
 
@@ -44,7 +43,7 @@ journal-only diagnosis.
 | `DBUS001` | WARNING | HIGH | No session bus could be reached; runtime verification was skipped. |
 | `DBUS002` | WARNING | HIGH | A configured backend bus name has no owner or fails to activate while the session bus itself is reachable. |
 
-## PipeWire and WirePlumber (main, unreleased v0.2.0)
+## PipeWire and WirePlumber
 
 These checks are passive. They run bounded `pw-dump --no-colors` and
 `wpctl status` commands, retain only normalized portal-relevant facts, and do
@@ -56,7 +55,7 @@ not start a capture session or export the raw media graph.
 | `PW002` | WARNING | HIGH | WirePlumber reachability cannot be verified through the bounded `wpctl status` query. |
 | `PW003` | WARNING | MEDIUM | PipeWire was invoked but the query timed out, hit a permission boundary, or returned payload that could not be parsed safely. |
 
-## ScreenCast correlation (main, unreleased v0.2.0)
+## ScreenCast correlation
 
 | ID | Severity | Confidence | Fires when |
 |---|---|---|---|
@@ -69,7 +68,7 @@ route alone is never treated as proof that a capture stream can work. A
 completely absent backend descriptor remains the responsibility of `XDP003`,
 and an explicitly disabled route does not trigger `SC001`.
 
-## Optional journal correlation (main, unreleased Phase 6)
+## Optional journal correlation
 
 `portaldoctor --journal` reads only the current user boot's last 30 minutes
 from an allowlist of portal, PipeWire, and WirePlumber units. The collector

@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- Next planned milestone: explicit active portal probes for v0.3.0.
+
+## [0.2.0] — 2026-08-30
+
 - Added bounded, passive PipeWire (`pw-dump`) and WirePlumber (`wpctl status`)
   collection with privacy-safe normalized video topology.
 - Added deterministic Phase 5 findings `PW001`–`PW003` and `SC001`–`SC002`,
@@ -99,5 +103,6 @@ This is the first public PortalDoctor release.
 - KDE, wlroots/Sway, Hyprland and Niri compatibility claims.
 - Automatic fixes and GUI.
 
-[Unreleased]: https://github.com/SetraTheXX/Portal-Doctor/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/SetraTheXX/Portal-Doctor/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/SetraTheXX/Portal-Doctor/releases/tag/v0.2.0
 [0.1.0]: https://github.com/SetraTheXX/Portal-Doctor/releases/tag/v0.1.0

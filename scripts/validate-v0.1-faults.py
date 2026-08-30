@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end v0.1 fault-injection acceptance validation.
+"""End-to-end v0.1-compatible fault-injection acceptance validation.
 
 The harness changes only child-process environments and temporary files. It
 never edits system XDG configuration, stops services, or writes repository
@@ -294,9 +294,9 @@ def main() -> int:
         [binary], env=base, text=True, capture_output=True, timeout=20, check=False
     )
     assert text.returncode == 0
-    assert "PortalDoctor 0.1.0" in text.stdout
     assert "Findings:" in text.stdout
     value, _ = run_json(binary, base)
+    assert f"PortalDoctor {value['portaldoctor_version']}" in text.stdout
     ids = finding_ids(value)
     if ids:
         if host_has_target_session:

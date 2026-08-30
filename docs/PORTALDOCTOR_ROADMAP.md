@@ -446,15 +446,16 @@ PortalDoctor can explain basic ScreenCast stack readiness without starting an ac
 
 ## Implementation checkpoint — 2026-08-30
 
-The Phase 5 passive collector and correlation rules are implemented on `main`:
+The Phase 5 passive collector and correlation rules shipped in v0.2.0:
 
 - bounded `pw-dump --no-colors` and `wpctl status` collection,
 - normalized, privacy-safe PipeWire/WirePlumber snapshot sections,
 - `PW001`–`PW003` and `SC001`–`SC002`,
 - deterministic parser/rule/renderer tests and live GNOME/Wayland validation.
 
-Phase 5 is complete on `main`; the v0.2.0 release remains gated on the Phase 6
-journal and Phase 7 report acceptance, privacy review and compatibility checks.
+Phase 5 is complete and included in the v0.2.0 release. Its acceptance gate
+was closed together with the Phase 6 journal, Phase 7 report, privacy and
+compatibility checks.
 
 ---
 
@@ -486,7 +487,7 @@ A finding can show a concise supporting log excerpt without leaking unrelated sy
 
 ## Implementation checkpoint — 2026-08-30
 
-Phase 6 is implemented on `main`:
+Phase 6 shipped in v0.2.0:
 
 - `--journal` opt-in collection for the current user boot and last 30 minutes,
 - allowlisted portal, PipeWire, WirePlumber and dynamic portal backend units,
@@ -496,8 +497,8 @@ Phase 6 is implemented on `main`:
 - fixtures for empty, unavailable, timeout, malformed, noisy and representative
   journal input.
 
-Phase 6 is complete on `main`; the v0.2.0 release remains gated on the Phase 7
-report acceptance checks and the final release audit.
+Phase 6 is complete and included in the v0.2.0 release. Journal evidence
+remains opt-in and bounded by design.
 
 ---
 
@@ -533,7 +534,7 @@ Generated report can be attached to a public GitHub issue without exposing obvio
 
 ## Implementation checkpoint — 2026-08-30
 
-Phase 7 is implemented on `main`:
+Phase 7 shipped in v0.2.0:
 
 - `portaldoctor report` emits a redacted terminal report by default,
 - `--format json`/`--json` emits a versioned shareable envelope,
@@ -545,9 +546,15 @@ Phase 7 is implemented on `main`:
 - raw journal and raw PipeWire dumps remain excluded and are marked as such,
 - redaction, format and Markdown golden-fixture tests are checked in.
 
-The v0.2.0 release remains gated on Phase 7 acceptance/privacy review and the
-final compatibility and release audit. The next implementation phase is
-Phase 8 active portal probes.
+The v0.2.0 acceptance, privacy and compatibility gates are complete. The next
+implementation phase is Phase 8 active portal probes.
+
+## Release checkpoint — 2026-08-30
+
+v0.2.0 is published to crates.io and GitHub Releases. The release includes
+bounded PipeWire/WirePlumber evidence, opt-in journal correlation and
+privacy-aware terminal/JSON/Markdown reports. Issue #2 is complete; work now
+continues with the explicitly invoked active probes in Phase 8 / v0.3.0.
 
 ## Release
 
@@ -824,8 +831,8 @@ Validated matrix includes at least:
 # Recommended Immediate Implementation Slice (historical)
 
 This section records the original project bootstrap sequence. Phases 0–7 are
-now complete on `main`; the next implementation slice is Phase 8 active portal
-probes.
+now complete and shipped in v0.2.0; the next implementation slice is Phase 8
+active portal probes.
 
 The first Codex implementation goal should be:
 

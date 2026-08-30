@@ -1,8 +1,8 @@
-# Compatibility & Known Limitations (v0.1)
+# Compatibility & Known Limitations (v0.2)
 
 ## Supported environment
 
-PortalDoctor v0.1 is developed and validated against exactly one target:
+PortalDoctor v0.2 is developed and validated against exactly one target:
 
 | Component | Supported |
 |---|---|
@@ -15,21 +15,11 @@ PortalDoctor v0.1 is developed and validated against exactly one target:
 
 Other distributions, desktops and sessions may work — the resolver follows
 upstream `xdg-desktop-portal` semantics rather than hard-coding GNOME — but
-they are untested in v0.1 and no support is claimed.
+they are untested in v0.2 and no support is claimed.
 
-## What v0.1 does NOT cover
+## What v0.2 does NOT cover
 
-- **Published v0.1.0 media contract** — the crates.io package reports
-  ScreenCast routing from configuration and D-Bus only. The Phase 5
-  PipeWire/WirePlumber collector is implemented on `main` but is not part of
-  the published v0.1.0 artifact.
-- **Journal evidence in the published artifact** — v0.1.0 does not include
-  journal correlation. The unreleased `main` build has an opt-in
-  `--journal` collector, which depends on a readable systemd user journal.
-- **Shareable reports in the published artifact** — the explicit `report`
-  command and its privacy-aware terminal/JSON/Markdown envelope are currently
-  implemented on `main` and are not part of the published v0.1.0 package.
-- **Active probes** — v0.1 never calls portal interfaces, so end-to-end
+- **Active probes** — v0.2 never calls portal interfaces, so end-to-end
   behavior of FileChooser/Screenshot/ScreenCast dialogs is not exercised.
 - **KDE / wlroots / Hyprland / Niri** — no support claims; route resolution
   may work but is unvalidated.
@@ -46,13 +36,17 @@ they are untested in v0.1 and no support is claimed.
 3. `UseIn` matching is ASCII case-insensitive. Upstream comparisons are
    historically case-sensitive; practical desktop/descriptor pairs differ in
    case, so strict matching would misreport common setups.
-4. The unreleased Phase 5 collector caps each `pw-dump`/`wpctl` stream at
-   16 MiB and treats overflow as unavailable. Normal desktop graphs are much
-   smaller; no raw graph is retained in the snapshot.
-5. The unreleased Phase 6 journal collector is available only for sessions
+4. The v0.2 collector caps each `pw-dump`/`wpctl` stream at 16 MiB and treats
+   overflow as unavailable. Normal desktop graphs are much smaller; no raw
+   graph is retained in the snapshot.
+5. The v0.2 journal collector is available only for sessions
    where `journalctl --user` can read a current-boot user journal. Missing or
    restricted journals are reported as a section status; they do not make the
    normal passive check fail. Journal excerpts are limited and sanitized.
+6. Shareable reports intentionally exclude raw journal and PipeWire streams.
+   They expose normalized, bounded evidence and can suppress the current
+   hostname, but local paths and allowlisted session values should still be
+   reviewed before public attachment.
 
 ## Reporting gaps
 

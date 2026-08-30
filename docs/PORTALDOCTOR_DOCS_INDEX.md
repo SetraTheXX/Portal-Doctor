@@ -2,13 +2,14 @@
 
 **Baseline date:** 2026-08-30
 
-This folder contains the initial project-definition package for PortalDoctor.
+This folder contains the project-definition and release documentation for
+PortalDoctor.
 
 ## Public release documents
 
 ### `findings.md`
 
-The v0.1 finding catalog: IDs, severity, confidence and trigger conditions.
+The v0.2 finding catalog: IDs, severity, confidence and trigger conditions.
 
 ### `json-schema.md`
 
@@ -21,6 +22,11 @@ The allowlist, read-only guarantees and report-sharing guidance.
 ### `compatibility.md`
 
 The validated platform target and known limitations.
+
+### `release-notes-v0.2.0.md`
+
+Release notes for the passive ScreenCast-readiness and shareable-report
+release.
 
 ### `release-notes-v0.1.0.md`
 
@@ -96,16 +102,16 @@ Initial target: Ubuntu 26.04 + GNOME + Wayland + systemd user session
 Core design:    collectors -> snapshot -> resolver -> rules -> findings -> report
 D-Bus:          zbus
 Active probes:  ASHPD later
-PipeWire:       pw-dump JSON implemented on main; not in published v0.1
-Journal:        bounded user-journal evidence implemented on main; opt-in
-Reports:        terminal/JSON/Markdown shareable reports implemented on main
-v0.1:           no automatic fixes, no GUI, no broad desktop support claim
+PipeWire:       bounded normalized `pw-dump` evidence included in v0.2
+Journal:        bounded user-journal evidence included in v0.2; opt-in
+Reports:        terminal/JSON/Markdown shareable reports included in v0.2
+v0.2:           no automatic fixes, no GUI, no broad desktop support claim
 ```
 
 ## Current status
 
 Phase 4 is complete and v0.1.0 is published on both GitHub Releases and
-crates.io. Phase 5 (PipeWire/WirePlumber), Phase 6 (opt-in bounded journal
-evidence) and Phase 7 (shareable reports/privacy) are implemented on `main`;
-the v0.2.0 release gate remains open for acceptance, privacy and compatibility
-validation.
+crates.io. Phases 5–7 (PipeWire/WirePlumber, opt-in bounded journal evidence
+and shareable reports/privacy) are shipped in v0.2.0. The validated support
+target remains Ubuntu 26.04 + GNOME + Wayland + systemd; active probes and
+wider desktop validation are the next roadmap steps.
