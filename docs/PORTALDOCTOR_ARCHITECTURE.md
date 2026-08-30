@@ -304,7 +304,7 @@ struct Snapshot {
     services: Section<ServiceInfo>,
     pipewire: Section<PipeWireInfo>,
     wireplumber: Section<WirePlumberInfo>,
-    journal: Section<JournalEvidence>,
+    journal: Section<JournalInfo>,
     probes: Section<ProbeResults>,
 }
 ```
@@ -582,31 +582,38 @@ The product is not an audio diagnostics suite; keep only portal-relevant facts.
 
 ## 14. Journal Collector
 
-Journal collection is deferred until v0.2.
+Phase 6 is implemented on `main` as an explicit opt-in collector. The default
+diagnostic run does not invoke `journalctl`.
 
 ### Requirements
 
-- explicit unit allowlist,
-- bounded time window or entry count,
-- current boot by default,
-- structured JSON output when using `journalctl`,
-- sanitization before sharing,
-- raw message preservation only where needed internally.
+- explicit allowlist for `xdg-desktop-portal*.service`, `pipewire*.service`,
+  and `wireplumber.service`,
+- current boot and a 30-minute window,
+- at most 80 records and a 512 KiB output boundary,
+- structured JSON output from `journalctl --user`,
+- stable error-pattern classification only after the unit/priority checks,
+- sanitization before a message enters the normalized snapshot.
 
 Relevant fields can include:
 
 ```text
-MESSAGE
+_SYSTEMD_USER_UNIT / _SYSTEMD_UNIT
 PRIORITY
-_SYSTEMD_USER_UNIT
-_PID
-_BOOT_ID
-__REALTIME_TIMESTAMP
+MESSAGE
 ```
+
+The collector discards all other journal fields, including host, process and
+boot identifiers. It stores only the normalized unit, priority, classification
+and a short sanitized message. Missing fields, unrelated noise, malformed
+records and unknown patterns remain `no_relevant_evidence` or
+`insufficient_evidence`; they are not turned into guesses.
 
 ### Important separation
 
-Journal text can provide evidence but should not become the sole source of truth for configuration/routing.
+Journal text can provide supporting evidence but should not become the sole
+source of truth for configuration, routing, or PipeWire state. Matching
+excerpts attach `Evidence::JournalExcerpt` to an existing media finding.
 
 ---
 
@@ -728,7 +735,9 @@ Use two representations:
 
 ### Design rule
 
-A new collector does not automatically become reportable. Report exposure should be reviewed separately.
+A new collector does not automatically become reportable. Phase 6 exposes only
+the reviewed normalized journal fields; report-level redaction remains a
+separate Phase 7 responsibility.
 
 ---
 

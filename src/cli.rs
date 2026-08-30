@@ -13,6 +13,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub verbose: bool,
 
+    /// Collect bounded current-boot user journal evidence (opt-in).
+    #[arg(long, global = true)]
+    pub journal: bool,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -81,5 +85,12 @@ mod tests {
             panic!("expected check command");
         };
         assert_eq!(args.domain, Some(CheckDomain::PipeWire));
+    }
+
+    #[test]
+    fn parses_opt_in_journal_flag() {
+        let cli = Cli::parse_from(["portaldoctor", "--journal", "check"]);
+        assert!(cli.journal);
+        assert!(matches!(cli.command, Some(Command::Check(_))));
     }
 }

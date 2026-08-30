@@ -5,8 +5,8 @@ use serde::Serialize;
 /// Structured evidence attached to findings (architecture §15).
 ///
 /// Variants are added alongside the rule family that consumes them; the
-/// published v0.1.0 report uses the first six, while Phase 5 adds media-stack
-/// evidence and Phase 6 reserves journal excerpts.
+/// published v0.1.0 report uses the first six, while later phases add
+/// media-stack and opt-in journal evidence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(dead_code)] // constructed by the diagnostic rule engine

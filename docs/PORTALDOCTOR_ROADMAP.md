@@ -484,6 +484,21 @@ Attach bounded runtime evidence to diagnoses.
 
 A finding can show a concise supporting log excerpt without leaking unrelated system history.
 
+## Implementation checkpoint — 2026-08-30
+
+Phase 6 is implemented on `main`:
+
+- `--journal` opt-in collection for the current user boot and last 30 minutes,
+- allowlisted portal, PipeWire, WirePlumber and dynamic portal backend units,
+- 80-record, 512 KiB and normal command-timeout boundaries,
+- structured-field parsing, stable classification and privacy sanitization,
+- `journal_excerpt` correlation on existing `PW`/`SC` findings,
+- fixtures for empty, unavailable, timeout, malformed, noisy and representative
+  journal input.
+
+The v0.2.0 release remains gated on Phase 7 shareable-report/redaction work,
+its acceptance checks, and the final release audit.
+
 ---
 
 # Phase 7 — Reporting & Privacy
@@ -506,7 +521,6 @@ portaldoctor report --format markdown
 - `$HOME` normalization,
 - optional hostname suppression,
 - environment allowlist enforcement,
-- journal sanitization,
 - report schema/version,
 - report fixtures.
 

@@ -85,7 +85,12 @@ explanations. Use JSON when the report needs to be consumed by another tool:
 ```sh
 portaldoctor check environment --verbose
 portaldoctor --json > portaldoctor.json
+portaldoctor --journal --verbose
 ```
+
+`--journal` is opt-in. It adds a bounded current-boot/user-session journal
+check for portal, PipeWire, and WirePlumber units; `--verbose` displays only
+the short, sanitized excerpts that match stable error patterns.
 
 ## What it checks
 
@@ -98,6 +103,8 @@ portaldoctor --json > portaldoctor.json
 - D-Bus name ownership for the portal frontend and selected backends,
 - basic systemd user-unit state for the discovered portal services,
 - bounded PipeWire/WirePlumber health and privacy-safe video topology,
+- optional bounded journal evidence for portal, PipeWire, and WirePlumber
+  failures,
 - 20 deterministic findings on `main` across the `ENV`, `XDP`, `CFG`, `DBUS`,
   `PW`, and `SC` families (the published v0.1.0 package contains the first
   15).
@@ -136,7 +143,8 @@ ID, a concise explanation, and the first actionable `next:` recommendation.
 - **Bounded:** D-Bus and subprocess work has time limits so a broken dependency
   cannot hang a diagnostic run.
 - **Privacy-aware:** only a small allowlist of diagnostic environment variables
-  is collected; arbitrary environment dumps are not part of the report.
+  is collected; arbitrary environment dumps and unrelated journal records are
+  not part of the report. Journal excerpts are sanitized before exposure.
 - **Automation-friendly:** terminal output is concise, while JSON output is
   versioned as snapshot schema v1.
 
@@ -158,7 +166,7 @@ v0.1 until they have a dedicated validation matrix.
 ### Outside the published v0.1.0 boundary
 
 - the unreleased Phase 5 PipeWire and WirePlumber media-graph health checks,
-- journal evidence correlation,
+- the unreleased Phase 6 opt-in journal evidence collector and correlation,
 - active portal method/dialog probes,
 - validated KDE, wlroots, Sway, Hyprland, or Niri behavior,
 - automatic fixes and GUI workflows.
@@ -229,10 +237,10 @@ for the fixture scenarios.
 
 The next expansion is deliberately layered:
 
-1. add bounded journal evidence without making logs a mandatory dependency,
+1. add privacy-aware shareable Markdown reports and stronger redaction,
 2. introduce safe active probes for selected portal interfaces,
 3. expand validation across KDE and wlroots-based sessions,
-4. add shareable Markdown reports and stronger redaction guarantees.
+4. harden the compatibility matrix and release artifacts.
 
 The full implementation roadmap lives in
 [docs/PORTALDOCTOR_ROADMAP.md](docs/PORTALDOCTOR_ROADMAP.md).

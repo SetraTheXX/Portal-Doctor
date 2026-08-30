@@ -96,11 +96,13 @@ Initial target: Ubuntu 26.04 + GNOME + Wayland + systemd user session
 Core design:    collectors -> snapshot -> resolver -> rules -> findings -> report
 D-Bus:          zbus
 Active probes:  ASHPD later
-PipeWire:       pw-dump JSON planned for Phase 5; not in v0.1
+PipeWire:       pw-dump JSON implemented on main; not in published v0.1
+Journal:        bounded user-journal evidence implemented on main; opt-in
 v0.1:           no automatic fixes, no GUI, no broad desktop support claim
 ```
 
 ## Current status
 
 Phase 4 is complete and v0.1.0 is published on both GitHub Releases and
-crates.io. Phase 5 PipeWire/WirePlumber work remains deferred.
+crates.io. Phase 5 (PipeWire/WirePlumber) and Phase 6 (opt-in bounded journal
+evidence) are implemented on `main`; Phase 7 shareable-report work remains.

@@ -51,6 +51,9 @@ pub trait Renderer {
 #[cfg(test)]
 mod tests {
     use super::{JsonRenderer, Renderer, Report, TerminalRenderer};
+    use crate::model::journal::{
+        JournalClassification, JournalEntry, JournalInfo, JournalMatchState,
+    };
     use crate::model::pipewire::{PipeWireInfo, WirePlumberInfo};
     use crate::model::section::Section;
     use crate::model::snapshot::Snapshot;
@@ -105,6 +108,33 @@ mod tests {
         let text = TerminalRenderer.render(&report, false);
         assert!(text.contains("PipeWire: reachable · 1.6.2 · 81 objects · 10 nodes · 3 links"));
         assert!(text.contains("WirePlumber: reachable · 1.6.2 · 2 client(s)"));
+    }
+
+    #[test]
+    fn terminal_renderer_reports_sanitized_journal_excerpts_only_in_verbose_mode() {
+        let mut snapshot = empty_snapshot();
+        snapshot.journal = Section::available(JournalInfo {
+            model_version: 1,
+            window_minutes: 30,
+            max_entries: 80,
+            scanned_entry_count: 1,
+            ignored_entry_count: 0,
+            match_state: JournalMatchState::Matched,
+            entries: vec![JournalEntry {
+                unit: "pipewire.service".to_owned(),
+                priority: 3,
+                classification: JournalClassification::PipeWire,
+                message: "PipeWire failed for <path> user=<redacted>".to_owned(),
+            }],
+        });
+        let report = Report::new(snapshot, Vec::new(), "0.1.0");
+        let terse = TerminalRenderer.render(&report, false);
+        assert!(terse.contains("Journal: current boot · 30 min · 1 relevant entry · matched"));
+        assert!(terse.contains("use --verbose for sanitized journal excerpts"));
+        let verbose = TerminalRenderer.render(&report, true);
+        assert!(verbose.contains("PipeWire failure"));
+        assert!(verbose.contains("user=<redacted>"));
+        assert!(!verbose.contains("/home/tuncay"));
     }
 
     #[test]

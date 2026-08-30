@@ -28,13 +28,18 @@ pub fn run(cli: &Cli) -> Result<(), Error> {
         .unwrap_or(crate::cli::Command::Check(CheckArgs::default()));
     tracing::info!(?command, "starting portaldoctor");
     match command {
-        crate::cli::Command::Check(args) => run_check(&args, cli.json, cli.verbose),
-        crate::cli::Command::Portal(args) => run_portal(&args, cli.json),
+        crate::cli::Command::Check(args) => run_check(&args, cli.json, cli.verbose, cli.journal),
+        crate::cli::Command::Portal(args) => run_portal(&args, cli.json, cli.journal),
     }
 }
 
-fn run_check(args: &CheckArgs, json: bool, verbose: bool) -> Result<(), Error> {
-    let collected = collect_snapshot();
+fn run_check(
+    args: &CheckArgs,
+    json: bool,
+    verbose: bool,
+    include_journal: bool,
+) -> Result<(), Error> {
+    let collected = collect_snapshot(include_journal);
     let findings = rules::engine::evaluate(&collected.snapshot);
     let findings = match args.domain {
         None => findings,
@@ -46,8 +51,8 @@ fn run_check(args: &CheckArgs, json: bool, verbose: bool) -> Result<(), Error> {
     write_report(&report, json, verbose)
 }
 
-fn run_portal(args: &PortalArgs, json: bool) -> Result<(), Error> {
-    let collected = collect_snapshot();
+fn run_portal(args: &PortalArgs, json: bool, include_journal: bool) -> Result<(), Error> {
+    let collected = collect_snapshot(include_journal);
     let findings = rules::engine::evaluate(&collected.snapshot);
     let findings = filter_findings(findings, is_portal_finding);
     let report = Report::new(collected.snapshot, findings, env!("CARGO_PKG_VERSION"));
@@ -72,7 +77,7 @@ struct Collected {
     snapshot: Snapshot,
 }
 
-fn collect_snapshot() -> Collected {
+fn collect_snapshot(include_journal: bool) -> Collected {
     let system = collectors::os_release::collect();
     let process_env = collectors::environment::collect_process_environment();
     let session = Section::available(collectors::environment::session_info(&process_env));
@@ -133,6 +138,11 @@ fn collect_snapshot() -> Collected {
     unit_names.dedup();
     let services = collectors::systemd_user::collect(&unit_names);
     let (pipewire, wireplumber) = collectors::pipewire::collect();
+    let journal = if include_journal {
+        collectors::journal::collect(&unit_names)
+    } else {
+        Section::unsupported("not requested")
+    };
 
     let mut snapshot = Snapshot::new(unix_epoch_ms());
     snapshot.system = system;
@@ -145,6 +155,7 @@ fn collect_snapshot() -> Collected {
     snapshot.services = services;
     snapshot.pipewire = pipewire;
     snapshot.wireplumber = wireplumber;
+    snapshot.journal = journal;
 
     Collected { snapshot }
 }

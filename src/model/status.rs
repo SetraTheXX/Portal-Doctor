@@ -8,7 +8,7 @@ use serde::Serialize;
 /// dependency is unavailable, blocked or returns data that cannot be parsed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-#[allow(dead_code)] // constructed by Phase 1 collectors
+#[allow(dead_code)] // constructed by collectors
 pub enum CollectorState {
     Available,
     Unavailable,

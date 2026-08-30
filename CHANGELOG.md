@@ -13,6 +13,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keeping portal routing evidence separate from media-stack evidence.
 - Added snapshot schema documentation for the new `pipewire` and `wireplumber`
   sections; the top-level schema remains v1 because the fields are additive.
+- Added opt-in bounded current-boot/user-session journal evidence for
+  allowlisted portal, PipeWire, and WirePlumber units.
+- Added structured journal parsing, stable error classification, message
+  sanitization, and `journal_excerpt` correlation on existing media findings.
+- Added fixture coverage for empty, unavailable, timed-out, noisy, malformed,
+  and representative journal input.
 - Reworked the README into a product-focused quick-start and reference guide.
 - Re-recorded the Terminalizer demo with a larger canvas, slower pacing,
   readable color accents, and no renderer title bar.
@@ -80,9 +86,9 @@ This is the first public PortalDoctor release.
 - Public-facing README and v0.1.0 release notes.
 - Validation on Ubuntu 26.04 / GNOME / Wayland / systemd user session.
 
-## Remaining after Phase 5
+## Remaining after Phase 6
 
-- Journal evidence engine.
+- Shareable Markdown reports and report-level redaction.
 - Active portal probes.
 - KDE, wlroots/Sway, Hyprland and Niri compatibility claims.
 - Automatic fixes and GUI.

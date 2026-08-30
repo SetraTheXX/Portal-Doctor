@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use crate::model::dbus::DbusInfo;
 use crate::model::environment::{EnvironmentInfo, SessionInfo, SystemInfo};
+use crate::model::journal::JournalInfo;
 use crate::model::pipewire::{PipeWireInfo, WirePlumberInfo};
 use crate::model::portal::{PortalBackend, PortalConfigInfo, PortalRoute};
 use crate::model::section::Section;
@@ -38,6 +39,8 @@ pub struct Snapshot {
     pub pipewire: Section<PipeWireInfo>,
     /// Normalized `WirePlumber` reachability facts.
     pub wireplumber: Section<WirePlumberInfo>,
+    /// Optional sanitized current-boot/user-session journal evidence.
+    pub journal: Section<JournalInfo>,
 }
 
 impl Snapshot {
@@ -58,6 +61,7 @@ impl Snapshot {
             services: Section::unsupported("not collected"),
             pipewire: Section::unsupported("not collected"),
             wireplumber: Section::unsupported("not collected"),
+            journal: Section::unsupported("not collected"),
         }
     }
 }
@@ -97,5 +101,6 @@ mod tests {
         assert_eq!(value["session"]["status"], json!("unsupported"));
         assert_eq!(value["dbus"]["status"], json!("available"));
         assert_eq!(value["services"]["status"], json!("available"));
+        assert_eq!(value["journal"]["status"], json!("unsupported"));
     }
 }

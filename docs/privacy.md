@@ -31,6 +31,9 @@ variable and never reported on its own.
   services; no dialogs are triggered.
 - systemd user manager (read-only): `systemctl --user show-environment` and
   `systemctl --user show <unit>` for portal-relevant units.
+- `journalctl --user` only when `--journal` is supplied: current boot, the
+  last 30 minutes, and the allowlisted portal/PipeWire/WirePlumber units. Only
+  structured unit, priority, and message fields are inspected.
 - Files: `/etc/os-release`, effective `xdg-desktop-portal` config and
   `.portal` descriptor files.
 
@@ -41,14 +44,18 @@ by default.
 
 The allowlisted variables themselves can contain user identifiers (for
 example `/run/user/1000` or flatpak export paths under the home directory).
-These are part of what makes reports useful; redaction of such values in
-shareable Markdown reports is planned for the v0.2 privacy work
-(PRD §10). JSON output is intended to be reviewed before sharing.
+These are part of what makes reports useful; report-level redaction of these
+values in shareable Markdown output is planned for the v0.2 privacy work
+(PRD §10). JSON output is intended to be reviewed before sharing. Opt-in
+journal messages are sanitized before entering the snapshot: absolute paths,
+`user=`/`host=` labels, email-like identities, unrelated records, and overly
+long messages are not retained.
 
 ## Guarantees
 
 - Read-only by default; no system modification, no root requirement.
-- All external interactions are bounded by timeouts (2–3 s), so a wedged
-  dependency cannot hang the tool.
+- All external interactions are bounded by timeouts (2–3 s) and output limits,
+  so a wedged dependency cannot hang the tool.
 - Reports contain no secrets by construction: only allowlisted variables and
-  their values are serialized, and raw process dumps are never emitted.
+  their values are serialized, raw process dumps are never emitted, and raw
+  journal output is never serialized.
