@@ -444,7 +444,7 @@ Add/refine:
 
 PortalDoctor can explain basic ScreenCast stack readiness without starting an actual user capture session.
 
-## Implementation checkpoint — 2026-08-30
+## Implementation checkpoint — 2026-08-31
 
 The Phase 5 passive collector and correlation rules shipped in v0.2.0:
 
@@ -548,17 +548,18 @@ Phase 7 shipped in v0.2.0:
 
 The v0.2.0 acceptance, privacy and compatibility gates are complete. The
 v0.2.1 stabilization gate adds the documented exit-code contract, locked
-package/install smoke coverage and the public demo/release alignment. After
-that patch release, the next implementation phase is Phase 8 active portal
-probes.
+package/install smoke coverage and the public demo/release alignment. This
+patch release is now published; the next implementation phase is Phase 8
+active portal probes.
 
-## Release checkpoint — 2026-08-30
+## Release checkpoint — 2026-08-31
 
-v0.2.0 is published to crates.io and GitHub Releases. The release includes
-bounded PipeWire/WirePlumber evidence, opt-in journal correlation and
-privacy-aware terminal/JSON/Markdown reports. Issue #2 is complete; v0.2.1
-stabilization covers exit codes, locked package/install smoke and release
-alignment before work continues with the explicitly invoked active probes in
+v0.2.1 is published to [crates.io](https://crates.io/crates/portaldoctor) and
+[GitHub Releases](https://github.com/SetraTheXX/Portal-Doctor/releases/tag/v0.2.1).
+It preserves the v0.2.0 passive scope and adds the exit-code contract, locked
+package/install smoke, a readable four-scene demo, and Linux x86_64 release
+binary/checksum assets. Issue #2 and the v0.2.0 milestone are complete; the
+next implementation gate is the explicitly invoked active-probe work in
 Phase 8 / v0.3.0.
 
 ## Release

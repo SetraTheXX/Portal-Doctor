@@ -117,7 +117,7 @@ v0.2:           no automatic fixes, no GUI, no broad desktop support claim
 
 Phase 4 is complete and v0.1.0 is published on both GitHub Releases and
 crates.io. Phases 5–7 (PipeWire/WirePlumber, opt-in bounded journal evidence
-and shareable reports/privacy) are shipped in v0.2.0; v0.2.1 adds the
-stabilization and release gates. The validated support target remains Ubuntu
-26.04 + GNOME + Wayland + systemd; active probes and wider desktop validation
-are the next roadmap steps.
+and shareable reports/privacy) shipped in v0.2.0; v0.2.1 is now published with
+the stabilization and release gates. The validated support target remains
+Ubuntu 26.04 + GNOME + Wayland + systemd; active probes and wider desktop
+validation are the next roadmap steps.
