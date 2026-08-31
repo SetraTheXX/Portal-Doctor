@@ -9,6 +9,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Next planned milestone: explicit active portal probes for v0.3.0.
 
+## [0.2.1] — 2026-08-31
+
+- Finalized and tested the diagnostic exit-code contract: clean or warning-only
+  runs return `0`, severe findings return `1`, unavailable runtime context
+  returns `3`, and incomplete output/internal failures return `4`.
+- Added locked package and clean-root install smoke gates to CI; headless CI
+  accepts the documented runtime-context exit `3` while still validating JSON
+  and Markdown output.
+- Refreshed the slow, readable terminal demo to show the v0.2.1 health,
+  routing, shareable-report and controlled-fault flow.
+
 ## [0.2.0] — 2026-08-30
 
 - Added bounded, passive PipeWire (`pw-dump`) and WirePlumber (`wpctl status`)
@@ -103,6 +114,7 @@ This is the first public PortalDoctor release.
 - KDE, wlroots/Sway, Hyprland and Niri compatibility claims.
 - Automatic fixes and GUI.
 
-[Unreleased]: https://github.com/SetraTheXX/Portal-Doctor/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/SetraTheXX/Portal-Doctor/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/SetraTheXX/Portal-Doctor/releases/tag/v0.2.1
 [0.2.0]: https://github.com/SetraTheXX/Portal-Doctor/releases/tag/v0.2.0
 [0.1.0]: https://github.com/SetraTheXX/Portal-Doctor/releases/tag/v0.1.0

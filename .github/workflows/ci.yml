@@ -19,7 +19,45 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: cargo test --all-features
-      - run: cargo build --release
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --all-features
+      - run: cargo build --locked --release
+      - run: cargo package --locked
+      - name: Install binary smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_root="$RUNNER_TEMP/portaldoctor"
+          cargo install --path . --locked --root "$install_root"
+          binary="$install_root/bin/portaldoctor"
+          expected_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "portaldoctor") | .version')"
+          test "$("$binary" --version)" = "portaldoctor $expected_version"
+
+          set +e
+          "$binary" --definitely-invalid > /dev/null 2>&1
+          usage_status=$?
+          set -e
+          test "$usage_status" -eq 2
+
+          json_path="$RUNNER_TEMP/portaldoctor.json"
+          set +e
+          "$binary" --json > "$json_path"
+          json_status=$?
+          set -e
+          case "$json_status" in
+            0|3) ;;
+            *) echo "unexpected JSON smoke exit: $json_status" >&2; exit 1 ;;
+          esac
+          jq -e '(.schema_version == 1) and (.portaldoctor_version == $version) and (.findings | type == "array")' --arg version "$expected_version" "$json_path" > /dev/null
+
+          report_path="$RUNNER_TEMP/portaldoctor-report.md"
+          set +e
+          "$binary" report --format markdown --suppress-hostname > "$report_path"
+          report_status=$?
+          set -e
+          case "$report_status" in
+            0|3) ;;
+            *) echo "unexpected Markdown smoke exit: $report_status" >&2; exit 1 ;;
+          esac
+          grep -q '^# PortalDoctor diagnostic report$' "$report_path"
       - run: PORTALDOCTOR_BIN=target/release/portaldoctor python3 scripts/validate-v0.1-faults.py

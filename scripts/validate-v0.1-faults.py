@@ -78,7 +78,12 @@ def fixture_environment(env: dict[str, str]) -> dict[str, str]:
     return env
 
 
-def run_json(binary: str, env: dict[str, str], *args: str) -> tuple[dict, str]:
+def run_json(
+    binary: str,
+    env: dict[str, str],
+    *args: str,
+    expected_exit: int = 0,
+) -> tuple[dict, str]:
     result = subprocess.run(
         [binary, *args, "--json"],
         env=env,
@@ -87,9 +92,10 @@ def run_json(binary: str, env: dict[str, str], *args: str) -> tuple[dict, str]:
         timeout=20,
         check=False,
     )
-    if result.returncode != 0:
+    if result.returncode != expected_exit:
         raise AssertionError(
-            f"komut başarısız ({result.returncode}): {result.stderr.strip()}"
+            f"beklenen exit {expected_exit}, alınan {result.returncode}: "
+            f"{result.stderr.strip()}"
         )
     try:
         value = json.loads(result.stdout)
@@ -149,6 +155,7 @@ def run_repeated(
     configure: Callable[[Path, dict[str, str]], None] | None = None,
     args: tuple[str, ...] = ("check",),
     extra_check: Callable[[dict, Path], None] | None = None,
+    expected_exit: int = 0,
 ) -> None:
     with tempfile.TemporaryDirectory(prefix=f"portaldoctor-{name}-") as temp:
         root = Path(temp)
@@ -158,7 +165,9 @@ def run_repeated(
         values: list[dict] = []
         stderr_values: list[str] = []
         for _ in range(3):
-            value, stderr = run_json(binary, scenario_env, *args)
+            value, stderr = run_json(
+                binary, scenario_env, *args, expected_exit=expected_exit
+            )
             values.append(value)
             stderr_values.append(stderr)
         ids = finding_ids(values[0])
@@ -174,7 +183,7 @@ def run_repeated(
                 timeout=20,
                 check=False,
             )
-            assert text_result.returncode == 0, text_result.stderr
+            assert text_result.returncode == expected_exit, text_result.stderr
             next_line = f"next: {expected_finding['recommendation'][0]}"
             assert next_line in text_result.stdout, (
                 f"{name}: terse output did not expose the expected next recommendation"
@@ -287,15 +296,32 @@ def main() -> int:
     base = fixture_environment(host_environment.copy())
     print(f"binary: {binary}")
 
+    # Parser paths are independent of the host session and must stay stable.
+    help_result = subprocess.run(
+        [binary, "--help"], env=base, text=True, capture_output=True, timeout=20, check=False
+    )
+    assert help_result.returncode == 0, help_result.stderr
+    invalid_cli = subprocess.run(
+        [binary, "--definitely-invalid"],
+        env=base,
+        text=True,
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    assert invalid_cli.returncode == 2, invalid_cli.stderr
+    print("PASS parser-exit-codes: help=0 invalid-cli=2")
+
     # 1. Baseline: text and JSON are both checked. A non-graphical CI runner
     # cannot provide a genuinely healthy portal stack, so only enforce the
     # empty finding set on a host that already exposes the target session.
     text = subprocess.run(
         [binary], env=base, text=True, capture_output=True, timeout=20, check=False
     )
-    assert text.returncode == 0
+    assert text.returncode in (0, 3), text.stderr
     assert "Findings:" in text.stdout
-    value, _ = run_json(binary, base)
+    baseline_exit = text.returncode
+    value, _ = run_json(binary, base, expected_exit=baseline_exit)
     assert f"PortalDoctor {value['portaldoctor_version']}" in text.stdout
     ids = finding_ids(value)
     if ids:
@@ -309,13 +335,25 @@ def main() -> int:
     # 2. Missing desktop identity.
     missing_desktop = base.copy()
     missing_desktop.pop("XDG_CURRENT_DESKTOP", None)
-    run_repeated("missing-desktop", binary, missing_desktop, "ENV001")
+    run_repeated(
+        "missing-desktop",
+        binary,
+        missing_desktop,
+        "ENV001",
+        expected_exit=baseline_exit,
+    )
 
     # 3. Wayland without compositor socket.
     broken_wayland = base.copy()
     broken_wayland["XDG_SESSION_TYPE"] = "wayland"
     broken_wayland.pop("WAYLAND_DISPLAY", None)
-    run_repeated("broken-wayland", binary, broken_wayland, "ENV003")
+    run_repeated(
+        "broken-wayland",
+        binary,
+        broken_wayland,
+        "ENV003",
+        expected_exit=3,
+    )
 
     # 4. Malformed desktop-specific portals.conf.
     run_repeated(
@@ -325,6 +363,7 @@ def main() -> int:
         "CFG002",
         configure_malformed,
         extra_check=check_cfg002,
+        expected_exit=baseline_exit,
     )
 
     # 5. Configured backend descriptor absent, while another fake descriptor exists.
@@ -335,6 +374,7 @@ def main() -> int:
         "XDP005",
         configure_missing_backend,
         extra_check=check_xdp005,
+        expected_exit=baseline_exit,
     )
 
     # 6. Empty isolated data/config roots.
@@ -345,15 +385,22 @@ def main() -> int:
         "XDP003",
         configure_empty_roots,
         extra_check=check_xdp003,
+        expected_exit=baseline_exit,
     )
 
     # 7. Invalid bus address: no session bus and frontend cannot be reached.
     invalid_bus = base.copy()
     with tempfile.TemporaryDirectory(prefix="portaldoctor-bus-") as temp:
         invalid_bus["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={Path(temp) / 'missing-bus'}"
-        run_repeated("invalid-session-bus", binary, invalid_bus, "DBUS001")
+        run_repeated(
+            "invalid-session-bus",
+            binary,
+            invalid_bus,
+            "DBUS001",
+            expected_exit=3,
+        )
         # The runtime contract also expects the frontend finding; report it if present.
-        value, _ = run_json(binary, invalid_bus)
+        value, _ = run_json(binary, invalid_bus, expected_exit=3)
         assert_expected_contract(value, "XDP001")
 
     # 8. Private valid bus with no portal frontend owner.

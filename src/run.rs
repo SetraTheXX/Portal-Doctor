@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::cli::{CheckArgs, CheckDomain, Cli, PortalArgs, PortalCmd, ReportArgs, ReportFormat};
 use crate::collectors;
 use crate::error::Error;
-use crate::model::finding::Finding;
+use crate::model::finding::{Finding, Severity};
 use crate::model::portal::PortalRoute;
 use crate::model::section::Section;
 use crate::model::service::ServiceInfo;
@@ -17,12 +17,76 @@ use crate::report::{
 use crate::resolver;
 use crate::rules;
 
+/// Exit code for an incomplete run caused by an output or internal error.
+pub const INTERNAL_ERROR_EXIT_CODE: u8 = 4;
+
+/// Result of a completed diagnostic command and its stable process exit code.
+///
+/// CLI parsing errors are handled by `clap` before this type is produced and
+/// use exit code `2`. A renderer/write failure is an incomplete run and uses
+/// exit code `4` on the generic process-error path in `main`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunOutcome {
+    /// The diagnostic completed without an error/critical finding.
+    Clean,
+    /// The diagnostic completed and produced at least one error/critical finding.
+    SevereFindings,
+    /// The diagnostic could not establish the minimum session/runtime context.
+    RuntimeContextUnavailable,
+}
+
+impl RunOutcome {
+    /// Stable shell exit code for this completed diagnostic outcome.
+    #[must_use]
+    pub const fn exit_code(self) -> u8 {
+        match self {
+            Self::Clean => 0,
+            Self::SevereFindings => 1,
+            Self::RuntimeContextUnavailable => 3,
+        }
+    }
+
+    fn from_report(report: &Report) -> Self {
+        if !minimum_runtime_context_available(&report.snapshot) {
+            return Self::RuntimeContextUnavailable;
+        }
+        if report
+            .findings
+            .iter()
+            .any(|finding| matches!(finding.severity, Severity::Error | Severity::Critical))
+        {
+            return Self::SevereFindings;
+        }
+        Self::Clean
+    }
+}
+
+/// The minimum context required before a completed finding result can be
+/// treated as a normal diagnostic outcome: a known graphical session/display
+/// and a reachable user session D-Bus.
+fn minimum_runtime_context_available(snapshot: &Snapshot) -> bool {
+    let Some(session) = snapshot.session.value.as_ref() else {
+        return false;
+    };
+    let display_available = match session.session_type {
+        Some(crate::model::environment::SessionType::Wayland) => session.wayland_display.is_some(),
+        Some(crate::model::environment::SessionType::X11) => session.display.is_some(),
+        None => false,
+    };
+    display_available
+        && snapshot
+            .dbus
+            .value
+            .as_ref()
+            .is_some_and(|dbus| dbus.connected)
+}
+
 /// Execute the parsed `CLI` and write the selected output to `stdout`.
 ///
 /// # Errors
 ///
 /// Returns [`Error::Write`] when writing the rendered report fails.
-pub fn run(cli: &Cli) -> Result<(), Error> {
+pub fn run(cli: &Cli) -> Result<RunOutcome, Error> {
     let command = cli
         .command
         .clone()
@@ -40,7 +104,7 @@ fn run_check(
     json: bool,
     verbose: bool,
     include_journal: bool,
-) -> Result<(), Error> {
+) -> Result<RunOutcome, Error> {
     let collected = collect_snapshot(include_journal);
     let findings = rules::engine::evaluate(&collected.snapshot);
     let findings = match args.domain {
@@ -50,10 +114,12 @@ fn run_check(
         Some(CheckDomain::PipeWire) => filter_findings(findings, is_pipewire_finding),
     };
     let report = Report::new(collected.snapshot, findings, env!("CARGO_PKG_VERSION"));
-    write_report(&report, json, verbose)
+    let outcome = RunOutcome::from_report(&report);
+    write_report(&report, json, verbose)?;
+    Ok(outcome)
 }
 
-fn run_portal(args: &PortalArgs, json: bool, include_journal: bool) -> Result<(), Error> {
+fn run_portal(args: &PortalArgs, json: bool, include_journal: bool) -> Result<RunOutcome, Error> {
     let collected = collect_snapshot(include_journal);
     let findings = rules::engine::evaluate(&collected.snapshot);
     let findings = filter_findings(findings, is_portal_finding);
@@ -68,10 +134,11 @@ fn run_portal(args: &PortalArgs, json: bool, include_journal: bool) -> Result<()
     };
     if json {
         let rendered = JsonRenderer.render(&report, false);
-        write_stdout(&rendered)
+        write_stdout(&rendered)?;
     } else {
-        write_stdout(&rendered)
+        write_stdout(&rendered)?;
     }
+    Ok(RunOutcome::from_report(&report))
 }
 
 fn run_report(
@@ -79,7 +146,7 @@ fn run_report(
     json: bool,
     verbose: bool,
     include_journal: bool,
-) -> Result<(), Error> {
+) -> Result<RunOutcome, Error> {
     let collected = collect_snapshot(include_journal);
     let findings = rules::engine::evaluate(&collected.snapshot);
     let report = Report::new(collected.snapshot, findings, env!("CARGO_PKG_VERSION"));
@@ -107,7 +174,9 @@ fn run_report(
         ReportFormat::Json => ShareableJsonRenderer::render(&shareable),
         ReportFormat::Markdown => MarkdownRenderer::render(&shareable, verbose),
     };
-    write_stdout(&rendered)
+    let outcome = RunOutcome::from_report(&report);
+    write_stdout(&rendered)?;
+    Ok(outcome)
 }
 
 /// Everything the current run collected, in one snapshot.
@@ -285,4 +354,99 @@ fn unix_epoch_ms() -> u64 {
         .as_millis()
         .try_into()
         .expect("timestamp does not fit into u64 milliseconds")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RunOutcome, minimum_runtime_context_available};
+    use crate::model::dbus::DbusInfo;
+    use crate::model::environment::{SessionInfo, SessionType};
+    use crate::model::finding::{Confidence, Finding, Severity};
+    use crate::model::section::Section;
+    use crate::model::snapshot::Snapshot;
+    use crate::report::Report;
+
+    fn runtime_ready_snapshot() -> Snapshot {
+        let mut snapshot = Snapshot::new(0);
+        snapshot.session = Section::available(SessionInfo {
+            current_desktop: Some("GNOME".to_owned()),
+            session_desktop: Some("gnome".to_owned()),
+            session_type: Some(SessionType::Wayland),
+            session_type_raw: Some("wayland".to_owned()),
+            wayland_display: Some("wayland-0".to_owned()),
+            display: None,
+        });
+        snapshot.dbus = Section::available(DbusInfo {
+            connected: true,
+            checks: Vec::new(),
+        });
+        snapshot
+    }
+
+    fn finding(severity: Severity) -> Finding {
+        Finding {
+            id: "TEST001".to_owned(),
+            severity,
+            confidence: Confidence::High,
+            title: "Test finding".to_owned(),
+            summary: "Test summary".to_owned(),
+            explanation: "Test explanation".to_owned(),
+            evidence: Vec::new(),
+            impact: None,
+            recommendation: vec!["Test recommendation".to_owned()],
+            source_component: "test".to_owned(),
+        }
+    }
+
+    #[test]
+    fn exit_codes_keep_warnings_successful() {
+        let report = Report::new(
+            runtime_ready_snapshot(),
+            vec![finding(Severity::Warning)],
+            "0.2.0",
+        );
+        assert_eq!(RunOutcome::from_report(&report), RunOutcome::Clean);
+        assert_eq!(RunOutcome::Clean.exit_code(), 0);
+    }
+
+    #[test]
+    fn severe_findings_return_one() {
+        let report = Report::new(
+            runtime_ready_snapshot(),
+            vec![finding(Severity::Error)],
+            "0.2.0",
+        );
+        assert_eq!(RunOutcome::from_report(&report), RunOutcome::SevereFindings);
+        assert_eq!(RunOutcome::SevereFindings.exit_code(), 1);
+    }
+
+    #[test]
+    fn missing_runtime_context_returns_three_before_finding_severity() {
+        let mut snapshot = runtime_ready_snapshot();
+        snapshot.dbus = Section::available(DbusInfo {
+            connected: false,
+            checks: Vec::new(),
+        });
+        let report = Report::new(snapshot, vec![finding(Severity::Critical)], "0.2.0");
+        assert!(!minimum_runtime_context_available(&report.snapshot));
+        assert_eq!(
+            RunOutcome::from_report(&report),
+            RunOutcome::RuntimeContextUnavailable
+        );
+        assert_eq!(RunOutcome::RuntimeContextUnavailable.exit_code(), 3);
+    }
+
+    #[test]
+    fn x11_display_is_valid_minimum_context() {
+        let mut snapshot = runtime_ready_snapshot();
+        snapshot.session = Section::available(SessionInfo {
+            current_desktop: Some("GNOME".to_owned()),
+            session_desktop: Some("gnome".to_owned()),
+            session_type: Some(SessionType::X11),
+            session_type_raw: Some("x11".to_owned()),
+            wayland_display: None,
+            display: Some(":0".to_owned()),
+        });
+        assert!(minimum_runtime_context_available(&snapshot));
+    }
 }

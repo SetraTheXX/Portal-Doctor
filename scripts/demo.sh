@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 BINARY="${PORTALDOCTOR_BIN:-$ROOT_DIR/target/release/portaldoctor}"
 
 if [[ ! -x "$BINARY" ]]; then
-    printf 'Missing executable: %s\nBuild with: cargo build --release\n' "$BINARY" >&2
+    printf 'Missing executable: %s\nBuild with: cargo build --locked --release\n' "$BINARY" >&2
     exit 1
 fi
 
@@ -42,6 +42,14 @@ colorize_report() {
         case "$line" in
             "PortalDoctor "*)
                 printf '%s\n' "${BOLD}${CYAN}${line}${RESET}" ;;
+            "# PortalDoctor diagnostic report"*)
+                printf '%s\n' "${BOLD}${CYAN}${line}${RESET}" ;;
+            "> Report "*)
+                printf '%s\n' "${DIM}${line}${RESET}" ;;
+            "## "*|"### "*)
+                printf '%s\n' "${BOLD}${CYAN}${line}${RESET}" ;;
+            "| Findings | "*)
+                printf '%s\n' "${BOLD}${GREEN}${line}${RESET}" ;;
             "Snapshot schema "*)
                 printf '%s\n' "${DIM}${line}${RESET}" ;;
             "System: "*|"Session: "*)
@@ -85,37 +93,67 @@ colorize_report() {
 }
 
 run_report() {
-    "$BINARY" "$@" | colorize_report
+    local status
+    set +e
+    "$BINARY" "$@" 2>&1 | colorize_report
+    status=${PIPESTATUS[0]}
+    set -e
+    printf '%s\n' "${DIM}exit code: ${status}${RESET}"
+}
+
+run_shareable_report() {
+    local status
+    set +e
+    "$BINARY" report --format markdown --suppress-hostname 2>&1 \
+        | sed -n '1,21p' \
+        | colorize_report
+    status=${PIPESTATUS[0]}
+    set -e
+    printf '%s\n' "${DIM}exit code: ${status} · shareable report generated${RESET}"
 }
 
 run_environment_fault() {
-    env -u WAYLAND_DISPLAY "$BINARY" check environment | colorize_report
+    local status
+    set +e
+    env -u WAYLAND_DISPLAY "$BINARY" check environment 2>&1 | colorize_report
+    status=${PIPESTATUS[0]}
+    set -e
+    printf '%s\n' "${YELLOW}exit code: ${status} · runtime context unavailable${RESET}"
 }
 
 clear_screen
 header
-printf '%s\n' "${BLUE}${BOLD}[1/3]${RESET} ${WHITE}${BOLD}HEALTH CHECK${RESET}"
+printf '%s\n' "${BLUE}${BOLD}[1/4]${RESET} ${WHITE}${BOLD}HEALTH CHECK${RESET}"
 command_line '$ portaldoctor'
 sleep 1.2
 run_report
-sleep 3.2
+sleep 4.2
 
 clear_screen
 header
-printf '%s\n' "${BLUE}${BOLD}[2/3]${RESET} ${WHITE}${BOLD}ROUTING EXPLAINED${RESET}"
+printf '%s\n' "${BLUE}${BOLD}[2/4]${RESET} ${WHITE}${BOLD}ROUTING EXPLAINED${RESET}"
 command_line '$ portaldoctor portal explain ScreenCast'
 sleep 1.2
 run_report portal explain ScreenCast
-sleep 3.2
+sleep 4.2
 
 clear_screen
 header
-printf '%s\n' "${BLUE}${BOLD}[3/3]${RESET} ${WHITE}${BOLD}CONTROLLED FAULT${RESET}"
+printf '%s\n' "${BLUE}${BOLD}[3/4]${RESET} ${WHITE}${BOLD}SHAREABLE REPORT${RESET}"
+command_line '$ portaldoctor report --format markdown --suppress-hostname'
+printf '%s\n\n' "${DIM}redacted issue attachment${RESET}"
+sleep 1.2
+run_shareable_report
+sleep 4.2
+
+clear_screen
+header
+printf '%s\n' "${BLUE}${BOLD}[4/4]${RESET} ${WHITE}${BOLD}CONTROLLED FAULT${RESET}"
 command_line '$ env -u WAYLAND_DISPLAY portaldoctor check environment'
 printf '%s\n\n' "${DIM}simulated missing Wayland display${RESET}"
 sleep 1.2
 run_environment_fault
-sleep 4.2
+sleep 5.2
 # Emit a final invisible reset after the pause so the last diagnostic frame is
 # held long enough to read before the recording exits.
 printf '%s' "$RESET"

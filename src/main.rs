@@ -17,10 +17,10 @@ fn main() -> ExitCode {
     init_tracing();
     let cli = Cli::parse();
     match run::run(&cli) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(outcome) => ExitCode::from(outcome.exit_code()),
         Err(err) => {
             eprintln!("portaldoctor: {err}");
-            ExitCode::FAILURE
+            ExitCode::from(run::INTERNAL_ERROR_EXIT_CODE)
         }
     }
 }
