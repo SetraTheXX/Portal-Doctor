@@ -820,7 +820,7 @@ Example:
 ```json
 {
   "schema_version": 1,
-  "portaldoctor_version": "0.2.0"
+  "portaldoctor_version": "0.2.1"
 }
 ```
 

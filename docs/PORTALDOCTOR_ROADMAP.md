@@ -546,19 +546,24 @@ Phase 7 shipped in v0.2.0:
 - raw journal and raw PipeWire dumps remain excluded and are marked as such,
 - redaction, format and Markdown golden-fixture tests are checked in.
 
-The v0.2.0 acceptance, privacy and compatibility gates are complete. The next
-implementation phase is Phase 8 active portal probes.
+The v0.2.0 acceptance, privacy and compatibility gates are complete. The
+v0.2.1 stabilization gate adds the documented exit-code contract, locked
+package/install smoke coverage and the public demo/release alignment. After
+that patch release, the next implementation phase is Phase 8 active portal
+probes.
 
 ## Release checkpoint — 2026-08-30
 
 v0.2.0 is published to crates.io and GitHub Releases. The release includes
 bounded PipeWire/WirePlumber evidence, opt-in journal correlation and
-privacy-aware terminal/JSON/Markdown reports. Issue #2 is complete; work now
-continues with the explicitly invoked active probes in Phase 8 / v0.3.0.
+privacy-aware terminal/JSON/Markdown reports. Issue #2 is complete; v0.2.1
+stabilization covers exit codes, locked package/install smoke and release
+alignment before work continues with the explicitly invoked active probes in
+Phase 8 / v0.3.0.
 
 ## Release
 
-**v0.2.0**
+**v0.2.1**
 
 ---
 
@@ -820,6 +825,7 @@ Validated matrix includes at least:
 |---|---|
 | v0.1.0 | Core passive doctor, Ubuntu/GNOME/Wayland, portal routing, D-Bus/runtime basics |
 | v0.2.0 | PipeWire/WirePlumber, journal evidence, privacy-aware reports |
+| v0.2.1 | Exit-code contract, locked CI/package smoke, readable demo and release alignment |
 | v0.3.0 | Active FileChooser/Screenshot/ScreenCast probes |
 | v0.4.0 | KDE Plasma validation |
 | v0.5.0 | wlroots/Sway + modern compositor expansion, possible safe-fix preview |
@@ -831,8 +837,8 @@ Validated matrix includes at least:
 # Recommended Immediate Implementation Slice (historical)
 
 This section records the original project bootstrap sequence. Phases 0–7 are
-now complete and shipped in v0.2.0; the next implementation slice is Phase 8
-active portal probes.
+complete and shipped across v0.2.0/v0.2.1; the next implementation slice is
+Phase 8 active portal probes.
 
 The first Codex implementation goal should be:
 

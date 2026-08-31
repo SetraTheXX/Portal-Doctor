@@ -14,7 +14,7 @@ PortalDoctor is a deterministic Rust CLI that turns scattered XDG Desktop
 Portal, Wayland, D-Bus, and systemd user-session state into one
 evidence-backed diagnostic report.
 
-> **v0.2.0** — Passive ScreenCast-readiness release. The validated baseline is Ubuntu
+> **v0.2.1** — Stabilization release for the passive ScreenCast-readiness path. The validated baseline is Ubuntu
 > 26.04 with GNOME, Wayland, and a systemd user session.
 
 ## Why PortalDoctor?
@@ -43,7 +43,7 @@ evidence and an actionable next step.
 ### Install from crates.io
 
 ```sh
-cargo install portaldoctor --version 0.2.0 --locked
+cargo install portaldoctor --version 0.2.1 --locked
 portaldoctor
 ```
 
@@ -54,7 +54,7 @@ For the latest published version, omit the `--version` flag.
 ```sh
 git clone https://github.com/SetraTheXX/Portal-Doctor.git
 cd Portal-Doctor
-cargo build --release
+cargo build --locked --release
 ./target/release/portaldoctor
 ```
 
@@ -129,7 +129,7 @@ option can be used with `report` when journal evidence should be included.
 A healthy GNOME/Wayland session produces a compact report like this:
 
 ```text
-PortalDoctor 0.2.0
+PortalDoctor 0.2.1
 Snapshot schema v1
 
 System: Ubuntu 26.04 LTS (ubuntu)
@@ -148,6 +148,21 @@ Findings: none detected.
 When a problem is detected, the default terminal report includes the finding
 ID, a concise explanation, and the first actionable `next:` recommendation.
 `--verbose` adds confidence, impact, evidence, and all recommendations.
+
+### Exit codes
+
+Completed diagnostic commands use a stable shell contract:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Completed with no ERROR/CRITICAL finding; INFO/WARNING findings are allowed. |
+| `1` | Completed with at least one ERROR/CRITICAL finding. |
+| `2` | Invalid CLI usage or arguments; `clap` reports the parser error. |
+| `3` | Minimum runtime context is unavailable: no recognized graphical display or no reachable user D-Bus. |
+| `4` | Output or internal process error prevented completion. |
+
+Code `3` takes precedence when the runtime context is incomplete. Successful
+`--help` output exits with `0`.
 
 ## Design principles
 
@@ -179,7 +194,7 @@ ID, a concise explanation, and the first actionable `next:` recommendation.
 Other distributions and desktops may work, but they are not support claims for
 v0.2 until they have a dedicated validation matrix.
 
-### Outside the published v0.2.0 boundary
+### Outside the published v0.2.1 boundary
 
 - active portal method/dialog probes,
 - validated KDE, wlroots, Sway, Hyprland, or Niri behavior,
@@ -190,12 +205,12 @@ For the exact compatibility contract and known resolver limitations, see
 
 ## Reproducible demo
 
-The README GIF uses three checked-in scenes: a healthy passive check,
-explainable `ScreenCast` routing, and a controlled missing-`WAYLAND_DISPLAY`
-diagnosis.
+The README GIF uses four checked-in scenes: a healthy passive check,
+explainable `ScreenCast` routing, a privacy-aware Markdown report, and a
+controlled missing-`WAYLAND_DISPLAY` diagnosis with its exit code.
 
 ```sh
-cargo build --release
+cargo build --locked --release
 PORTALDOCTOR_BIN="$PWD/target/release/portaldoctor" ./scripts/demo.sh
 ```
 
@@ -218,13 +233,14 @@ removes the renderer title from the frame.
 
 ## Documentation
 
-- [Package page on docs.rs](https://docs.rs/portaldoctor/0.2.0) *(PortalDoctor is a binary-only CLI, so docs.rs does not provide a public library API.)*
+- [Package page on docs.rs](https://docs.rs/portaldoctor/0.2.1) *(PortalDoctor is a binary-only CLI, so docs.rs does not provide a public library API.)*
 - [Finding catalog](docs/findings.md)
 - [JSON schema v1](docs/json-schema.md)
 - [Compatibility and known limitations](docs/compatibility.md)
 - [Privacy statement](docs/privacy.md)
 - [Architecture](docs/PORTALDOCTOR_ARCHITECTURE.md)
 - [Development roadmap](docs/PORTALDOCTOR_ROADMAP.md)
+- [v0.2.1 release notes](docs/release-notes-v0.2.1.md)
 - [v0.2.0 release notes](docs/release-notes-v0.2.0.md)
 - [v0.1.0 release notes](docs/release-notes-v0.1.0.md)
 - [Changelog](CHANGELOG.md)
@@ -237,22 +253,27 @@ Run the same quality gates used by CI:
 
 ```sh
 cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
-cargo build --release
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked --all-features
+cargo build --locked --release
+cargo package --locked
+install_root="$(mktemp -d -t portaldoctor-smoke.XXXXXX)"
+cargo install --path . --locked --root "$install_root"
+"$install_root/bin/portaldoctor" --version
 PORTALDOCTOR_BIN=target/release/portaldoctor \
   python3 scripts/validate-v0.1-faults.py
 ```
 
-The fault-injection harness exercises the v0.1-compatible finding contract
-included in v0.2.0 without modifying the host system. See the
+The package and install commands verify the artifact before publication. The
+fault-injection harness exercises the v0.1-compatible finding contract and
+stable parser/runtime exit codes without modifying the host system. See the
 [fault-injection harness](scripts/validate-v0.1-faults.py) for the fixture
 scenarios.
 
 ## Roadmap
 
-The v0.2.0 release completes the passive diagnostic vertical slice; the next
-expansion is deliberately layered:
+The v0.2.1 release completes the passive diagnostic stabilization gate; the
+next expansion is deliberately layered:
 
 1. introduce safe active probes for selected portal interfaces,
 2. expand validation across KDE and wlroots-based sessions,

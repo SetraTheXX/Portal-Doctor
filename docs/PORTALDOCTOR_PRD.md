@@ -243,7 +243,7 @@ Minimum top-level contract:
 ```json
 {
   "schema_version": 1,
-  "portaldoctor_version": "0.2.0",
+  "portaldoctor_version": "0.2.1",
   "snapshot": {},
   "findings": []
 }
@@ -251,7 +251,7 @@ Minimum top-level contract:
 
 ### 7.5 Report output
 
-v0.2.0 release:
+v0.2.1 release:
 
 ```bash
 portaldoctor report
@@ -581,16 +581,22 @@ Summary
 
 ## 17. Exit Codes
 
-Initial recommendation:
+The completed diagnostic contract is:
 
-- `0` — completed, no ERROR/CRITICAL findings
-- `1` — completed, at least one ERROR/CRITICAL finding
-- `2` — PortalDoctor usage/configuration error
-- `3` — diagnostic run could not establish minimum required runtime context
+- `0` — the diagnostic completed without ERROR/CRITICAL findings; INFO and
+  WARNING findings do not fail the run,
+- `1` — the diagnostic completed and produced at least one ERROR or CRITICAL
+  finding,
+- `2` — CLI usage or argument validation failed (handled by `clap`),
+- `3` — the diagnostic could not establish the minimum runtime context: a
+  recognized graphical session/display and a reachable user session D-Bus,
+- `4` — the diagnostic could not complete because of an output or internal
+  process error.
 
-The exact contract must be documented and tested before stable release.
-
-Warnings alone should not make normal diagnostics impossible to use in scripts.
+Exit code `3` takes precedence over finding severity because an incomplete
+runtime context means the result cannot be treated as a complete diagnostic.
+Invalid parser input exits `2` through `clap`; successful `--help` output exits
+`0`. Warnings alone should not make normal diagnostics fail in scripts.
 
 ---
 

@@ -12,7 +12,7 @@ rows: 30
 repeat: -1
 quality: 95
 frameDelay: auto
-maxIdleTime: 3500
+maxIdleTime: 5000
 frameBox:
   type: floating
   title: null
