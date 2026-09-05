@@ -721,7 +721,9 @@ struct ProbeResult {
 `not_required`, `completed`, `failed` or `unverified`, including the resource
 whose cleanup could not be proven. See
 [`probe-result-schema.md`](probe-result-schema.md) for the canonical JSON
-shape and versioning rules.
+shape and versioning rules. The model's constructors and custom serde paths
+reject schema-version mismatches, contradictory cleanup status/resource pairs
+and duplicate failed resources.
 
 ### ScreenCast result
 
