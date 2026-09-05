@@ -1,8 +1,8 @@
 # PortalDoctor — Technical Architecture
 
-**Status:** Architecture baseline  
-**Date:** 2026-08-30
-**Language:** Rust  
+**Status:** Architecture baseline; Phase 8 lifecycle decision recorded
+**Date:** 2026-09-05
+**Language:** Rust
 **Initial platform:** Linux / Ubuntu 26.04 / GNOME / Wayland / systemd user session
 
 ---
@@ -265,7 +265,16 @@ Suggested design:
 
 #### `ashpd`
 
-Use for active portal probes rather than rebuilding all high-level portal request/session mechanics.
+ASHPD 0.13.13 is the reference wrapper for the active portal APIs and may be
+used selectively with minimal per-portal features. It is not the sole lifecycle
+owner: the public high-level `send().await` flow returns its request wrapper
+after the portal response, which is too late for PortalDoctor to guarantee an
+explicit `Request.Close` after a stage timeout. The active-probe adapter must
+therefore retain request/session handles through the existing `zbus` major line
+and use ASHPD only where timeout and cleanup observability remain intact.
+
+See [`PORTALDOCTOR_ASHPD_DECISION.md`](PORTALDOCTOR_ASHPD_DECISION.md) for the
+accepted boundary, compatibility assumptions and fallback taxonomy.
 
 ### PipeWire strategy
 
@@ -713,7 +722,12 @@ User cancellation must not be reported as infrastructure failure.
 
 ### Use ASHPD where appropriate
 
-ASHPD already implements high-level Rust wrappers for portals. Prefer it to hand-rolling request/session D-Bus mechanics unless diagnostic needs require lower-level control.
+ASHPD already implements high-level Rust wrappers for portals. Prefer it for
+portal-specific models and method semantics when it does not hide a lifecycle
+handle. Use the PortalDoctor-owned `zbus` adapter whenever exact request/session
+cleanup, stage-level timeout or response-race control is required. Do not add
+the dependency or implement a probe until the decision record's cleanup checks
+are testable.
 
 ---
 
@@ -942,7 +956,7 @@ Initial versions should provide copyable recommendations without executing them.
 | Initial runtime | Ubuntu 26.04, GNOME, Wayland, systemd-user |
 | Core model | collectors -> snapshot -> rules -> findings |
 | D-Bus | zbus |
-| Active portal API | ASHPD later |
+| Active portal API | PortalDoctor-owned zbus lifecycle adapter; selective ASHPD use |
 | PipeWire | `pw-dump` JSON first; no early FFI |
 | Default behavior | passive, read-only |
 | Root requirement | no |

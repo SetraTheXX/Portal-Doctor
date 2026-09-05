@@ -99,6 +99,13 @@ Use this as the execution plan.
 It defines Phase 0 through Phase 13, phase exit criteria, release mapping and
 the recommended first implementation vertical slice.
 
+### `PORTALDOCTOR_ASHPD_DECISION.md`
+
+Use this for the accepted Phase 8 ASHPD/lifecycle boundary, runtime and
+compatibility assumptions, timeout cleanup obligations and error/fallback
+taxonomy. It is a decision record, not an implementation guide for the probe
+commands.
+
 ---
 
 ## Project Baseline Decisions
@@ -115,7 +122,7 @@ AI required:    no
 Initial target: Ubuntu 26.04 + GNOME + Wayland + systemd user session
 Core design:    collectors -> snapshot -> resolver -> rules -> findings -> report
 D-Bus:          zbus
-Active probes:  ASHPD later
+Active probes:  PortalDoctor-owned zbus lifecycle; selective ASHPD use
 PipeWire:       bounded normalized `pw-dump` evidence included in v0.2
 Journal:        bounded user-journal evidence included in v0.2; opt-in
 Reports:        terminal/JSON/Markdown shareable reports included in v0.2

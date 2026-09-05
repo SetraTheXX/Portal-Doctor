@@ -21,9 +21,10 @@ bounded task.
 ## Source-of-truth order
 
 1. `docs/PORTALDOCTOR_CURRENT_STATE.md`
-2. `docs/PORTALDOCTOR_ROADMAP.md`
-3. GitHub Issue #3 for the executable v0.3.0 checklist
-4. `docs/compatibility.md` and the applicable release notes
+2. `docs/PORTALDOCTOR_ASHPD_DECISION.md` for the Phase 8 integration boundary
+3. `docs/PORTALDOCTOR_ROADMAP.md`
+4. GitHub Issue #3 for the executable v0.3.0 checklist
+5. `docs/compatibility.md` and the applicable release notes
 
 Historical sections in the roadmap describe completed bootstrap work and are not
 an instruction to repeat it.

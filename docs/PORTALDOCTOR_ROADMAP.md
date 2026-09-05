@@ -582,7 +582,19 @@ Move from “stack looks ready” to explicit portal lifecycle tests.
 
 ## Dependency
 
-Evaluate/use ASHPD for active requests.
+The Phase 8 integration decision is complete. Read
+[`PORTALDOCTOR_ASHPD_DECISION.md`](PORTALDOCTOR_ASHPD_DECISION.md) before
+implementing any active request.
+
+- [x] Evaluate ASHPD 0.13.13, its runtime/features and public request/session
+  lifecycle.
+- [x] Select a PortalDoctor-owned `zbus` lifecycle adapter as the control
+  boundary; use ASHPD only where it preserves handle and cleanup observability.
+- [ ] Define `ProbeResult` and implement the first FileChooser slice.
+
+This checkpoint does not add ASHPD to `Cargo.toml` and does not implement a
+probe. The dependency profile and exact use of ASHPD are validated again when
+the FileChooser implementation begins.
 
 ## Probes
 

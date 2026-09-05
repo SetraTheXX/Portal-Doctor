@@ -68,10 +68,14 @@ API.
 ## Current next step: Phase 8 / v0.3.0
 
 The detailed executable checklist is [GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
+The ASHPD decision checkpoint is recorded in
+[`PORTALDOCTOR_ASHPD_DECISION.md`](PORTALDOCTOR_ASHPD_DECISION.md).
 Implement it in this order:
 
-1. Evaluate and record the ASHPD integration strategy and its compatibility
-   implications.
+1. [x] Evaluate and record the ASHPD integration strategy and its compatibility
+   implications. The accepted boundary is PortalDoctor-owned lifecycle control
+   with ASHPD used only where its public API preserves the required request and
+   cleanup observability.
 2. Define a stable machine-readable `ProbeResult` contract before adding
    user-facing findings.
 3. Implement the first bounded FileChooser probe only.
@@ -104,6 +108,10 @@ The first task is complete only when all of the following are true:
 
 Do not implement all three probe families in the first slice and do not begin
 desktop expansion or remediation as part of it.
+
+The current change stops after item 1. Do not start `ProbeResult` or any probe
+implementation until this decision record has been accepted as the design
+boundary for the next implementation slice.
 
 ## Quality gates
 
