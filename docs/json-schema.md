@@ -65,6 +65,11 @@ The legacy `portaldoctor --json` and `portaldoctor check --json` output keeps
 the original v1 top-level shape for machine compatibility. Treat that form as
 diagnostic data to review, not as the public-issue-safe report format.
 
+Active probe results have a separate standalone contract and are not embedded
+in this passive document yet. See
+[`probe-result-schema.md`](probe-result-schema.md) for the Phase 8 `ProbeResult`
+v1 shape. Defining that model does not change the v0.2.1 `--json` output.
+
 ## Snapshot sections
 
 Every section is an object with:

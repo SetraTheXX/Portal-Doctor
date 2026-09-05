@@ -89,6 +89,7 @@ mod tests {
         assert_eq!(value["portaldoctor_version"], json!("0.1.0"));
         assert_eq!(value["snapshot"]["schema_version"], json!(1));
         assert_eq!(value["findings"], json!([]));
+        assert!(value.get("probes").is_none());
     }
 
     #[test]

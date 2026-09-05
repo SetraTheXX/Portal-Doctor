@@ -5,6 +5,7 @@ pub mod finding;
 pub mod journal;
 pub mod pipewire;
 pub mod portal;
+pub mod probe;
 pub mod section;
 pub mod service;
 pub mod snapshot;
