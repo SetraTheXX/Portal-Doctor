@@ -166,6 +166,15 @@ malformed response, infrastructure failure or cleanup failure. JSON is emitted
 even for a result mapped to `1`; process-level runtime/output failures retain
 the existing generic error path.
 
+## Screenshot boundary (design only)
+
+The v1 model is ready for Screenshot, but the command is not implemented. The
+planned contract is documented in
+[`PORTALDOCTOR_SCREENSHOT_DECISION.md`](PORTALDOCTOR_SCREENSHOT_DECISION.md).
+Screenshot may produce a portal-managed image and a sensitive `uri`; neither
+is a `ProbeResult` field. `CleanupResource::Request` describes only the
+Request object lifecycle and never promises deletion of the image artifact.
+
 ## Versioning and compatibility
 
 - `PROBE_RESULT_SCHEMA_VERSION` is currently `1`.

@@ -224,6 +224,19 @@ and successful selection also passed in the supported real Ubuntu/GNOME/Wayland
 session. This evidence applies only to FileChooser; it does not pre-approve
 Screenshot or ScreenCast.
 
+## Screenshot design checkpoint
+
+The next bounded probe has a separate design boundary in
+[`PORTALDOCTOR_SCREENSHOT_DECISION.md`](PORTALDOCTOR_SCREENSHOT_DECISION.md).
+It reuses the proven FileChooser request, token, timeout and `Request.Close`
+semantics, but it is not equivalent in privacy: a successful Screenshot portal
+call may create an image and expose it through a URI/Documents portal entry.
+PortalDoctor must never read, retain, print, delete or claim cleanup of that
+artifact. The first implementation is limited to the version-3 Window target,
+requires `AvailableTargets` to advertise it, and must not silently downgrade
+to a full-screen or implicit target. This is a design decision only; it does
+not authorize Screenshot implementation or release approval.
+
 If a helper fails any of these checks, the adapter uses direct `zbus` for that
 stage while retaining ASHPD/specification-compatible types and semantics where
 useful.
