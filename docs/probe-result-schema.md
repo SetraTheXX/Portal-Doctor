@@ -89,11 +89,13 @@ explicit session stages so callers can locate the exact failing boundary.
 | `not_required` | No request/session/resource was acquired, so there was nothing to close. |
 | `completed` | Every owned resource was closed and the cleanup outcome was verified. |
 | `failed` | Cleanup was attempted but one or more resources could not be closed or verified. `failed_resources` identifies them. |
-| `unverified` | The implementation cannot prove cleanup completed; consumers must not treat the result as a clean success. |
+| `unverified` | The implementation cannot prove cleanup completed; `failed_resources` may identify known unverified resources, but may also be empty when the scope is unknown. Consumers must not treat the result as a clean success. |
 
 `failed_resources` is an array of `request`, `session` and/or
-`pipe_wire_remote`. It is empty for normal success and cancellation. A result
-is a clean success only when `status == "success"` and cleanup is
+`pipe_wire_remote` with no duplicate entries. It must be empty for
+`not_required` and `completed`; `failed` must contain at least one resource.
+It is empty for normal success and cancellation when no resource was acquired.
+A result is a clean success only when `status == "success"` and cleanup is
 `not_required` or `completed` with no failed resources. A portal success paired
 with cleanup failure remains visibly `success` on the operation axis but is not
 a clean success.
@@ -103,6 +105,10 @@ a clean success.
 - `PROBE_RESULT_SCHEMA_VERSION` is currently `1`.
 - It is separate from the passive snapshot/report `schema_version` and from
   `portaldoctor_version`.
+- The Rust constructors and `validate()` reject any schema version other than
+  `1`; serde deserialization and serialization apply the same check.
+- Cleanup constructors and serde also reject contradictory status/resource
+  pairs and duplicate failed resources.
 - Additive optional fields may be introduced without changing the version;
   changes to required fields, field meaning or enum semantics require a new
   result schema version.

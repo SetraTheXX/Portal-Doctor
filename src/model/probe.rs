@@ -1,6 +1,10 @@
 #![allow(dead_code)] // The contract is defined before the active probe commands.
 
-use serde::{Deserialize, Serialize};
+use std::fmt;
+
+use serde::de::Error as DeError;
+use serde::ser::Error as SerError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Version of the standalone active-probe result contract.
 pub const PROBE_RESULT_SCHEMA_VERSION: u32 = 1;
@@ -17,8 +21,9 @@ pub enum ProbeKind {
 /// Lifecycle stage at which a probe produced its terminal result.
 ///
 /// `FileChooser` and `Screenshot` use the generic request/response stages.
-/// `ScreenCast` uses the explicit session stages so a future result can identify
-/// the exact boundary that failed without inventing a second result model.
+/// `ScreenCast` uses the explicit session stages so a future result can
+/// identify the exact boundary that failed without inventing a second result
+/// model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProbeStage {
@@ -70,11 +75,158 @@ pub enum CleanupResource {
     PipeWireRemote,
 }
 
+/// Validation failure for a machine-readable probe result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProbeResultError {
+    InvalidSchemaVersion { expected: u32, actual: u32 },
+    CleanupResourcesNotAllowed { status: CleanupStatus },
+    CleanupResourcesRequired,
+    DuplicateCleanupResource { resource: CleanupResource },
+}
+
+impl fmt::Display for ProbeResultError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidSchemaVersion { expected, actual } => write!(
+                f,
+                "unsupported probe result schema version {actual}; expected {expected}"
+            ),
+            Self::CleanupResourcesNotAllowed { status } => write!(
+                f,
+                "cleanup status {status:?} cannot contain failed resources"
+            ),
+            Self::CleanupResourcesRequired => {
+                f.write_str("failed cleanup must identify at least one resource")
+            }
+            Self::DuplicateCleanupResource { resource } => {
+                write!(f, "cleanup resource {resource:?} is listed more than once")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ProbeResultError {}
+
 /// Cleanup outcome kept independent from the portal operation outcome.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CleanupResult {
-    pub status: CleanupStatus,
-    pub failed_resources: Vec<CleanupResource>,
+    status: CleanupStatus,
+    failed_resources: Vec<CleanupResource>,
+}
+
+impl CleanupResult {
+    /// Construct a result for a probe that acquired no closeable resource.
+    #[must_use]
+    pub fn not_required() -> Self {
+        Self {
+            status: CleanupStatus::NotRequired,
+            failed_resources: Vec::new(),
+        }
+    }
+
+    /// Construct a verified cleanup result.
+    #[must_use]
+    pub fn completed() -> Self {
+        Self {
+            status: CleanupStatus::Completed,
+            failed_resources: Vec::new(),
+        }
+    }
+
+    /// Construct a cleanup result with known failed resources.
+    pub fn failed(failed_resources: Vec<CleanupResource>) -> Result<Self, ProbeResultError> {
+        Self::try_new(CleanupStatus::Failed, failed_resources)
+    }
+
+    /// Construct a result where cleanup could not be proven.
+    #[must_use]
+    pub fn unverified() -> Self {
+        Self {
+            status: CleanupStatus::Unverified,
+            failed_resources: Vec::new(),
+        }
+    }
+
+    /// Construct and validate an arbitrary cleanup state.
+    pub fn try_new(
+        status: CleanupStatus,
+        failed_resources: Vec<CleanupResource>,
+    ) -> Result<Self, ProbeResultError> {
+        let result = Self {
+            status,
+            failed_resources,
+        };
+        result.validate()?;
+        Ok(result)
+    }
+
+    /// Validate cleanup status/resource consistency.
+    pub fn validate(&self) -> Result<(), ProbeResultError> {
+        match self.status {
+            CleanupStatus::NotRequired | CleanupStatus::Completed
+                if !self.failed_resources.is_empty() =>
+            {
+                return Err(ProbeResultError::CleanupResourcesNotAllowed {
+                    status: self.status,
+                });
+            }
+            CleanupStatus::Failed if self.failed_resources.is_empty() => {
+                return Err(ProbeResultError::CleanupResourcesRequired);
+            }
+            _ => {}
+        }
+
+        for (index, resource) in self.failed_resources.iter().enumerate() {
+            if self.failed_resources[..index].contains(resource) {
+                return Err(ProbeResultError::DuplicateCleanupResource {
+                    resource: *resource,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> CleanupStatus {
+        self.status
+    }
+
+    #[must_use]
+    pub fn failed_resources(&self) -> &[CleanupResource] {
+        &self.failed_resources
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CleanupResultWire {
+    status: CleanupStatus,
+    failed_resources: Vec<CleanupResource>,
+}
+
+impl Serialize for CleanupResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.validate()
+            .map_err(|error| S::Error::custom(error.to_string()))?;
+        CleanupResultWire {
+            status: self.status,
+            failed_resources: self.failed_resources.clone(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for CleanupResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = CleanupResultWire::deserialize(deserializer)?;
+        Self::try_new(wire.status, wire.failed_resources)
+            .map_err(|error| D::Error::custom(error.to_string()))
+    }
 }
 
 /// Stable machine-readable result shared by `FileChooser`, `Screenshot` and
@@ -83,26 +235,135 @@ pub struct CleanupResult {
 /// This model is intentionally standalone for v0.3.0 planning. It is not yet
 /// embedded in the passive `Snapshot` or `Report`, because doing so would
 /// change the published v0.2.1 JSON contract before an active command exists.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProbeResult {
-    pub schema_version: u32,
-    pub probe: ProbeKind,
-    pub stage: ProbeStage,
-    pub status: ProbeStatus,
-    pub cleanup: CleanupResult,
+    schema_version: u32,
+    probe: ProbeKind,
+    stage: ProbeStage,
+    status: ProbeStatus,
+    cleanup: CleanupResult,
 }
 
 impl ProbeResult {
+    /// Construct a validated v1 result.
+    pub fn new(
+        probe: ProbeKind,
+        stage: ProbeStage,
+        status: ProbeStatus,
+        cleanup: CleanupResult,
+    ) -> Result<Self, ProbeResultError> {
+        Self::from_parts(PROBE_RESULT_SCHEMA_VERSION, probe, stage, status, cleanup)
+    }
+
+    fn from_parts(
+        schema_version: u32,
+        probe: ProbeKind,
+        stage: ProbeStage,
+        status: ProbeStatus,
+        cleanup: CleanupResult,
+    ) -> Result<Self, ProbeResultError> {
+        let result = Self {
+            schema_version,
+            probe,
+            stage,
+            status,
+            cleanup,
+        };
+        result.validate()?;
+        Ok(result)
+    }
+
+    /// Validate schema version and all nested invariants.
+    pub fn validate(&self) -> Result<(), ProbeResultError> {
+        if self.schema_version != PROBE_RESULT_SCHEMA_VERSION {
+            return Err(ProbeResultError::InvalidSchemaVersion {
+                expected: PROBE_RESULT_SCHEMA_VERSION,
+                actual: self.schema_version,
+            });
+        }
+        self.cleanup.validate()
+    }
+
     /// A result is a clean success only when the portal operation succeeded
     /// and cleanup was either unnecessary or completed without failures.
     #[must_use]
-    pub const fn is_clean_success(&self) -> bool {
-        matches!(self.status, ProbeStatus::Success)
+    pub fn is_clean_success(&self) -> bool {
+        self.validate().is_ok()
+            && matches!(self.status, ProbeStatus::Success)
             && matches!(
                 self.cleanup.status,
                 CleanupStatus::NotRequired | CleanupStatus::Completed
             )
             && self.cleanup.failed_resources.is_empty()
+    }
+
+    #[must_use]
+    pub const fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+
+    #[must_use]
+    pub const fn probe(&self) -> ProbeKind {
+        self.probe
+    }
+
+    #[must_use]
+    pub const fn stage(&self) -> ProbeStage {
+        self.stage
+    }
+
+    #[must_use]
+    pub const fn status(&self) -> ProbeStatus {
+        self.status
+    }
+
+    #[must_use]
+    pub const fn cleanup(&self) -> &CleanupResult {
+        &self.cleanup
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ProbeResultWire {
+    schema_version: u32,
+    probe: ProbeKind,
+    stage: ProbeStage,
+    status: ProbeStatus,
+    cleanup: CleanupResult,
+}
+
+impl Serialize for ProbeResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.validate()
+            .map_err(|error| S::Error::custom(error.to_string()))?;
+        ProbeResultWire {
+            schema_version: self.schema_version,
+            probe: self.probe,
+            stage: self.stage,
+            status: self.status,
+            cleanup: self.cleanup.clone(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ProbeResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = ProbeResultWire::deserialize(deserializer)?;
+        Self::from_parts(
+            wire.schema_version,
+            wire.probe,
+            wire.stage,
+            wire.status,
+            wire.cleanup,
+        )
+        .map_err(|error| D::Error::custom(error.to_string()))
     }
 }
 
@@ -138,16 +399,13 @@ mod tests {
 
     #[test]
     fn probe_result_has_a_versioned_standalone_shape() {
-        let result = ProbeResult {
-            schema_version: PROBE_RESULT_SCHEMA_VERSION,
-            probe: ProbeKind::FileChooser,
-            stage: ProbeStage::Response,
-            status: ProbeStatus::UserCancelled,
-            cleanup: CleanupResult {
-                status: CleanupStatus::Completed,
-                failed_resources: Vec::new(),
-            },
-        };
+        let result = ProbeResult::new(
+            ProbeKind::FileChooser,
+            ProbeStage::Response,
+            ProbeStatus::UserCancelled,
+            CleanupResult::completed(),
+        )
+        .unwrap();
 
         let value = serde_json::to_value(&result).unwrap();
         assert_eq!(
@@ -165,40 +423,123 @@ mod tests {
         );
         let decoded: ProbeResult = serde_json::from_value(value).unwrap();
         assert_eq!(decoded, result);
+        assert_eq!(decoded.schema_version(), 1);
+        assert_eq!(decoded.probe(), ProbeKind::FileChooser);
+        assert_eq!(decoded.stage(), ProbeStage::Response);
+        assert_eq!(decoded.status(), ProbeStatus::UserCancelled);
     }
 
     #[test]
     fn cleanup_failure_is_independent_from_operation_status() {
-        let result = ProbeResult {
-            schema_version: PROBE_RESULT_SCHEMA_VERSION,
-            probe: ProbeKind::ScreenCast,
-            stage: ProbeStage::Cleanup,
-            status: ProbeStatus::Success,
-            cleanup: CleanupResult {
-                status: CleanupStatus::Failed,
-                failed_resources: vec![CleanupResource::Session],
-            },
-        };
+        let result = ProbeResult::new(
+            ProbeKind::ScreenCast,
+            ProbeStage::Cleanup,
+            ProbeStatus::Success,
+            CleanupResult::failed(vec![CleanupResource::Session]).unwrap(),
+        )
+        .unwrap();
 
-        assert_eq!(result.status, ProbeStatus::Success);
-        assert_eq!(result.cleanup.status, CleanupStatus::Failed);
+        assert_eq!(result.status(), ProbeStatus::Success);
+        assert_eq!(result.cleanup().status(), CleanupStatus::Failed);
+        assert_eq!(
+            result.cleanup().failed_resources(),
+            &[CleanupResource::Session]
+        );
         assert!(!result.is_clean_success());
     }
 
     #[test]
     fn unverified_cleanup_is_not_a_clean_success() {
-        let result = ProbeResult {
-            schema_version: PROBE_RESULT_SCHEMA_VERSION,
-            probe: ProbeKind::Screenshot,
-            stage: ProbeStage::Response,
-            status: ProbeStatus::Success,
-            cleanup: CleanupResult {
-                status: CleanupStatus::Unverified,
-                failed_resources: Vec::new(),
-            },
-        };
+        let result = ProbeResult::new(
+            ProbeKind::Screenshot,
+            ProbeStage::Response,
+            ProbeStatus::Success,
+            CleanupResult::unverified(),
+        )
+        .unwrap();
 
         assert!(!result.is_clean_success());
+    }
+
+    #[test]
+    fn cleanup_status_and_resource_combinations_are_validated() {
+        assert!(
+            CleanupResult::try_new(CleanupStatus::NotRequired, vec![CleanupResource::Request])
+                .is_err()
+        );
+        assert!(
+            CleanupResult::try_new(CleanupStatus::Completed, vec![CleanupResource::Request])
+                .is_err()
+        );
+        assert!(CleanupResult::try_new(CleanupStatus::Failed, Vec::new()).is_err());
+        assert!(
+            CleanupResult::try_new(
+                CleanupStatus::Failed,
+                vec![CleanupResource::Request, CleanupResource::Request]
+            )
+            .is_err()
+        );
+        assert!(
+            CleanupResult::try_new(CleanupStatus::Unverified, vec![CleanupResource::Request])
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn invalid_cleanup_documents_are_rejected_during_deserialization() {
+        let invalid_documents = [
+            json!({
+                "status": "not_required",
+                "failed_resources": ["request"]
+            }),
+            json!({
+                "status": "completed",
+                "failed_resources": ["request"]
+            }),
+            json!({
+                "status": "failed",
+                "failed_resources": []
+            }),
+        ];
+
+        for document in invalid_documents {
+            assert!(serde_json::from_value::<CleanupResult>(document).is_err());
+        }
+    }
+
+    #[test]
+    fn schema_version_mismatch_is_rejected_during_deserialization() {
+        let value = json!({
+            "schema_version": 2,
+            "probe": "file_chooser",
+            "stage": "response",
+            "status": "success",
+            "cleanup": {
+                "status": "completed",
+                "failed_resources": []
+            }
+        });
+
+        assert!(serde_json::from_value::<ProbeResult>(value).is_err());
+    }
+
+    #[test]
+    fn invalid_internal_values_cannot_be_serialized_or_reported_clean() {
+        let invalid_cleanup = CleanupResult {
+            status: CleanupStatus::Completed,
+            failed_resources: vec![CleanupResource::Request],
+        };
+        assert!(serde_json::to_value(&invalid_cleanup).is_err());
+
+        let invalid_result = ProbeResult {
+            schema_version: 2,
+            probe: ProbeKind::FileChooser,
+            stage: ProbeStage::Response,
+            status: ProbeStatus::Success,
+            cleanup: CleanupResult::completed(),
+        };
+        assert!(serde_json::to_value(&invalid_result).is_err());
+        assert!(!invalid_result.is_clean_success());
     }
 
     #[test]
