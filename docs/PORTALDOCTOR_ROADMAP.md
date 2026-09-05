@@ -592,7 +592,8 @@ implementing any active request.
   boundary; use ASHPD only where it preserves handle and cleanup observability.
 - [x] Define the standalone v1 `ProbeResult` contract for operation status,
   lifecycle stage and independent cleanup outcome, with constructor/serde
-  invariant validation. See [`probe-result-schema.md`](probe-result-schema.md).
+  invariant validation, including the probe/stage/resource compatibility
+  matrix. See [`probe-result-schema.md`](probe-result-schema.md).
 - [ ] Implement the first FileChooser slice using that contract.
 
 This checkpoint does not add ASHPD to `Cargo.toml`, add an active CLI command or
