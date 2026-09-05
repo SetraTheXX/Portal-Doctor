@@ -614,16 +614,25 @@ portaldoctor probe filechooser
 ```
 
 The command is explicit and unreleased. It warns before a desktop dialog,
-subscribes to `Request::Response` before `OpenFile`, validates the request
-handle, bounds setup/response/cleanup separately, and reports standalone
+subscribes to `Request::Response` before `OpenFile`, supplies a unique
+`handle_token`, validates the returned or token-derived request handle, bounds
+request/recovery/response/cleanup separately, and reports standalone
 `ProbeResult` v1 JSON. It never reads, copies, modifies or persists the
 selected file; `Screenshot` and `ScreenCast` remain unchecked future slices.
 
 - [x] Validate the cancellation and cleanup path in the supported Ubuntu 26.04
   + GNOME + Wayland + systemd user session.
-- [ ] Validate a successful selection path before a future v0.3.0 release;
-  this is intentionally not required to start the next probe family, but it is
-  required before publishing the active feature.
+- [x] Validate a successful selection path in the same supported session;
+  confirm that the result is `success` with verified cleanup while no URI,
+  filename or file content is emitted.
+- [x] Validate the request/response race boundary with a controlled fake
+  portal: success, user cancellation, malformed response, response timeout,
+  late method reply,
+  request-stage timeout, transport failure, unsupported capability and
+  `Request.Close` observation, including an explicit close-failure result.
+- [x] Recover a late method reply within a bounded grace period and use the
+  token-derived Request path when the reply never arrives; report unresolved
+  transport ambiguity as `cleanup.status: unverified`.
 
 ### Screenshot
 

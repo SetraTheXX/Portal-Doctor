@@ -1,6 +1,6 @@
 # PortalDoctor — Documentation Index
 
-**Baseline date:** 2026-09-05
+**Baseline date:** 2026-09-06
 
 This folder contains the project-definition and release documentation for
 PortalDoctor.

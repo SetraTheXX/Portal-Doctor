@@ -3,7 +3,8 @@
 **Status:** Accepted for Phase 8 planning
 **Decision date:** 2026-09-05
 **Scope:** active FileChooser, Screenshot and ScreenCast probes
-**Implementation status:** first bounded FileChooser lifecycle implemented on `main`; Screenshot and ScreenCast remain future slices
+**Implementation status:** first bounded FileChooser lifecycle implemented and
+audited on `main`; Screenshot and ScreenCast remain future slices
 
 ## Decision
 
@@ -16,7 +17,8 @@ the request/session state machine through the existing `zbus` major line so it
 can:
 
 - subscribe to the `Request::Response` signal before making the portal call,
-- retain and validate the returned request handle,
+- provide a unique `handle_token`, derive the expected request path before the
+  call and retain/validate the returned request handle,
 - apply a timeout to each lifecycle stage,
 - call `Request.Close` on timeout or explicit cancellation,
 - call `Session.Close` for ScreenCast sessions, and
@@ -60,6 +62,26 @@ The same concern is more important for ScreenCast, where a live Session and a
 PipeWire file descriptor must be closed on every success, cancellation, timeout
 and failure path. The adapter therefore owns these handles and may use ASHPD
 helpers only after the cleanup boundary is demonstrably preserved.
+
+### FileChooser late-reply boundary
+
+The first FileChooser adapter sends a per-request `handle_token` and subscribes
+to `Request::Response` before `OpenFile`. For modern portals this makes the
+Request path predictable as
+`/org/freedesktop/portal/desktop/request/<sender>/<token>`; the returned path is
+still validated against the caller's sender so older portal implementations
+that generate a different token remain usable. The method future is retained
+through a bounded recovery window after a request-stage timeout or Ctrl-C.
+
+If a late reply arrives, its returned handle is closed immediately. If no
+reply arrives, the predicted handle is closed once. A successful `Close` is
+verified; an unknown-object response on a path whose method reply never
+arrived is intentionally `unverified`, because a transport that never
+returned cannot prove whether the portal created the request after the close
+race. This is a bounded, observable non-clean result rather than an implicit
+fallback or a false cleanup claim. A handle returned by `OpenFile` treats an
+already-gone object as completed, because the portal has already completed or
+removed that known request.
 
 ## Planned dependency and runtime boundary
 
@@ -130,7 +152,7 @@ the public `ProbeResult` contract:
 | Portal rejection (`Failed`, `InvalidArgument`, `NotAllowed`, etc.) | Portal/backend rejected the request | Preserve the portal error category and available evidence. |
 | D-Bus transport/name/permission error | Runtime transport or service problem | Return an infrastructure failure with sanitized error context. |
 | Response decode/type mismatch | Protocol or wrapper incompatibility | Return malformed-response; never infer success. |
-| Stage timeout | No response within the bounded stage budget | Issue `Request.Close`, then verify/record cleanup outcome. |
+| Stage timeout | No response within the bounded stage budget | Keep the method future for bounded late-reply recovery, close the returned or token-derived Request path, then verify/record cleanup outcome. |
 | Close/cleanup failure | The probe cannot prove that the interaction ended | Return cleanup failure as a distinct result and do not claim a clean pass. |
 | No graphical context or user bus | Minimum runtime context unavailable | Preserve the existing runtime-context exit semantics; do not open a dialog. |
 
@@ -146,12 +168,13 @@ The standalone machine-readable `ProbeResult` shape is defined in
 - `portaldoctor probe filechooser` is the only active command and is never part
   of the default passive path;
 - the `Request::Response` match is installed before `OpenFile` is sent;
-- portal introspection, request creation, response wait and `Request.Close`
-  each have bounded stages;
+- portal introspection, request creation, late-reply recovery, response wait and
+  `Request.Close` each have bounded stages;
 - success, cancellation, timeout, unavailable/unsupported, malformed response
   and infrastructure failure map to v1 statuses without raw error/URI output;
-- a known request path is closed after response, cancellation or timeout, and
-  cleanup failure is kept separate from operation status;
+- a returned request path is closed after response, cancellation or timeout;
+  a token-derived path is used when the method reply is late, and ambiguous
+  cleanup remains explicitly `unverified`;
 - `--json` emits only the standalone result on `stdout`; the dialog/privacy
   warning is on `stderr`.
 
@@ -168,11 +191,18 @@ prove with tests or a controlled fake that:
 
 1. the request handle is observable before waiting for the response,
 2. the response subscription cannot race the initial method call,
-3. timeout and cancellation call `Request.Close` within a second bounded
-   budget,
+3. timeout and cancellation call `Request.Close` within the bounded cleanup
+   budget, including a method-reply timeout where the returned handle is not
+   yet available,
 4. ScreenCast sessions and returned file descriptors are always closed, and
-5. dropping the async task cannot leave a portal dialog, session or request
-   alive.
+5. dropping the async task does not silently claim cleanup; any unresolved
+   transport race is bounded and emitted as `unverified`.
+
+The FileChooser slice now satisfies these checks with the controlled portal in
+[`scripts/validate-filechooser-fake.py`](../scripts/validate-filechooser-fake.py)
+and with both cancellation and successful selection in the supported real
+Ubuntu/GNOME/Wayland session. This evidence applies only to FileChooser; it
+does not pre-approve Screenshot or ScreenCast.
 
 If a helper fails any of these checks, the adapter uses direct `zbus` for that
 stage while retaining ASHPD/specification-compatible types and semantics where

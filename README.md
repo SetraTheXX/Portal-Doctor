@@ -118,10 +118,12 @@ portaldoctor probe filechooser
 ```
 
 This command may open a desktop file chooser. Cancel it when you only want to
-validate the cancellation path. PortalDoctor validates the portal lifecycle,
-does not read, copy, modify or persist the selected file, and always reports
-request cleanup separately. For automation, use `--json`; the warning stays on
-`stderr` and `stdout` contains only the standalone `ProbeResult` document:
+validate the cancellation path, or select any file to exercise the success
+path. PortalDoctor validates the portal lifecycle, discards the returned URI
+after checking its protocol shape, does not read, copy, modify or persist the
+selected file, and always reports request cleanup separately. For automation,
+use `--json`; the warning stays on `stderr` and `stdout` contains only the
+standalone `ProbeResult` document:
 
 ```json
 {
@@ -230,9 +232,12 @@ v0.2 until they have a dedicated validation matrix.
 - validated KDE, wlroots, Sway, Hyprland, or Niri behavior,
 - automatic fixes and GUI workflows.
 
-The development `main` branch contains only the first explicit FileChooser
+The development `main` branch contains the audited first explicit FileChooser
 probe described above; active Screenshot and ScreenCast probes remain outside
-the published `v0.2.1` boundary and are not implemented yet.
+the published `v0.2.1` boundary and are not implemented yet. The FileChooser
+success and cancellation lifecycle has been validated on Ubuntu 26.04/GNOME/
+Wayland, but the active command is still unreleased until the v0.3.0 release
+decision.
 
 For the exact compatibility contract and known resolver limitations, see
 [compatibility and known limitations](docs/compatibility.md).
@@ -313,8 +318,8 @@ scenarios.
 The v0.2.1 release completes the passive diagnostic stabilization gate; the
 next expansion is deliberately layered:
 
-1. introduce safe active probes for selected portal interfaces, starting with
-   the bounded FileChooser slice in [Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3),
+1. finish and publish the bounded FileChooser slice in [Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3),
+   then add active probes for selected portal interfaces one family at a time,
 2. expand validation across KDE and wlroots-based sessions,
 3. harden the compatibility matrix and release artifacts,
 4. document and ship the next compatible release only after its acceptance

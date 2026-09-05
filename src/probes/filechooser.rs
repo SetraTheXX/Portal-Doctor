@@ -6,13 +6,20 @@
 //! the required `Request.Close` cleanup call.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
+use std::future::Future;
+use std::io::Read as _;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures_lite::StreamExt;
-use zbus::zvariant::{Array, OwnedObjectPath, OwnedValue};
+use zbus::zvariant::{Array, OwnedObjectPath, OwnedValue, Value};
 use zbus::{Connection, MatchRule, MessageStream, Proxy};
 
 use crate::collectors::timeouts::{
-    ACTIVE_PROBE_CLEANUP, ACTIVE_PROBE_RESPONSE, ACTIVE_PROBE_SETUP,
+    ACTIVE_PROBE_CLEANUP, ACTIVE_PROBE_REQUEST, ACTIVE_PROBE_REQUEST_RECOVERY,
+    ACTIVE_PROBE_RESPONSE, ACTIVE_PROBE_SETUP,
 };
 use crate::error::Error;
 use crate::model::probe::{
@@ -26,6 +33,10 @@ const REQUEST_INTERFACE: &str = "org.freedesktop.portal.Request";
 const INTROSPECTABLE_INTERFACE: &str = "org.freedesktop.DBus.Introspectable";
 const RESPONSE_MEMBER: &str = "Response";
 const FILE_CHOOSER_TITLE: &str = "PortalDoctor FileChooser probe";
+const HANDLE_TOKEN_PREFIX: &str = "portaldoctor";
+const REQUEST_PATH_PREFIX: &str = "/org/freedesktop/portal/desktop/request/";
+
+static HANDLE_TOKEN_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Run the explicit `FileChooser` lifecycle in a short-lived current-thread
 /// Tokio runtime. Expected portal outcomes are represented by `ProbeResult`;
@@ -81,42 +92,122 @@ async fn run_async() -> ProbeResult {
         Ok(proxy) => proxy,
         Err(outcome) => return result(ProbeStage::Request, outcome, CleanupResult::not_required()),
     };
-    let options: HashMap<String, OwnedValue> = HashMap::new();
-    let request_path: OwnedObjectPath = match tokio::time::timeout(
-        ACTIVE_PROBE_SETUP,
-        chooser.call("OpenFile", &("", FILE_CHOOSER_TITLE, options)),
-    )
-    .await
-    {
-        Ok(Ok(path)) if valid_request_path(&path) => path,
-        Ok(Ok(_)) => {
+    let handle_token = handle_token();
+    let Some(expected_path) = expected_request_path(&connection, &handle_token) else {
+        return result(
+            ProbeStage::Request,
+            ProbeStatus::InfrastructureFailure,
+            CleanupResult::not_required(),
+        );
+    };
+    let options = request_options(&handle_token);
+    let request_body = ("", FILE_CHOOSER_TITLE, options);
+    let open_file = chooser.call::<_, _, OwnedObjectPath>("OpenFile", &request_body);
+    tokio::pin!(open_file);
+    let cancellation = tokio::signal::ctrl_c();
+    tokio::pin!(cancellation);
+    let request_call = tokio::select! {
+        reply = &mut open_file => RequestCall::Reply(reply),
+        _ = &mut cancellation => RequestCall::UserCancelled,
+        () = tokio::time::sleep(ACTIVE_PROBE_REQUEST) => RequestCall::TimedOut,
+    };
+    let request_path = match request_call {
+        RequestCall::Reply(Ok(path)) if valid_request_path_for_sender(&path, &expected_path) => {
+            path
+        }
+        RequestCall::Reply(Ok(_)) => {
             return result(
                 ProbeStage::Request,
                 ProbeStatus::MalformedResponse,
-                CleanupResult::unverified(),
+                close_request(&connection, expected_path.as_str(), false).await,
             );
         }
-        Ok(Err(error)) => {
-            return result(
-                ProbeStage::Request,
-                classify_error(&error),
-                CleanupResult::not_required(),
-            );
+        RequestCall::Reply(Err(error)) => {
+            let status = classify_error(&error);
+            let cleanup = cleanup_for_possible_request(&connection, &expected_path, status).await;
+            return result(ProbeStage::Request, status, cleanup);
         }
-        Err(_) => {
-            // A portal may have created a request even when its method reply
-            // timed out, but there is no safe handle to close in this branch.
-            return result(
-                ProbeStage::Request,
+        RequestCall::UserCancelled => {
+            return recover_interrupted_request(
+                &connection,
+                open_file.as_mut(),
+                &expected_path,
+                ProbeStatus::UserCancelled,
+            )
+            .await;
+        }
+        RequestCall::TimedOut => {
+            return recover_interrupted_request(
+                &connection,
+                open_file.as_mut(),
+                &expected_path,
                 ProbeStatus::TimedOut,
-                CleanupResult::unverified(),
-            );
+            )
+            .await;
         }
     };
 
     let response = wait_for_response(&mut response_stream, request_path.as_str()).await;
-    let cleanup = close_request(&connection, request_path.as_str()).await;
+    let cleanup = close_request(&connection, request_path.as_str(), true).await;
     finalize(response, cleanup)
+}
+
+#[derive(Debug)]
+enum RequestCall {
+    Reply(Result<OwnedObjectPath, zbus::Error>),
+    UserCancelled,
+    TimedOut,
+}
+
+/// Recover a method reply after cancellation or a request-stage deadline.
+///
+/// The XDG portal convention lets us predict the Request path from the
+/// caller's unique name and `handle_token`. Keeping the original future alive
+/// for this bounded grace period covers the normal late-reply race. If the
+/// service never replies, the predicted path is still closed once, but an
+/// unknown-object response is deliberately reported as `unverified`: a
+/// transport that never returned cannot prove whether a request was created.
+async fn recover_interrupted_request<F>(
+    connection: &Connection,
+    open_file: Pin<&mut F>,
+    expected_path: &OwnedObjectPath,
+    status: ProbeStatus,
+) -> ProbeResult
+where
+    F: Future<Output = Result<OwnedObjectPath, zbus::Error>>,
+{
+    match tokio::time::timeout(ACTIVE_PROBE_REQUEST_RECOVERY, open_file).await {
+        Ok(Ok(path)) if valid_request_path_for_sender(&path, expected_path) => {
+            let cleanup = close_request(connection, path.as_str(), true).await;
+            result(ProbeStage::Request, status, cleanup)
+        }
+        Ok(Ok(_)) => {
+            let cleanup = close_request(connection, expected_path.as_str(), false).await;
+            result(ProbeStage::Request, ProbeStatus::MalformedResponse, cleanup)
+        }
+        Ok(Err(_)) | Err(_) => {
+            let cleanup = close_request(connection, expected_path.as_str(), false).await;
+            result(ProbeStage::Request, status, cleanup)
+        }
+    }
+}
+
+async fn cleanup_for_possible_request(
+    connection: &Connection,
+    expected_path: &OwnedObjectPath,
+    status: ProbeStatus,
+) -> CleanupResult {
+    if matches!(
+        status,
+        ProbeStatus::TimedOut
+            | ProbeStatus::InfrastructureFailure
+            | ProbeStatus::MalformedResponse
+            | ProbeStatus::UserCancelled
+    ) {
+        close_request(connection, expected_path.as_str(), false).await
+    } else {
+        CleanupResult::not_required()
+    }
 }
 
 async fn inspect_filechooser(connection: &Connection) -> Result<(), ProbeStatus> {
@@ -165,8 +256,61 @@ fn response_match_rule() -> MatchRule<'static> {
 
 fn valid_request_path(path: &OwnedObjectPath) -> bool {
     let value = path.as_str();
-    value.starts_with("/org/freedesktop/portal/desktop/request/")
-        && value.len() > "/org/freedesktop/portal/desktop/request/".len()
+    value.starts_with(REQUEST_PATH_PREFIX) && value.len() > REQUEST_PATH_PREFIX.len()
+}
+
+fn valid_request_path_for_sender(path: &OwnedObjectPath, expected_path: &OwnedObjectPath) -> bool {
+    if !valid_request_path(path) {
+        return false;
+    }
+    let Some((expected_sender, _)) = expected_path.as_str().rsplit_once('/') else {
+        return false;
+    };
+    let sender_prefix = format!("{expected_sender}/");
+    path.as_str().starts_with(&sender_prefix)
+}
+
+fn handle_token() -> String {
+    let sequence = HANDLE_TOKEN_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let mut random = [0_u8; 12];
+    let random_suffix = std::fs::File::open("/dev/urandom")
+        .and_then(|mut file| file.read_exact(&mut random))
+        .is_ok();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    let mut random_hex = String::with_capacity(random.len() * 2);
+    for byte in random {
+        write!(&mut random_hex, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    if random_suffix {
+        format!("{HANDLE_TOKEN_PREFIX}_{random_hex}_{sequence:x}")
+    } else {
+        format!(
+            "{HANDLE_TOKEN_PREFIX}_{:x}_{:x}_{sequence:x}",
+            std::process::id(),
+            timestamp
+        )
+    }
+}
+
+fn request_options(handle_token: &str) -> HashMap<String, OwnedValue> {
+    HashMap::from([(
+        "handle_token".to_owned(),
+        OwnedValue::try_from(Value::from(handle_token.to_owned()))
+            .expect("a token is a valid D-Bus string"),
+    )])
+}
+
+fn expected_request_path(connection: &Connection, handle_token: &str) -> Option<OwnedObjectPath> {
+    request_path_for_sender(connection.unique_name()?.as_str(), handle_token)
+}
+
+fn request_path_for_sender(unique_name: &str, handle_token: &str) -> Option<OwnedObjectPath> {
+    let sender = unique_name.strip_prefix(':')?;
+    let sender = sender.replace('.', "_");
+    let path = format!("{REQUEST_PATH_PREFIX}{sender}/{handle_token}");
+    OwnedObjectPath::try_from(path).ok()
 }
 
 #[derive(Clone, Copy)]
@@ -209,7 +353,11 @@ async fn wait_for_response(stream: &mut MessageStream, request_path: &str) -> Re
     }
 }
 
-async fn close_request(connection: &Connection, request_path: &str) -> CleanupResult {
+async fn close_request(
+    connection: &Connection,
+    request_path: &str,
+    unknown_is_completed: bool,
+) -> CleanupResult {
     let Ok(Ok(proxy)) = tokio::time::timeout(
         ACTIVE_PROBE_CLEANUP,
         Proxy::new(
@@ -225,7 +373,10 @@ async fn close_request(connection: &Connection, request_path: &str) -> CleanupRe
     };
     match tokio::time::timeout(ACTIVE_PROBE_CLEANUP, proxy.call::<_, _, ()>("Close", &())).await {
         Ok(Ok(())) => CleanupResult::completed(),
-        Ok(Err(error)) if request_already_gone(&error) => CleanupResult::completed(),
+        Ok(Err(error)) if request_already_gone(&error) && unknown_is_completed => {
+            CleanupResult::completed()
+        }
+        Ok(Err(error)) if request_already_gone(&error) => CleanupResult::unverified(),
         Ok(Err(_)) | Err(_) => failed_request_cleanup(),
     }
 }
@@ -420,9 +571,10 @@ fn cleanup_resource_name(resource: CleanupResource) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        ResponseWait, classify_error_message, decode_response, exit_code, finalize, has_uri_array,
-        introspection_supports_filechooser, render_terminal, response_match_rule,
-        valid_request_path,
+        ResponseWait, classify_error_message, decode_response, exit_code, finalize, handle_token,
+        has_uri_array, introspection_supports_filechooser, render_terminal, request_options,
+        request_path_for_sender, response_match_rule, valid_request_path,
+        valid_request_path_for_sender,
     };
     use crate::model::probe::{
         CleanupResource, CleanupResult, CleanupStatus, ProbeKind, ProbeResult, ProbeStage,
@@ -544,6 +696,40 @@ mod tests {
         let invalid = OwnedObjectPath::try_from("/org/freedesktop/portal/desktop").unwrap();
         assert!(valid_request_path(&valid));
         assert!(!valid_request_path(&invalid));
+    }
+
+    #[test]
+    fn request_path_validation_keeps_sender_correlation_but_allows_legacy_tokens() {
+        let expected = OwnedObjectPath::try_from(
+            "/org/freedesktop/portal/desktop/request/1_42/portaldoctor_expected",
+        )
+        .unwrap();
+        let legacy = OwnedObjectPath::try_from(
+            "/org/freedesktop/portal/desktop/request/1_42/portal_generated",
+        )
+        .unwrap();
+        let unrelated = OwnedObjectPath::try_from(
+            "/org/freedesktop/portal/desktop/request/1_99/portaldoctor_expected",
+        )
+        .unwrap();
+        assert!(valid_request_path_for_sender(&expected, &expected));
+        assert!(valid_request_path_for_sender(&legacy, &expected));
+        assert!(!valid_request_path_for_sender(&unrelated, &expected));
+    }
+
+    #[test]
+    fn token_and_predicted_path_are_private_dbus_request_metadata() {
+        let token = handle_token();
+        assert!(token.starts_with("portaldoctor_"));
+        let options = request_options(&token);
+        let encoded = String::try_from(&**options.get("handle_token").unwrap())
+            .expect("handle_token is encoded as a D-Bus string");
+        assert_eq!(encoded, token);
+        assert_eq!(
+            request_path_for_sender(":1.42", &token).unwrap().as_str(),
+            format!("/org/freedesktop/portal/desktop/request/1_42/{token}")
+        );
+        assert!(request_path_for_sender("org.freedesktop.portal.Desktop", &token).is_none());
     }
 
     #[test]
