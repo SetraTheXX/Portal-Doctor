@@ -1,8 +1,14 @@
 # PortalDoctor — Development Roadmap
 
-**Status:** Implementation roadmap baseline  
-**Date:** 2026-08-30
+**Status:** Current implementation roadmap; last verified 2026-09-05
+**Date:** 2026-09-05
 **Strategy:** Narrow vertical slice first, then expand subsystem coverage and desktop compatibility
+
+> **Current handoff:** Read [`PORTALDOCTOR_CURRENT_STATE.md`](PORTALDOCTOR_CURRENT_STATE.md)
+> before starting work. Phases 0–7 and the v0.2.1 passive stabilization gate are
+> complete. The current implementation target is Phase 8 / v0.3.0, beginning
+> with the bounded ASHPD strategy, probe-result contract and FileChooser slice
+> tracked in [GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
 
 ---
 
@@ -836,6 +842,10 @@ Validated matrix includes at least:
 ---
 
 # Recommended Immediate Implementation Slice (historical)
+
+> **Archived bootstrap guidance — do not execute this section as the current
+> task list.** It records the original project-start sequence. The active next
+> task is Phase 8 / v0.3.0; use `PORTALDOCTOR_CURRENT_STATE.md` and Issue #3.
 
 This section records the original project bootstrap sequence. Phases 0–7 are
 complete and shipped across v0.2.0/v0.2.1; the next implementation slice is

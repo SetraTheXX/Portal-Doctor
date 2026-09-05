@@ -233,6 +233,7 @@ removes the renderer title from the frame.
 
 ## Documentation
 
+- [Current state and AI handoff](docs/PORTALDOCTOR_CURRENT_STATE.md)
 - [Package page on docs.rs](https://docs.rs/portaldoctor/0.2.1) *(PortalDoctor is a binary-only CLI, so docs.rs does not provide a public library API.)*
 - [Finding catalog](docs/findings.md)
 - [JSON schema v1](docs/json-schema.md)
@@ -275,7 +276,8 @@ scenarios.
 The v0.2.1 release completes the passive diagnostic stabilization gate; the
 next expansion is deliberately layered:
 
-1. introduce safe active probes for selected portal interfaces,
+1. introduce safe active probes for selected portal interfaces, starting with
+   the bounded FileChooser slice in [Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3),
 2. expand validation across KDE and wlroots-based sessions,
 3. harden the compatibility matrix and release artifacts,
 4. document and ship the next compatible release only after its acceptance
