@@ -80,8 +80,9 @@ Implement it in this order:
    user-facing findings. The standalone v1 shape is documented in
    [`probe-result-schema.md`](probe-result-schema.md) and implemented at
    `src/model/probe.rs`; constructor and serde validation reject schema-version
-   mismatches and contradictory cleanup states. It is not embedded in the
-   passive report yet.
+   mismatches, contradictory cleanup states and probe/stage/resource
+   combinations outside the v1 matrix. It is not embedded in the passive
+   report yet.
 3. Implement the first bounded FileChooser probe only.
 4. Add success, user-cancellation, timeout, unavailable-backend, malformed
    response and transport-failure coverage, including cleanup assertions.

@@ -78,10 +78,25 @@ pub enum CleanupResource {
 /// Validation failure for a machine-readable probe result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProbeResultError {
-    InvalidSchemaVersion { expected: u32, actual: u32 },
-    CleanupResourcesNotAllowed { status: CleanupStatus },
+    InvalidSchemaVersion {
+        expected: u32,
+        actual: u32,
+    },
+    CleanupResourcesNotAllowed {
+        status: CleanupStatus,
+    },
     CleanupResourcesRequired,
-    DuplicateCleanupResource { resource: CleanupResource },
+    DuplicateCleanupResource {
+        resource: CleanupResource,
+    },
+    InvalidStageForProbe {
+        probe: ProbeKind,
+        stage: ProbeStage,
+    },
+    InvalidCleanupResourceForProbe {
+        probe: ProbeKind,
+        resource: CleanupResource,
+    },
 }
 
 impl fmt::Display for ProbeResultError {
@@ -101,6 +116,13 @@ impl fmt::Display for ProbeResultError {
             Self::DuplicateCleanupResource { resource } => {
                 write!(f, "cleanup resource {resource:?} is listed more than once")
             }
+            Self::InvalidStageForProbe { probe, stage } => {
+                write!(f, "probe stage {stage:?} is not valid for probe {probe:?}")
+            }
+            Self::InvalidCleanupResourceForProbe { probe, resource } => write!(
+                f,
+                "cleanup resource {resource:?} is not valid for probe {probe:?}"
+            ),
         }
     }
 }
@@ -229,6 +251,37 @@ impl<'de> Deserialize<'de> for CleanupResult {
     }
 }
 
+impl ProbeStage {
+    const fn is_valid_for(self, probe: ProbeKind) -> bool {
+        match probe {
+            ProbeKind::FileChooser | ProbeKind::Screenshot => matches!(
+                self,
+                Self::Prepare | Self::Request | Self::Response | Self::Cleanup | Self::Complete
+            ),
+            ProbeKind::ScreenCast => matches!(
+                self,
+                Self::Prepare
+                    | Self::CreateSession
+                    | Self::SelectSources
+                    | Self::Start
+                    | Self::StreamsReturned
+                    | Self::OpenPipeWireRemote
+                    | Self::Cleanup
+                    | Self::Complete
+            ),
+        }
+    }
+}
+
+impl CleanupResource {
+    const fn is_valid_for(self, probe: ProbeKind) -> bool {
+        match probe {
+            ProbeKind::FileChooser | ProbeKind::Screenshot => matches!(self, Self::Request),
+            ProbeKind::ScreenCast => true,
+        }
+    }
+}
+
 /// Stable machine-readable result shared by `FileChooser`, `Screenshot` and
 /// `ScreenCast` probes.
 ///
@@ -281,7 +334,22 @@ impl ProbeResult {
                 actual: self.schema_version,
             });
         }
-        self.cleanup.validate()
+        if !self.stage.is_valid_for(self.probe) {
+            return Err(ProbeResultError::InvalidStageForProbe {
+                probe: self.probe,
+                stage: self.stage,
+            });
+        }
+        self.cleanup.validate()?;
+        for resource in self.cleanup.failed_resources() {
+            if !resource.is_valid_for(self.probe) {
+                return Err(ProbeResultError::InvalidCleanupResourceForProbe {
+                    probe: self.probe,
+                    resource: *resource,
+                });
+            }
+        }
+        Ok(())
     }
 
     /// A result is a clean success only when the portal operation succeeded
@@ -371,7 +439,7 @@ impl<'de> Deserialize<'de> for ProbeResult {
 mod tests {
     use super::{
         CleanupResource, CleanupResult, CleanupStatus, PROBE_RESULT_SCHEMA_VERSION, ProbeKind,
-        ProbeResult, ProbeStage, ProbeStatus,
+        ProbeResult, ProbeResultError, ProbeStage, ProbeStatus,
     };
     use serde_json::json;
 
@@ -427,6 +495,192 @@ mod tests {
         assert_eq!(decoded.probe(), ProbeKind::FileChooser);
         assert_eq!(decoded.stage(), ProbeStage::Response);
         assert_eq!(decoded.status(), ProbeStatus::UserCancelled);
+    }
+
+    #[test]
+    fn probe_stage_and_cleanup_resource_matrix_accepts_valid_combinations() {
+        let valid_stages = [
+            (ProbeKind::FileChooser, ProbeStage::Prepare),
+            (ProbeKind::FileChooser, ProbeStage::Request),
+            (ProbeKind::FileChooser, ProbeStage::Response),
+            (ProbeKind::FileChooser, ProbeStage::Cleanup),
+            (ProbeKind::FileChooser, ProbeStage::Complete),
+            (ProbeKind::Screenshot, ProbeStage::Prepare),
+            (ProbeKind::Screenshot, ProbeStage::Request),
+            (ProbeKind::Screenshot, ProbeStage::Response),
+            (ProbeKind::Screenshot, ProbeStage::Cleanup),
+            (ProbeKind::Screenshot, ProbeStage::Complete),
+            (ProbeKind::ScreenCast, ProbeStage::Prepare),
+            (ProbeKind::ScreenCast, ProbeStage::CreateSession),
+            (ProbeKind::ScreenCast, ProbeStage::SelectSources),
+            (ProbeKind::ScreenCast, ProbeStage::Start),
+            (ProbeKind::ScreenCast, ProbeStage::StreamsReturned),
+            (ProbeKind::ScreenCast, ProbeStage::OpenPipeWireRemote),
+            (ProbeKind::ScreenCast, ProbeStage::Cleanup),
+            (ProbeKind::ScreenCast, ProbeStage::Complete),
+        ];
+
+        for (probe, stage) in valid_stages {
+            let result = ProbeResult::new(
+                probe,
+                stage,
+                ProbeStatus::Success,
+                CleanupResult::completed(),
+            )
+            .unwrap();
+            let encoded = serde_json::to_value(&result).unwrap();
+            assert_eq!(
+                serde_json::from_value::<ProbeResult>(encoded).unwrap(),
+                result
+            );
+        }
+
+        let valid_resources = [
+            (
+                ProbeKind::FileChooser,
+                ProbeStage::Response,
+                vec![CleanupResource::Request],
+            ),
+            (
+                ProbeKind::Screenshot,
+                ProbeStage::Response,
+                vec![CleanupResource::Request],
+            ),
+            (
+                ProbeKind::ScreenCast,
+                ProbeStage::CreateSession,
+                vec![CleanupResource::Request],
+            ),
+            (
+                ProbeKind::ScreenCast,
+                ProbeStage::CreateSession,
+                vec![CleanupResource::Session],
+            ),
+            (
+                ProbeKind::ScreenCast,
+                ProbeStage::OpenPipeWireRemote,
+                vec![CleanupResource::PipeWireRemote],
+            ),
+            (
+                ProbeKind::ScreenCast,
+                ProbeStage::Cleanup,
+                vec![
+                    CleanupResource::Request,
+                    CleanupResource::Session,
+                    CleanupResource::PipeWireRemote,
+                ],
+            ),
+        ];
+
+        for (probe, stage, resources) in valid_resources {
+            let cleanup = CleanupResult::failed(resources).unwrap();
+            let result = ProbeResult::new(probe, stage, ProbeStatus::Success, cleanup).unwrap();
+            let encoded = serde_json::to_value(&result).unwrap();
+            assert_eq!(
+                serde_json::from_value::<ProbeResult>(encoded).unwrap(),
+                result
+            );
+        }
+    }
+
+    #[test]
+    fn probe_stage_and_cleanup_resource_matrix_rejects_invalid_constructors() {
+        let invalid_stages = [
+            (ProbeKind::FileChooser, ProbeStage::CreateSession),
+            (ProbeKind::Screenshot, ProbeStage::OpenPipeWireRemote),
+            (ProbeKind::ScreenCast, ProbeStage::Request),
+            (ProbeKind::ScreenCast, ProbeStage::Response),
+        ];
+
+        for (probe, stage) in invalid_stages {
+            assert!(matches!(
+                ProbeResult::new(
+                    probe,
+                    stage,
+                    ProbeStatus::InfrastructureFailure,
+                    CleanupResult::not_required(),
+                ),
+                Err(ProbeResultError::InvalidStageForProbe { .. })
+            ));
+        }
+
+        let invalid_resources = [
+            (ProbeKind::FileChooser, CleanupResource::Session),
+            (ProbeKind::Screenshot, CleanupResource::PipeWireRemote),
+        ];
+
+        for (probe, resource) in invalid_resources {
+            let cleanup = CleanupResult::failed(vec![resource]).unwrap();
+            assert!(matches!(
+                ProbeResult::new(
+                    probe,
+                    ProbeStage::Response,
+                    ProbeStatus::InfrastructureFailure,
+                    cleanup,
+                ),
+                Err(ProbeResultError::InvalidCleanupResourceForProbe { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn invalid_probe_stage_and_resource_documents_are_rejected_during_deserialization() {
+        let invalid_documents = [
+            json!({
+                "schema_version": 1,
+                "probe": "file_chooser",
+                "stage": "create_session",
+                "status": "success",
+                "cleanup": {
+                    "status": "completed",
+                    "failed_resources": []
+                }
+            }),
+            json!({
+                "schema_version": 1,
+                "probe": "screenshot",
+                "stage": "open_pipe_wire_remote",
+                "status": "success",
+                "cleanup": {
+                    "status": "completed",
+                    "failed_resources": []
+                }
+            }),
+            json!({
+                "schema_version": 1,
+                "probe": "screen_cast",
+                "stage": "response",
+                "status": "success",
+                "cleanup": {
+                    "status": "completed",
+                    "failed_resources": []
+                }
+            }),
+            json!({
+                "schema_version": 1,
+                "probe": "file_chooser",
+                "stage": "response",
+                "status": "infrastructure_failure",
+                "cleanup": {
+                    "status": "failed",
+                    "failed_resources": ["session"]
+                }
+            }),
+            json!({
+                "schema_version": 1,
+                "probe": "screenshot",
+                "stage": "response",
+                "status": "infrastructure_failure",
+                "cleanup": {
+                    "status": "failed",
+                    "failed_resources": ["pipe_wire_remote"]
+                }
+            }),
+        ];
+
+        for document in invalid_documents {
+            assert!(serde_json::from_value::<ProbeResult>(document).is_err());
+        }
     }
 
     #[test]
@@ -540,6 +794,29 @@ mod tests {
         };
         assert!(serde_json::to_value(&invalid_result).is_err());
         assert!(!invalid_result.is_clean_success());
+
+        let invalid_stage = ProbeResult {
+            schema_version: PROBE_RESULT_SCHEMA_VERSION,
+            probe: ProbeKind::FileChooser,
+            stage: ProbeStage::CreateSession,
+            status: ProbeStatus::Success,
+            cleanup: CleanupResult::completed(),
+        };
+        assert!(serde_json::to_value(&invalid_stage).is_err());
+        assert!(!invalid_stage.is_clean_success());
+
+        let invalid_resource = ProbeResult {
+            schema_version: PROBE_RESULT_SCHEMA_VERSION,
+            probe: ProbeKind::Screenshot,
+            stage: ProbeStage::Response,
+            status: ProbeStatus::Success,
+            cleanup: CleanupResult {
+                status: CleanupStatus::Failed,
+                failed_resources: vec![CleanupResource::PipeWireRemote],
+            },
+        };
+        assert!(serde_json::to_value(&invalid_resource).is_err());
+        assert!(!invalid_resource.is_clean_success());
     }
 
     #[test]

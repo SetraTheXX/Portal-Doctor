@@ -79,6 +79,27 @@ The `stage` value is shared across probe families:
 FileChooser and Screenshot use `request`/`response`; ScreenCast uses the
 explicit session stages so callers can locate the exact failing boundary.
 
+### Probe/stage/resource compatibility
+
+The fields are validated together; a stage or cleanup resource is not valid
+merely because it is a known enum value. The v1 compatibility matrix is:
+
+| Probe | Allowed stages | Allowed `failed_resources` values |
+|---|---|---|
+| `file_chooser` | `prepare`, `request`, `response`, `cleanup`, `complete` | `request` |
+| `screenshot` | `prepare`, `request`, `response`, `cleanup`, `complete` | `request` |
+| `screen_cast` | `prepare`, `create_session`, `select_sources`, `start`, `streams_returned`, `open_pipe_wire_remote`, `cleanup`, `complete` | `request`, `session`, `pipe_wire_remote` |
+
+`cleanup` and `complete` are shared terminal boundaries, while the
+ScreenCast-only session and PipeWire stages cannot be attached to FileChooser
+or Screenshot results. Conversely, the generic `request` and `response`
+stages are not used for ScreenCast. A cleanup resource listed for a probe must
+also be present in that probe's row; otherwise the result is invalid.
+
+The constructor, `validate()`, serialization and deserialization enforce this
+matrix. This prevents a producer from emitting, or a consumer from accepting,
+an internally well-typed but semantically impossible result.
+
 ## Cleanup contract
 
 `cleanup` is a second result axis and must never be discarded when interpreting
@@ -109,6 +130,8 @@ a clean success.
   `1`; serde deserialization and serialization apply the same check.
 - Cleanup constructors and serde also reject contradictory status/resource
   pairs and duplicate failed resources.
+- Probe/stage/resource combinations outside the compatibility matrix above are
+  rejected by constructors and both serde directions.
 - Additive optional fields may be introduced without changing the version;
   changes to required fields, field meaning or enum semantics require a new
   result schema version.

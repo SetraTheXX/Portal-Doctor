@@ -723,7 +723,8 @@ whose cleanup could not be proven. See
 [`probe-result-schema.md`](probe-result-schema.md) for the canonical JSON
 shape and versioning rules. The model's constructors and custom serde paths
 reject schema-version mismatches, contradictory cleanup status/resource pairs
-and duplicate failed resources.
+duplicate failed resources and probe/stage/resource combinations outside the
+documented compatibility matrix.
 
 ### ScreenCast result
 

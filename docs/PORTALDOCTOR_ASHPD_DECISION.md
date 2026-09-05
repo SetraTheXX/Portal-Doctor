@@ -139,7 +139,9 @@ The standalone machine-readable `ProbeResult` shape is now defined in
 [`probe-result-schema.md`](probe-result-schema.md) and implemented as a passive
 model in `src/model/probe.rs`. Final active-command shell exit-code mapping and
 the FileChooser lifecycle remain deferred to the next Issue #3 checklist item.
-This decision still does not change the v0.2.1 public contract.
+Its v1 validation also keeps ScreenCast-only lifecycle stages and cleanup
+resources out of FileChooser and Screenshot results. This decision still does
+not change the v0.2.1 public contract.
 
 ## Required implementation checks before using ASHPD directly
 
