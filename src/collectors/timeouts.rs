@@ -16,6 +16,13 @@ pub const NORMAL_RUNTIME_QUERY: Duration = Duration::from_secs(3);
 /// window is intentionally longer than passive metadata queries while still
 /// being finite.
 pub const ACTIVE_PROBE_SETUP: Duration = Duration::from_secs(3);
+/// Maximum time for the initial portal request method call. This is separate
+/// from the user-facing response window because the method must return a
+/// Request handle before the dialog can be observed.
+pub const ACTIVE_PROBE_REQUEST: Duration = Duration::from_secs(3);
+/// Bounded grace period used after request cancellation or method timeout to
+/// recover a late Request handle and close it before reporting uncertainty.
+pub const ACTIVE_PROBE_REQUEST_RECOVERY: Duration = Duration::from_secs(2);
 pub const ACTIVE_PROBE_RESPONSE: Duration = Duration::from_secs(30);
 /// Maximum time allowed for a portal `Close` call after an active probe.
 pub const ACTIVE_PROBE_CLEANUP: Duration = Duration::from_secs(2);

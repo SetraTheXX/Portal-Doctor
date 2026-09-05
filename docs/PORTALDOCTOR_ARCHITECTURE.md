@@ -734,11 +734,16 @@ documented compatibility matrix.
 The first active lifecycle uses a PortalDoctor-owned direct `zbus` adapter and
 a short-lived current-thread Tokio runtime. It introspects the portal frontend,
 registers a `Request::Response` match before calling `FileChooser.OpenFile`,
-validates the returned request object path, waits for the matching response and
-issues `Request.Close` after response, cancellation or timeout. Setup,
-response and cleanup use separate central bounds. The response's `uris` field
-is checked only for the expected `as` protocol shape; URI values are not
-logged, serialized, opened or used for file I/O.
+sends a unique `handle_token`, derives the expected request path from the
+caller's bus sender, validates the returned request object path, waits for the
+matching response and issues `Request.Close` after response, cancellation or
+timeout. Setup, request, late-reply recovery, response and cleanup use
+separate central bounds. If the method reply is late, the future is retained
+for bounded recovery; if it never arrives, the token-derived path is closed
+once and an unknown-object result is reported as `unverified` rather than
+claimed clean. The response's `uris` field is checked only for the expected
+`as` protocol shape; URI values are not logged, serialized, opened or used for
+file I/O.
 
 The standalone `ProbeResult` keeps operation status and cleanup status
 independent. A verified operation/cleanup reaches `complete`; an unverified or

@@ -133,11 +133,23 @@ portaldoctor probe filechooser --json
 ```
 
 It warns on `stderr` before a desktop dialog may appear. The request is sent
-to the portal frontend only after `Request::Response` subscription is active;
-the returned request object path is validated and is retained only for the
-bounded `Request.Close` cleanup call. A response is classified by its status
-and protocol shape, but the `uris` values are not logged, serialized or used
-for file I/O. No selected file is read, copied, modified or persisted.
+to the portal frontend only after `Request::Response` subscription is active.
+Each request carries a unique `handle_token`, so the expected Request object
+path can be derived from the caller's D-Bus sender before `OpenFile`; the
+returned path is still checked against that sender to support portals that
+generate a different token. The returned or predicted path is retained only
+for the bounded `Request.Close` cleanup call.
+
+If cancellation or the request-stage deadline wins before `OpenFile` replies,
+the method future remains alive for a bounded recovery window. A late valid
+handle is closed immediately. If no reply arrives, `Close` is attempted on the
+predicted path; an unknown-object result is `unverified`, because an absent
+method reply cannot prove whether the portal created the request after the
+cleanup race. This is a non-clean, machine-readable result rather than an
+implicit fallback. A known returned handle that is already gone is treated as
+verified completion. A response is classified by its status and protocol
+shape, but the `uris` values are not logged, serialized or used for file I/O.
+No selected file is read, copied, modified or persisted.
 
 The active command uses the following shell mapping without changing passive
 exit codes: `0` means `success` plus verified `completed`/`not_required`
@@ -180,4 +192,6 @@ Serialization, round-trip compatibility, all operation statuses, independent
 cleanup failure, FileChooser protocol fixtures and passive report
 non-regression are covered by unit tests in `src/model/probe.rs`,
 `src/probes/filechooser.rs` and `src/report/mod.rs`. Real-session validation
-is the remaining gate before this slice can be released.
+and the controlled fake-portal matrix are also required gates for this slice;
+both are now recorded in the Phase 8 handoff. The active command remains
+unreleased until the v0.3.0 release decision.

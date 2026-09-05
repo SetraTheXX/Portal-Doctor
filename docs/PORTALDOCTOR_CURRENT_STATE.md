@@ -1,6 +1,6 @@
 # PortalDoctor — Current State and Handoff
 
-**Last verified:** 2026-09-05
+**Last verified:** 2026-09-06
 **Current public release:** `v0.2.1`
 **Current development phase:** Phase 8 / `v0.3.0`
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
@@ -87,22 +87,30 @@ Implement it in this order:
    report yet.
 3. [x] Implement the first bounded FileChooser probe only. The command is
    `portaldoctor probe filechooser`; it uses a direct zbus lifecycle adapter,
-   central setup/response/cleanup timeouts and standalone `ProbeResult` JSON.
-4. [x] Add protocol fixture coverage for success, user cancellation, timeout,
-   unavailable/unsupported, malformed response and infrastructure failure,
-   including cleanup assertions. Request cleanup is attempted after a known
-   handle and is reported independently; no implicit fallback is performed.
-5. [x] Validate one real supported desktop session before starting Screenshot
-   or ScreenCast probe implementation.
+   a per-request `handle_token`, central request/recovery/response/cleanup
+   timeouts and standalone `ProbeResult` JSON.
+4. [x] Add protocol fixture coverage for success, user cancellation, request
+   and response timeout, unavailable/unsupported, malformed response and
+   infrastructure failure, including `Request.Close` assertions. The
+   response match is installed before `OpenFile`; a late method reply is
+   recovered within a bounded grace period, and the token-derived path is
+   closed when the reply never arrives. An unresolved transport race is
+   reported as `unverified`, never claimed clean, and no implicit fallback is
+   performed. The reproducible controlled portal is
+   [`scripts/validate-filechooser-fake.py`](../scripts/validate-filechooser-fake.py).
+5. [x] Validate both cancellation and successful selection in one real
+   supported desktop session before starting Screenshot or ScreenCast probe
+   implementation.
 
-Real-session validation on 2026-09-05 used the release binary in the current
+Real-session validation on 2026-09-06 used the release binary in the current
 Ubuntu 26.04 + GNOME + Wayland + systemd user session. An explicit
 `probe filechooser --json` run was cancelled with `Ctrl-C` while the portal
 interaction was active and produced `user_cancelled`, `stage: complete`,
-`cleanup.status: completed` and process exit `1`; no URI or file content was
-emitted. A separate no-session-bus run produced `unavailable` within the
-bounded setup window. A successful file selection was not used as a release
-requirement because the probe must not read or persist selected-file content.
+`cleanup.status: completed` and process exit `1`. A second run selected an
+existing file through the GNOME chooser and produced `success`,
+`stage: complete`, `cleanup.status: completed` and process exit `0`.
+Neither run emitted a URI, filename or file content. A separate no-session-bus
+run produced `unavailable` within the bounded setup window.
 
 Active probes must never run from `portaldoctor` or `portaldoctor check` by
 default. They must clearly warn about possible dialogs, remain rootless and
@@ -121,7 +129,9 @@ The first task is complete only when all of the following are true:
 - success, cancellation, timeout, unavailable service and malformed response
   are distinguishable and covered by fixtures or mocks,
 - no selected file is read, copied or modified,
-- request/session resources are cleaned up on every path,
+- known request resources are closed on every path; token-derived cleanup is
+  attempted on a late/unanswered request and ambiguous transport outcomes are
+  explicitly `unverified`,
 - the supported real-session validation path is documented,
 - `cargo fmt --check`, strict locked Clippy, locked tests, locked release build,
   locked package and clean-root install smoke all pass.
@@ -130,8 +140,8 @@ Do not implement all three probe families in the first slice and do not begin
 desktop expansion or remediation as part of it.
 
 The current change stops after the FileChooser slice and its audit. Do not
-start Screenshot or ScreenCast until the real-session gate and all listed
-quality checks remain green.
+start Screenshot or ScreenCast in this change; the next probe family remains
+blocked until its own design, privacy review and release gate are opened.
 
 ## Quality gates
 
@@ -153,6 +163,20 @@ PORTALDOCTOR_BIN=target/release/portaldoctor \
 For release-facing changes, also verify the GitHub Actions run, release asset
 checksum and crates.io installation. Keep `cargo audit` clean when dependency
 changes are introduced.
+
+The active lifecycle audit additionally runs the controlled portal harness
+inside an isolated session bus. It covers `success`, `cancel`, `malformed`,
+`response-timeout`, `late-reply`, `request-timeout`, `transport-failure` and
+`unsupported`, plus a close-failure fixture for the independent cleanup axis:
+
+```sh
+dbus-run-session -- python3 scripts/validate-filechooser-fake.py \
+  --mode success -- target/release/portaldoctor probe filechooser --json
+```
+
+The same command is repeated for each listed mode. The harness asserts the
+standalone JSON status, shell exit code, URI redaction and observed
+`Request.Close` calls where a request was created.
 
 ## Documentation and planning rules
 

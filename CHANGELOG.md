@@ -13,8 +13,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The FileChooser probe warns before opening a dialog, distinguishes success,
   cancellation, timeout, unavailable/unsupported, malformed and
   infrastructure outcomes, and reports `Request.Close` cleanup independently.
+- Added per-request `handle_token` correlation, bounded late-reply recovery and
+  token-derived cleanup for the request-stage timeout/cancellation race;
+  ambiguous transport cleanup is reported as `unverified`.
 - The probe never reads, copies, modifies or persists selected-file content;
-  Screenshot and ScreenCast probes remain future v0.3.0 work.
+  controlled fake-portal and real Ubuntu/GNOME/Wayland validation cover both
+  success and cancellation; Screenshot and ScreenCast remain future v0.3.0
+  work.
 
 ## [0.2.1] — 2026-08-31
 
