@@ -11,6 +11,15 @@ use std::time::{Duration, Instant};
 pub const SHORT_METADATA: Duration = Duration::from_secs(2);
 pub const NORMAL_RUNTIME_QUERY: Duration = Duration::from_secs(3);
 
+/// Maximum time for explicit active-probe setup and protocol stages. Active
+/// probes are opt-in and may show a user-facing dialog, so their response
+/// window is intentionally longer than passive metadata queries while still
+/// being finite.
+pub const ACTIVE_PROBE_SETUP: Duration = Duration::from_secs(3);
+pub const ACTIVE_PROBE_RESPONSE: Duration = Duration::from_secs(30);
+/// Maximum time allowed for a portal `Close` call after an active probe.
+pub const ACTIVE_PROBE_CLEANUP: Duration = Duration::from_secs(2);
+
 /// Run `f` on a worker thread bounded by `timeout`. `None` means the work did
 /// not finish in time; the worker is detached so it cannot hang the CLI — a
 /// wedged dependency is diagnostic data, not a hang (PRD REL-003).

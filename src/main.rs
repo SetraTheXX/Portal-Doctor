@@ -2,6 +2,7 @@ mod cli;
 mod collectors;
 mod error;
 mod model;
+mod probes;
 mod report;
 mod resolver;
 mod rules;

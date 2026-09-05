@@ -107,6 +107,37 @@ check for portal, PipeWire, and WirePlumber units; `--verbose` displays only
 the short, sanitized excerpts that match stable error patterns. The same
 option can be used with `report` when journal evidence should be included.
 
+### Explicit FileChooser probe (development on `main`)
+
+The first Phase 8 active probe is available on the development branch as an
+explicit command. It is not part of the published crates.io `v0.2.1` binary
+and is never invoked by `portaldoctor` or `portaldoctor check`:
+
+```sh
+portaldoctor probe filechooser
+```
+
+This command may open a desktop file chooser. Cancel it when you only want to
+validate the cancellation path. PortalDoctor validates the portal lifecycle,
+does not read, copy, modify or persist the selected file, and always reports
+request cleanup separately. For automation, use `--json`; the warning stays on
+`stderr` and `stdout` contains only the standalone `ProbeResult` document:
+
+```json
+{
+  "schema_version": 1,
+  "probe": "file_chooser",
+  "stage": "complete",
+  "status": "user_cancelled",
+  "cleanup": { "status": "completed", "failed_resources": [] }
+}
+```
+
+For this explicit command, exit `0` means a successful operation with verified
+cleanup; every cancellation, timeout, unavailable/unsupported capability,
+malformed response, infrastructure failure or cleanup failure returns `1`.
+The passive command exit-code contract below is unchanged.
+
 ## What it checks
 
 - operating system, desktop, session type, and allowlisted environment values,
@@ -196,9 +227,12 @@ v0.2 until they have a dedicated validation matrix.
 
 ### Outside the published v0.2.1 boundary
 
-- active portal method/dialog probes,
 - validated KDE, wlroots, Sway, Hyprland, or Niri behavior,
 - automatic fixes and GUI workflows.
+
+The development `main` branch contains only the first explicit FileChooser
+probe described above; active Screenshot and ScreenCast probes remain outside
+the published `v0.2.1` boundary and are not implemented yet.
 
 For the exact compatibility contract and known resolver limitations, see
 [compatibility and known limitations](docs/compatibility.md).
@@ -208,6 +242,8 @@ For the exact compatibility contract and known resolver limitations, see
 The README GIF uses four checked-in scenes: a healthy passive check,
 explainable `ScreenCast` routing, a privacy-aware Markdown report, and a
 controlled missing-`WAYLAND_DISPLAY` diagnosis with its exit code.
+It intentionally remains a passive `v0.2.1` showcase and does not claim to
+demonstrate the development FileChooser dialog lifecycle.
 
 ```sh
 cargo build --locked --release
@@ -237,6 +273,7 @@ removes the renderer title from the frame.
 - [Package page on docs.rs](https://docs.rs/portaldoctor/0.2.1) *(PortalDoctor is a binary-only CLI, so docs.rs does not provide a public library API.)*
 - [Finding catalog](docs/findings.md)
 - [JSON schema v1](docs/json-schema.md)
+- [Active `ProbeResult` schema v1](docs/probe-result-schema.md)
 - [Compatibility and known limitations](docs/compatibility.md)
 - [Privacy statement](docs/privacy.md)
 - [Architecture](docs/PORTALDOCTOR_ARCHITECTURE.md)

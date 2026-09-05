@@ -17,10 +17,13 @@ Other distributions, desktops and sessions may work — the resolver follows
 upstream `xdg-desktop-portal` semantics rather than hard-coding GNOME — but
 they are untested in v0.2 and no support is claimed.
 
-## What v0.2 does NOT cover
+## What the published v0.2 line does NOT cover
 
-- **Active probes** — v0.2 never calls portal interfaces, so end-to-end
-  behavior of FileChooser/Screenshot/ScreenCast dialogs is not exercised.
+- **Published active probes** — v0.2.1 never calls portal interfaces. The
+  development `main` branch has a separate, unreleased FileChooser probe, but
+  it does not extend the v0.2.1 support claim or release contract.
+- **Screenshot/ScreenCast active lifecycles** — those probes are not yet
+  implemented or validated.
 - **KDE / wlroots / Hyprland / Niri** — no support claims; route resolution
   may work but is unvalidated.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.

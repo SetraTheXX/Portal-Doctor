@@ -1,7 +1,10 @@
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::cli::{CheckArgs, CheckDomain, Cli, PortalArgs, PortalCmd, ReportArgs, ReportFormat};
+use crate::cli::{
+    CheckArgs, CheckDomain, Cli, PortalArgs, PortalCmd, ProbeArgs, ProbeCmd, ReportArgs,
+    ReportFormat,
+};
 use crate::collectors;
 use crate::error::Error;
 use crate::model::finding::{Finding, Severity};
@@ -33,6 +36,8 @@ pub enum RunOutcome {
     SevereFindings,
     /// The diagnostic could not establish the minimum session/runtime context.
     RuntimeContextUnavailable,
+    /// An explicit active probe completed with its own stable shell mapping.
+    ActiveProbe { exit_code: u8 },
 }
 
 impl RunOutcome {
@@ -43,6 +48,7 @@ impl RunOutcome {
             Self::Clean => 0,
             Self::SevereFindings => 1,
             Self::RuntimeContextUnavailable => 3,
+            Self::ActiveProbe { exit_code } => exit_code,
         }
     }
 
@@ -96,6 +102,28 @@ pub fn run(cli: &Cli) -> Result<RunOutcome, Error> {
         crate::cli::Command::Check(args) => run_check(&args, cli.json, cli.verbose, cli.journal),
         crate::cli::Command::Portal(args) => run_portal(&args, cli.json, cli.journal),
         crate::cli::Command::Report(args) => run_report(&args, cli.json, cli.verbose, cli.journal),
+        crate::cli::Command::Probe(args) => run_probe(&args, cli.json),
+    }
+}
+
+fn run_probe(args: &ProbeArgs, json: bool) -> Result<RunOutcome, Error> {
+    match &args.command {
+        ProbeCmd::FileChooser => {
+            eprintln!(
+                "Warning: this explicit probe may open a desktop file chooser dialog. PortalDoctor will not read, copy, or modify the selected file."
+            );
+            let result = crate::probes::filechooser::run()?;
+            let rendered = if json {
+                serde_json::to_string_pretty(&result)
+                    .map_err(|error| Error::ProbeOutput(error.to_string()))?
+            } else {
+                crate::probes::filechooser::render_terminal(&result)
+            };
+            write_stdout(&rendered)?;
+            Ok(RunOutcome::ActiveProbe {
+                exit_code: crate::probes::filechooser::exit_code(&result),
+            })
+        }
     }
 }
 

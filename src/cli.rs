@@ -31,6 +31,23 @@ pub enum Command {
     Portal(PortalArgs),
     /// Generate a privacy-aware report suitable for sharing in an issue.
     Report(ReportArgs),
+    /// Run an explicitly requested, bounded active portal probe.
+    Probe(ProbeArgs),
+}
+
+/// Options for explicit active portal probes.
+#[derive(Debug, Clone, Args)]
+pub struct ProbeArgs {
+    #[command(subcommand)]
+    pub command: ProbeCmd,
+}
+
+/// Supported explicit active portal probes.
+#[derive(Debug, Clone, Subcommand)]
+pub enum ProbeCmd {
+    /// Open the desktop `FileChooser` portal and report only its lifecycle.
+    #[command(name = "filechooser")]
+    FileChooser,
 }
 
 /// Options for the `check` command.
@@ -97,7 +114,7 @@ pub enum PortalCmd {
 
 #[cfg(test)]
 mod tests {
-    use super::{CheckDomain, Cli, Command, ReportFormat};
+    use super::{CheckDomain, Cli, Command, ProbeCmd, ReportFormat};
     use clap::Parser;
 
     #[test]
@@ -137,5 +154,15 @@ mod tests {
         let cli = Cli::parse_from(["portaldoctor", "report", "--json"]);
         assert!(cli.json);
         assert!(matches!(cli.command, Some(Command::Report(_))));
+    }
+
+    #[test]
+    fn parses_explicit_filechooser_probe() {
+        let cli = Cli::parse_from(["portaldoctor", "probe", "filechooser", "--json"]);
+        assert!(cli.json);
+        let Some(Command::Probe(args)) = cli.command else {
+            panic!("expected probe command");
+        };
+        assert!(matches!(args.command, ProbeCmd::FileChooser));
     }
 }

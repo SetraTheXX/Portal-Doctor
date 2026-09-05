@@ -594,11 +594,16 @@ implementing any active request.
   lifecycle stage and independent cleanup outcome, with constructor/serde
   invariant validation, including the probe/stage/resource compatibility
   matrix. See [`probe-result-schema.md`](probe-result-schema.md).
-- [ ] Implement the first FileChooser slice using that contract.
+- [x] Implement the first FileChooser slice using that contract. The
+  unreleased `main` branch now provides `portaldoctor probe filechooser` with
+  a direct `zbus` lifecycle adapter; the published v0.2.1 passive path is
+  unchanged.
 
-This checkpoint does not add ASHPD to `Cargo.toml`, add an active CLI command or
-change the passive snapshot/report JSON. The dependency profile and exact use
-of ASHPD are validated again when the FileChooser implementation begins.
+The first implementation does not add ASHPD to `Cargo.toml`: its high-level
+request future would hide the request handle needed for bounded cleanup. It
+adds only the Tokio runtime feature on the existing `zbus` line and the small
+stream/runtime support needed by the explicit command. The passive
+snapshot/report JSON remains unchanged.
 
 ## Probes
 
@@ -607,6 +612,18 @@ of ASHPD are validated again when the FileChooser implementation begins.
 ```bash
 portaldoctor probe filechooser
 ```
+
+The command is explicit and unreleased. It warns before a desktop dialog,
+subscribes to `Request::Response` before `OpenFile`, validates the request
+handle, bounds setup/response/cleanup separately, and reports standalone
+`ProbeResult` v1 JSON. It never reads, copies, modifies or persists the
+selected file; `Screenshot` and `ScreenCast` remain unchecked future slices.
+
+- [x] Validate the cancellation and cleanup path in the supported Ubuntu 26.04
+  + GNOME + Wayland + systemd user session.
+- [ ] Validate a successful selection path before a future v0.3.0 release;
+  this is intentionally not required to start the next probe family, but it is
+  required before publishing the active feature.
 
 ### Screenshot
 
