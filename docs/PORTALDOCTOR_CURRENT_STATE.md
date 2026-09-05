@@ -16,8 +16,9 @@ D-Bus and systemd user services, PipeWire/WirePlumber health, optional bounded
 journal evidence and shareable reports.
 
 The published `v0.2.1` line is a stabilized passive diagnostic product. The
-next product step is not another stabilization pass: it is the explicitly
-invoked, bounded active-probe work in Phase 8.
+next product step is the explicitly invoked, bounded active-probe work in Phase
+8. The current development branch now contains the first FileChooser slice;
+it is not yet part of the published `v0.2.1` release.
 
 ## Release and repository state
 
@@ -56,7 +57,8 @@ The documented and validated baseline is:
 Other distributions and desktops may work, but they are not v0.2 support
 claims. The following remain outside the published v0.2.1 boundary:
 
-- active portal method/dialog probes,
+- the unreleased development FileChooser probe,
+- Screenshot and ScreenCast active probes,
 - validated KDE, wlroots/Sway, Hyprland or Niri behavior,
 - automatic fixes,
 - GUI workflows.
@@ -83,11 +85,24 @@ Implement it in this order:
    mismatches, contradictory cleanup states and probe/stage/resource
    combinations outside the v1 matrix. It is not embedded in the passive
    report yet.
-3. Implement the first bounded FileChooser probe only.
-4. Add success, user-cancellation, timeout, unavailable-backend, malformed
-   response and transport-failure coverage, including cleanup assertions.
-5. Validate one real supported desktop session before starting Screenshot or
-   ScreenCast probe implementation.
+3. [x] Implement the first bounded FileChooser probe only. The command is
+   `portaldoctor probe filechooser`; it uses a direct zbus lifecycle adapter,
+   central setup/response/cleanup timeouts and standalone `ProbeResult` JSON.
+4. [x] Add protocol fixture coverage for success, user cancellation, timeout,
+   unavailable/unsupported, malformed response and infrastructure failure,
+   including cleanup assertions. Request cleanup is attempted after a known
+   handle and is reported independently; no implicit fallback is performed.
+5. [x] Validate one real supported desktop session before starting Screenshot
+   or ScreenCast probe implementation.
+
+Real-session validation on 2026-09-05 used the release binary in the current
+Ubuntu 26.04 + GNOME + Wayland + systemd user session. An explicit
+`probe filechooser --json` run was cancelled with `Ctrl-C` while the portal
+interaction was active and produced `user_cancelled`, `stage: complete`,
+`cleanup.status: completed` and process exit `1`; no URI or file content was
+emitted. A separate no-session-bus run produced `unavailable` within the
+bounded setup window. A successful file selection was not used as a release
+requirement because the probe must not read or persist selected-file content.
 
 Active probes must never run from `portaldoctor` or `portaldoctor check` by
 default. They must clearly warn about possible dialogs, remain rootless and
@@ -114,9 +129,9 @@ The first task is complete only when all of the following are true:
 Do not implement all three probe families in the first slice and do not begin
 desktop expansion or remediation as part of it.
 
-The current change stops after item 2. Do not start FileChooser or any other
-active probe implementation until this result contract has been accepted as
-the design boundary for the next implementation slice.
+The current change stops after the FileChooser slice and its audit. Do not
+start Screenshot or ScreenCast until the real-session gate and all listed
+quality checks remain green.
 
 ## Quality gates
 

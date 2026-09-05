@@ -123,7 +123,9 @@ A timeout against a wedged XDG portal is useful diagnostic evidence.
 
 Default run must not open dialogs or mutate portal state.
 
-Active probe module is opt-in and versioned independently in behavior.
+Active probes are opt-in and versioned independently in behavior. The first
+implemented slice is `src/probes/filechooser.rs`, reached only through
+`portaldoctor probe filechooser`; it is not called by the passive collectors.
 
 ---
 
@@ -703,7 +705,8 @@ Active probes arrive after passive diagnostics are stable.
 The shared machine-readable result model lives in `src/model/probe.rs` as
 `ProbeResult`. It is standalone and versioned with
 `PROBE_RESULT_SCHEMA_VERSION = 1`; it is not added to the passive `Snapshot`
-or `Report` until an explicit active command exists.
+or `Report`, even though the explicit FileChooser command now exists. Keeping
+the active document separate preserves the published passive JSON contract.
 
 ```rust
 struct ProbeResult {
@@ -726,6 +729,22 @@ reject schema-version mismatches, contradictory cleanup status/resource pairs
 duplicate failed resources and probe/stage/resource combinations outside the
 documented compatibility matrix.
 
+### FileChooser lifecycle
+
+The first active lifecycle uses a PortalDoctor-owned direct `zbus` adapter and
+a short-lived current-thread Tokio runtime. It introspects the portal frontend,
+registers a `Request::Response` match before calling `FileChooser.OpenFile`,
+validates the returned request object path, waits for the matching response and
+issues `Request.Close` after response, cancellation or timeout. Setup,
+response and cleanup use separate central bounds. The response's `uris` field
+is checked only for the expected `as` protocol shape; URI values are not
+logged, serialized, opened or used for file I/O.
+
+The standalone `ProbeResult` keeps operation status and cleanup status
+independent. A verified operation/cleanup reaches `complete`; an unverified or
+failed cleanup reaches `cleanup` and is never a clean success. Expected portal
+outcomes remain machine-readable even when the command exits `1`.
+
 ### ScreenCast result
 
 Represent lifecycle stages explicitly through `ProbeStage`:
@@ -742,12 +761,13 @@ User cancellation must not be reported as infrastructure failure.
 
 ### Use ASHPD where appropriate
 
-ASHPD already implements high-level Rust wrappers for portals. Prefer it for
-portal-specific models and method semantics when it does not hide a lifecycle
-handle. Use the PortalDoctor-owned `zbus` adapter whenever exact request/session
-cleanup, stage-level timeout or response-race control is required. Do not add
-the dependency or implement a probe until the decision record's cleanup checks
-are testable.
+ASHPD remains a reference for portal-specific models and method semantics, but
+the FileChooser slice does not add the dependency: its high-level request
+future hides the request handle until after the response. Use the
+PortalDoctor-owned `zbus` adapter whenever exact request/session cleanup,
+stage-level timeout or response-race control is required. A later probe may
+add ASHPD only after the decision record's cleanup checks are demonstrably
+preserved.
 
 ---
 

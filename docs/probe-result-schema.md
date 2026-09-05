@@ -1,11 +1,13 @@
 # Active ProbeResult Schema v1
 
-**Status:** Defined for Phase 8 / v0.3.0
-**Scope:** Shared result contract only; no active probe or CLI command is implemented
+**Status:** v1 implemented for the first Phase 8 FileChooser slice on `main`
+**Scope:** Standalone active-probe result contract; passive v0.2.1 output remains unchanged
 
-This document defines the machine-readable result that future explicit
-FileChooser, Screenshot and ScreenCast probes will emit. It does not change the
-published v0.2.1 passive commands or their existing `--json` document.
+This document defines the machine-readable result that explicit FileChooser,
+Screenshot and ScreenCast probes emit. The development
+branch currently implements only `portaldoctor probe filechooser`; Screenshot
+and ScreenCast remain future slices. It does not change the published v0.2.1
+passive commands or their existing `--json` document.
 
 ## Canonical shape
 
@@ -25,9 +27,9 @@ An active probe result is a standalone document with its own schema version:
 ```
 
 The Rust source of truth is [`src/model/probe.rs`](../src/model/probe.rs).
-The model is exported from `src/model` but is not yet embedded in `Snapshot` or
-`Report`. That separation prevents a contract change to `portaldoctor --json`
-before an active command exists.
+The model is exported from `src/model` but is not embedded in `Snapshot` or
+`Report`. That separation prevents an active-probe contract from changing the
+published passive `portaldoctor --json` document.
 
 ## Fields
 
@@ -121,6 +123,29 @@ A result is a clean success only when `status == "success"` and cleanup is
 with cleanup failure remains visibly `success` on the operation axis but is not
 a clean success.
 
+## FileChooser command boundary
+
+The first active command is deliberately separate from passive collection:
+
+```sh
+portaldoctor probe filechooser
+portaldoctor probe filechooser --json
+```
+
+It warns on `stderr` before a desktop dialog may appear. The request is sent
+to the portal frontend only after `Request::Response` subscription is active;
+the returned request object path is validated and is retained only for the
+bounded `Request.Close` cleanup call. A response is classified by its status
+and protocol shape, but the `uris` values are not logged, serialized or used
+for file I/O. No selected file is read, copied, modified or persisted.
+
+The active command uses the following shell mapping without changing passive
+exit codes: `0` means `success` plus verified `completed`/`not_required`
+cleanup; `1` means cancellation, timeout, unavailable/unsupported capability,
+malformed response, infrastructure failure or cleanup failure. JSON is emitted
+even for a result mapped to `1`; process-level runtime/output failures retain
+the existing generic error path.
+
 ## Versioning and compatibility
 
 - `PROBE_RESULT_SCHEMA_VERSION` is currently `1`.
@@ -139,10 +164,10 @@ a clean success.
   or treat the document as an unsupported schema; they must never infer a pass
   from an unknown value. Adding a new enum value therefore requires a new
   result schema version.
-- No active result is currently included in the passive `Snapshot`, `Report`,
-  shareable report or README demo.
-- Active probe shell exit-code mapping is intentionally deferred to the
-  FileChooser implementation step; v0.2.1 exit codes remain unchanged.
+- No active result is included in the passive `Snapshot`, `Report`, shareable
+  report or README demo.
+- The standalone active command is unreleased until the Phase 8 release gate;
+  the published v0.2.1 exit codes and JSON document remain unchanged.
 
 ## Privacy and test boundary
 
@@ -152,6 +177,7 @@ errors or arbitrary environment values. Future probe-specific evidence must
 pass the existing privacy review before it is added.
 
 Serialization, round-trip compatibility, all operation statuses, independent
-cleanup failure and passive report non-regression are covered by unit tests in
-`src/model/probe.rs` and `src/report/mod.rs`. FileChooser lifecycle tests and
-real-session validation remain the next Issue #3 step.
+cleanup failure, FileChooser protocol fixtures and passive report
+non-regression are covered by unit tests in `src/model/probe.rs`,
+`src/probes/filechooser.rs` and `src/report/mod.rs`. Real-session validation
+is the remaining gate before this slice can be released.

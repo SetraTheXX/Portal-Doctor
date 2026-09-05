@@ -3,7 +3,7 @@
 **Status:** Accepted for Phase 8 planning
 **Decision date:** 2026-09-05
 **Scope:** active FileChooser, Screenshot and ScreenCast probes
-**Implementation status:** decision and shared `ProbeResult` contract recorded; no active probe is included
+**Implementation status:** first bounded FileChooser lifecycle implemented on `main`; Screenshot and ScreenCast remain future slices
 
 ## Decision
 
@@ -63,8 +63,12 @@ helpers only after the cleanup boundary is demonstrably preserved.
 
 ## Planned dependency and runtime boundary
 
-This decision does not change `Cargo.toml` or `Cargo.lock`. Dependency changes
-belong to the FileChooser implementation slice and must be reviewed separately.
+The first FileChooser slice intentionally does not add ASHPD. It enables the
+Tokio runtime feature on the existing `zbus` line and adds the small
+`futures-lite`/Tokio runtime boundary required to own the response stream and
+cleanup calls. The passive blocking collectors continue to use their existing
+path. An ASHPD dependency remains deferred until a later probe can demonstrate
+that its public API preserves the same lifecycle observability.
 
 The initial implementation experiment used:
 
@@ -135,13 +139,27 @@ tool, arbitrary backend or automatic fix. A passive snapshot may be collected
 separately for context, but its findings cannot be substituted for a failed
 active lifecycle result.
 
-The standalone machine-readable `ProbeResult` shape is now defined in
-[`probe-result-schema.md`](probe-result-schema.md) and implemented as a passive
-model in `src/model/probe.rs`. Final active-command shell exit-code mapping and
-the FileChooser lifecycle remain deferred to the next Issue #3 checklist item.
-Its v1 validation also keeps ScreenCast-only lifecycle stages and cleanup
-resources out of FileChooser and Screenshot results. This decision still does
-not change the v0.2.1 public contract.
+The standalone machine-readable `ProbeResult` shape is defined in
+[`probe-result-schema.md`](probe-result-schema.md) and implemented in
+`src/model/probe.rs`. The first FileChooser command now uses that contract:
+
+- `portaldoctor probe filechooser` is the only active command and is never part
+  of the default passive path;
+- the `Request::Response` match is installed before `OpenFile` is sent;
+- portal introspection, request creation, response wait and `Request.Close`
+  each have bounded stages;
+- success, cancellation, timeout, unavailable/unsupported, malformed response
+  and infrastructure failure map to v1 statuses without raw error/URI output;
+- a known request path is closed after response, cancellation or timeout, and
+  cleanup failure is kept separate from operation status;
+- `--json` emits only the standalone result on `stdout`; the dialog/privacy
+  warning is on `stderr`.
+
+The active shell mapping is `0` only for a successful operation with verified
+cleanup and `1` for every other completed probe result. This does not change
+the published v0.2.1 passive contract. The v1 validation also keeps
+ScreenCast-only lifecycle stages and cleanup resources out of FileChooser and
+Screenshot results.
 
 ## Required implementation checks before using ASHPD directly
 

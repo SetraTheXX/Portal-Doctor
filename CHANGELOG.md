@@ -7,7 +7,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-- Next planned milestone: explicit active portal probes for v0.3.0.
+- Added the first explicit Phase 8 `portaldoctor probe filechooser` lifecycle
+  on the development branch, using a bounded PortalDoctor-owned `zbus`
+  adapter and standalone `ProbeResult` v1 JSON.
+- The FileChooser probe warns before opening a dialog, distinguishes success,
+  cancellation, timeout, unavailable/unsupported, malformed and
+  infrastructure outcomes, and reports `Request.Close` cleanup independently.
+- The probe never reads, copies, modifies or persists selected-file content;
+  Screenshot and ScreenCast probes remain future v0.3.0 work.
 
 ## [0.2.1] — 2026-08-31
 
