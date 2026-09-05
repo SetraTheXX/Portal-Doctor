@@ -16,6 +16,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added per-request `handle_token` correlation, bounded late-reply recovery and
   token-derived cleanup for the request-stage timeout/cancellation race;
   ambiguous transport cleanup is reported as `unverified`.
+- `handle_token` generation now requires 128 bits of operating-system entropy;
+  entropy failure is a pre-request infrastructure result with no predictable
+  PID/time fallback. Added unit coverage for uniqueness and fail-closed token
+  creation.
+- Added a permanent controlled FileChooser CI gate covering every lifecycle
+  mode, URI redaction and the expected `Request.Close` observation (including
+  explicit no-request paths).
 - The probe never reads, copies, modifies or persists selected-file content;
   controlled fake-portal and real Ubuntu/GNOME/Wayland validation cover both
   success and cancellation; Screenshot and ScreenCast remain future v0.3.0

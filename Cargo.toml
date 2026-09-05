@@ -16,6 +16,7 @@ thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 futures-lite = "2.6"
+getrandom = "0.4"
 tokio = { version = "1", features = ["macros", "rt", "signal", "time"] }
 zbus = { version = "5", features = ["blocking-api", "tokio"] }
 

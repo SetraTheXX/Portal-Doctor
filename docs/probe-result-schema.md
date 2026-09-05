@@ -151,6 +151,14 @@ verified completion. A response is classified by its status and protocol
 shape, but the `uris` values are not logged, serialized or used for file I/O.
 No selected file is read, copied, modified or persisted.
 
+The request token is internal lifecycle metadata and is never included in the
+result document, terminal rendering or persistent state. It is generated from
+mandatory operating-system entropy; if entropy is unavailable, the probe
+returns `infrastructure_failure` before creating a request instead of using a
+predictable fallback. The controlled lifecycle harness is a permanent CI gate:
+it checks both result shape and the expected `Request.Close` observation for
+each request-created and no-request scenario.
+
 The active command uses the following shell mapping without changing passive
 exit codes: `0` means `success` plus verified `completed`/`not_required`
 cleanup; `1` means cancellation, timeout, unavailable/unsupported capability,

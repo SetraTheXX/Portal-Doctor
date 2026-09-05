@@ -101,6 +101,13 @@ Implement it in this order:
 5. [x] Validate both cancellation and successful selection in one real
    supported desktop session before starting Screenshot or ScreenCast probe
    implementation.
+6. [x] Make the controlled FileChooser lifecycle harness a permanent CI gate.
+   CI runs every fake-portal mode and asserts the machine result, process exit,
+   URI redaction and observed `Request.Close` count, including the explicit
+   no-request cleanup boundary.
+7. [x] Require OS-provided entropy for every `handle_token`. Entropy failure
+   fails closed as `infrastructure_failure` before `OpenFile`; no PID/time
+   fallback is allowed.
 
 Real-session validation on 2026-09-06 used the release binary in the current
 Ubuntu 26.04 + GNOME + Wayland + systemd user session. An explicit
@@ -165,18 +172,29 @@ checksum and crates.io installation. Keep `cargo audit` clean when dependency
 changes are introduced.
 
 The active lifecycle audit additionally runs the controlled portal harness
-inside an isolated session bus. It covers `success`, `cancel`, `malformed`,
-`response-timeout`, `late-reply`, `request-timeout`, `transport-failure` and
-`unsupported`, plus a close-failure fixture for the independent cleanup axis:
+inside an isolated session bus. The permanent CI entry point covers `success`,
+`cancel`, `malformed`, `response-timeout`, `late-reply`, `request-timeout`,
+`transport-failure` and `unsupported`, plus a close-failure fixture for the
+independent cleanup axis:
+
+```sh
+PORTALDOCTOR_BIN=target/release/portaldoctor \
+  ./scripts/validate-filechooser-fake-ci.sh
+```
+
+For one scenario during local debugging:
 
 ```sh
 dbus-run-session -- python3 scripts/validate-filechooser-fake.py \
   --mode success -- target/release/portaldoctor probe filechooser --json
 ```
 
-The same command is repeated for each listed mode. The harness asserts the
-standalone JSON status, shell exit code, URI redaction and observed
-`Request.Close` calls where a request was created.
+The CI wrapper repeats the harness for every listed mode. The harness asserts
+the standalone JSON status, shell exit code, URI redaction, and the expected
+`Request.Close` observation: exactly one close for a known request, and zero
+for paths where the fake proves that no request object was created. Ambiguous
+real-transport paths remain `cleanup.status: unverified` rather than claiming
+cleanup success.
 
 ## Documentation and planning rules
 

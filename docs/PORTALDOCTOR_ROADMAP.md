@@ -633,6 +633,12 @@ selected file; `Screenshot` and `ScreenCast` remain unchecked future slices.
 - [x] Recover a late method reply within a bounded grace period and use the
   token-derived Request path when the reply never arrives; report unresolved
   transport ambiguity as `cleanup.status: unverified`.
+- [x] Make the controlled lifecycle harness a permanent CI gate. Every mode
+  asserts JSON status, process exit, URI redaction and the expected
+  `Request.Close` count, including explicit no-request scenarios.
+- [x] Require OS-provided entropy for every `handle_token`; injected entropy
+  failure is tested as a pre-request `infrastructure_failure` with no
+  predictable fallback.
 
 ### Screenshot
 
