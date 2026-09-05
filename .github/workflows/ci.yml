@@ -60,4 +60,13 @@ jobs:
             *) echo "unexpected Markdown smoke exit: $report_status" >&2; exit 1 ;;
           esac
           grep -q '^# PortalDoctor diagnostic report$' "$report_path"
+      - name: Install FileChooser fake portal dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y dbus-x11 python3-gi gir1.2-glib-2.0
+      - name: FileChooser controlled lifecycle gate
+        run: |
+          PORTALDOCTOR_BIN=target/release/portaldoctor \
+          PORTALDOCTOR_PYTHON=/usr/bin/python3 \
+          ./scripts/validate-filechooser-fake-ci.sh
       - run: PORTALDOCTOR_BIN=target/release/portaldoctor python3 scripts/validate-v0.1-faults.py

@@ -323,6 +323,10 @@ def main():
         "late-reply",
     } and fake.close_count != 1:
         raise AssertionError(f"{args.mode}: Request.Close was not observed")
+    if args.mode in {"request-timeout", "transport-failure", "unsupported"} and fake.close_count != 0:
+        raise AssertionError(
+            f"{args.mode}: Request.Close was observed although no request object was created"
+        )
     print(json.dumps({"mode": args.mode, "result": result, "close_calls": fake.close_count}, indent=2))
 
 

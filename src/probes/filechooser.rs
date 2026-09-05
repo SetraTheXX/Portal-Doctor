@@ -8,10 +8,8 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::future::Future;
-use std::io::Read as _;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures_lite::StreamExt;
 use zbus::zvariant::{Array, OwnedObjectPath, OwnedValue, Value};
@@ -92,13 +90,9 @@ async fn run_async() -> ProbeResult {
         Ok(proxy) => proxy,
         Err(outcome) => return result(ProbeStage::Request, outcome, CleanupResult::not_required()),
     };
-    let handle_token = handle_token();
-    let Some(expected_path) = expected_request_path(&connection, &handle_token) else {
-        return result(
-            ProbeStage::Request,
-            ProbeStatus::InfrastructureFailure,
-            CleanupResult::not_required(),
-        );
+    let (handle_token, expected_path) = match request_metadata(&connection) {
+        Ok(metadata) => metadata,
+        Err(failure) => return failure,
     };
     let options = request_options(&handle_token);
     let request_body = ("", FILE_CHOOSER_TITLE, options);
@@ -270,28 +264,31 @@ fn valid_request_path_for_sender(path: &OwnedObjectPath, expected_path: &OwnedOb
     path.as_str().starts_with(&sender_prefix)
 }
 
-fn handle_token() -> String {
+const HANDLE_TOKEN_RANDOM_BYTES: usize = 16;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HandleTokenError {
+    EntropyUnavailable,
+}
+
+fn handle_token() -> Result<String, HandleTokenError> {
+    handle_token_with_entropy(|random| {
+        getrandom::fill(random).map_err(|_| HandleTokenError::EntropyUnavailable)
+    })
+}
+
+fn handle_token_with_entropy<F>(fill: F) -> Result<String, HandleTokenError>
+where
+    F: FnOnce(&mut [u8; HANDLE_TOKEN_RANDOM_BYTES]) -> Result<(), HandleTokenError>,
+{
+    let mut random = [0_u8; HANDLE_TOKEN_RANDOM_BYTES];
+    fill(&mut random)?;
     let sequence = HANDLE_TOKEN_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let mut random = [0_u8; 12];
-    let random_suffix = std::fs::File::open("/dev/urandom")
-        .and_then(|mut file| file.read_exact(&mut random))
-        .is_ok();
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_nanos());
     let mut random_hex = String::with_capacity(random.len() * 2);
     for byte in random {
         write!(&mut random_hex, "{byte:02x}").expect("writing to a String cannot fail");
     }
-    if random_suffix {
-        format!("{HANDLE_TOKEN_PREFIX}_{random_hex}_{sequence:x}")
-    } else {
-        format!(
-            "{HANDLE_TOKEN_PREFIX}_{:x}_{:x}_{sequence:x}",
-            std::process::id(),
-            timestamp
-        )
-    }
+    Ok(format!("{HANDLE_TOKEN_PREFIX}_{random_hex}_{sequence:x}"))
 }
 
 fn request_options(handle_token: &str) -> HashMap<String, OwnedValue> {
@@ -304,6 +301,24 @@ fn request_options(handle_token: &str) -> HashMap<String, OwnedValue> {
 
 fn expected_request_path(connection: &Connection, handle_token: &str) -> Option<OwnedObjectPath> {
     request_path_for_sender(connection.unique_name()?.as_str(), handle_token)
+}
+
+fn request_metadata(connection: &Connection) -> Result<(String, OwnedObjectPath), ProbeResult> {
+    let handle_token = handle_token().map_err(|HandleTokenError::EntropyUnavailable| {
+        result(
+            ProbeStage::Request,
+            ProbeStatus::InfrastructureFailure,
+            CleanupResult::not_required(),
+        )
+    })?;
+    let expected_path = expected_request_path(connection, &handle_token).ok_or_else(|| {
+        result(
+            ProbeStage::Request,
+            ProbeStatus::InfrastructureFailure,
+            CleanupResult::not_required(),
+        )
+    })?;
+    Ok((handle_token, expected_path))
 }
 
 fn request_path_for_sender(unique_name: &str, handle_token: &str) -> Option<OwnedObjectPath> {
@@ -571,8 +586,9 @@ fn cleanup_resource_name(resource: CleanupResource) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        ResponseWait, classify_error_message, decode_response, exit_code, finalize, handle_token,
-        has_uri_array, introspection_supports_filechooser, render_terminal, request_options,
+        HandleTokenError, ResponseWait, classify_error_message, decode_response, exit_code,
+        finalize, handle_token, handle_token_with_entropy, has_uri_array,
+        introspection_supports_filechooser, render_terminal, request_options,
         request_path_for_sender, response_match_rule, valid_request_path,
         valid_request_path_for_sender,
     };
@@ -719,8 +735,13 @@ mod tests {
 
     #[test]
     fn token_and_predicted_path_are_private_dbus_request_metadata() {
-        let token = handle_token();
+        let token = handle_token().expect("the operating system entropy source is available");
         assert!(token.starts_with("portaldoctor_"));
+        assert!(
+            token
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+        );
         let options = request_options(&token);
         let encoded = String::try_from(&**options.get("handle_token").unwrap())
             .expect("handle_token is encoded as a D-Bus string");
@@ -730,6 +751,21 @@ mod tests {
             format!("/org/freedesktop/portal/desktop/request/1_42/{token}")
         );
         assert!(request_path_for_sender("org.freedesktop.portal.Desktop", &token).is_none());
+    }
+
+    #[test]
+    fn generated_handle_tokens_are_unique() {
+        let mut tokens = std::collections::HashSet::new();
+        for _ in 0..64 {
+            let token = handle_token().expect("the operating system entropy source is available");
+            assert!(tokens.insert(token));
+        }
+    }
+
+    #[test]
+    fn handle_token_generation_fails_closed_without_entropy() {
+        let result = handle_token_with_entropy(|_| Err(HandleTokenError::EntropyUnavailable));
+        assert_eq!(result, Err(HandleTokenError::EntropyUnavailable));
     }
 
     #[test]

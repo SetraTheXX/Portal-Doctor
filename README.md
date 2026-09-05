@@ -140,6 +140,17 @@ cleanup; every cancellation, timeout, unavailable/unsupported capability,
 malformed response, infrastructure failure or cleanup failure returns `1`.
 The passive command exit-code contract below is unchanged.
 
+The request token is internal D-Bus metadata. It is generated with mandatory
+operating-system entropy and is never printed or persisted; if entropy is
+unavailable, the probe fails before opening a portal request. Maintainers can
+run the complete controlled lifecycle gate locally (with `dbus-x11`,
+`python3-gi` and GLib introspection installed):
+
+```sh
+PORTALDOCTOR_BIN=target/release/portaldoctor \
+  ./scripts/validate-filechooser-fake-ci.sh
+```
+
 ## What it checks
 
 - operating system, desktop, session type, and allowlisted environment values,
@@ -305,13 +316,18 @@ cargo install --path . --locked --root "$install_root"
 "$install_root/bin/portaldoctor" --version
 PORTALDOCTOR_BIN=target/release/portaldoctor \
   python3 scripts/validate-v0.1-faults.py
+PORTALDOCTOR_BIN=target/release/portaldoctor \
+  ./scripts/validate-filechooser-fake-ci.sh
 ```
 
 The package and install commands verify the artifact before publication. The
 fault-injection harness exercises the v0.1-compatible finding contract and
 stable parser/runtime exit codes without modifying the host system. See the
 [fault-injection harness](scripts/validate-v0.1-faults.py) for the fixture
-scenarios.
+scenarios. The FileChooser wrapper runs the controlled success, cancellation,
+timeout, malformed-response, transport and cleanup-failure scenarios used by
+CI; it verifies `Request.Close` calls and privacy redaction, not only JSON
+shape.
 
 ## Roadmap
 

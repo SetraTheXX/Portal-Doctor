@@ -83,6 +83,16 @@ fallback or a false cleanup claim. A handle returned by `OpenFile` treats an
 already-gone object as completed, because the portal has already completed or
 removed that known request.
 
+### Handle-token entropy boundary
+
+The `handle_token` is internal D-Bus request metadata, not user-facing output.
+PortalDoctor obtains 128 bits from the operating system's entropy source and
+adds a process-local sequence only as a collision supplement. If the entropy
+source fails, token creation returns an infrastructure failure before
+`OpenFile`; there is no PID, timestamp or other predictable fallback. This
+keeps the XDG unique/not-guessable requirement fail-closed instead of trading
+request correlation for a guessable cleanup path.
+
 ## Planned dependency and runtime boundary
 
 The first FileChooser slice intentionally does not add ASHPD. It enables the
@@ -91,6 +101,10 @@ Tokio runtime feature on the existing `zbus` line and adds the small
 cleanup calls. The passive blocking collectors continue to use their existing
 path. An ASHPD dependency remains deferred until a later probe can demonstrate
 that its public API preserves the same lifecycle observability.
+
+The FileChooser token path adds the small `getrandom` OS-entropy dependency;
+it is used only by the explicit active probe and is not touched by the
+passive diagnostic path.
 
 The initial implementation experiment used:
 
@@ -175,6 +189,8 @@ The standalone machine-readable `ProbeResult` shape is defined in
 - a returned request path is closed after response, cancellation or timeout;
   a token-derived path is used when the method reply is late, and ambiguous
   cleanup remains explicitly `unverified`;
+- `handle_token` generation uses mandatory OS entropy; an entropy failure is a
+  pre-request `infrastructure_failure`, never a predictable fallback;
 - `--json` emits only the standalone result on `stdout`; the dialog/privacy
   warning is on `stderr`.
 
@@ -200,9 +216,13 @@ prove with tests or a controlled fake that:
 
 The FileChooser slice now satisfies these checks with the controlled portal in
 [`scripts/validate-filechooser-fake.py`](../scripts/validate-filechooser-fake.py)
-and with both cancellation and successful selection in the supported real
-Ubuntu/GNOME/Wayland session. This evidence applies only to FileChooser; it
-does not pre-approve Screenshot or ScreenCast.
+and its permanent CI wrapper
+[`scripts/validate-filechooser-fake-ci.sh`](../scripts/validate-filechooser-fake-ci.sh).
+The wrapper asserts cleanup calls as well as result shape, and unit tests inject
+an entropy failure to verify the fail-closed token boundary. Both cancellation
+and successful selection also passed in the supported real Ubuntu/GNOME/Wayland
+session. This evidence applies only to FileChooser; it does not pre-approve
+Screenshot or ScreenCast.
 
 If a helper fails any of these checks, the adapter uses direct `zbus` for that
 stage while retaining ASHPD/specification-compatible types and semantics where
