@@ -1,9 +1,18 @@
 # PortalDoctor — Documentation Index
 
-**Baseline date:** 2026-08-31
+**Baseline date:** 2026-09-05
 
 This folder contains the project-definition and release documentation for
 PortalDoctor.
+
+## Start here for current work
+
+### `PORTALDOCTOR_CURRENT_STATE.md`
+
+Canonical current-state and handoff document. It records the published
+release, validated scope, completed phases, the first bounded v0.3.0 task,
+acceptance criteria and quality gates. Read it before using the roadmap or
+starting implementation.
 
 ## Public release documents
 
@@ -117,7 +126,12 @@ v0.2:           no automatic fixes, no GUI, no broad desktop support claim
 
 Phase 4 is complete and v0.1.0 is published on both GitHub Releases and
 crates.io. Phases 5–7 (PipeWire/WirePlumber, opt-in bounded journal evidence
-and shareable reports/privacy) shipped in v0.2.0; v0.2.1 is now published with
+and shareable reports/privacy) shipped in v0.2.0; v0.2.1 was published with
 the stabilization and release gates. The validated support target remains
-Ubuntu 26.04 + GNOME + Wayland + systemd; active probes and wider desktop
-validation are the next roadmap steps.
+Ubuntu 26.04 + GNOME + Wayland + systemd. The next implementation gate is
+Phase 8 / v0.3.0, beginning with the bounded FileChooser probe sequence in
+[GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
+
+For a direct handoff, use
+[`PORTALDOCTOR_CURRENT_STATE.md`](PORTALDOCTOR_CURRENT_STATE.md), not the
+historical bootstrap section at the bottom of the roadmap.
