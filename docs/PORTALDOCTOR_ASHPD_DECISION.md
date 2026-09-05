@@ -3,7 +3,7 @@
 **Status:** Accepted for Phase 8 planning
 **Decision date:** 2026-09-05
 **Scope:** active FileChooser, Screenshot and ScreenCast probes
-**Implementation status:** decision only; no probe or `ProbeResult` code is included
+**Implementation status:** decision and shared `ProbeResult` contract recorded; no active probe is included
 
 ## Decision
 
@@ -135,10 +135,11 @@ tool, arbitrary backend or automatic fix. A passive snapshot may be collected
 separately for context, but its findings cannot be substituted for a failed
 active lifecycle result.
 
-Final shell exit-code mapping and the machine-readable `ProbeResult` shape are
-intentionally deferred to the next Issue #3 checklist item. This decision locks
-the underlying failure taxonomy and cleanup obligations without prematurely
-changing the v0.2.1 public contract.
+The standalone machine-readable `ProbeResult` shape is now defined in
+[`probe-result-schema.md`](probe-result-schema.md) and implemented as a passive
+model in `src/model/probe.rs`. Final active-command shell exit-code mapping and
+the FileChooser lifecycle remain deferred to the next Issue #3 checklist item.
+This decision still does not change the v0.2.1 public contract.
 
 ## Required implementation checks before using ASHPD directly
 

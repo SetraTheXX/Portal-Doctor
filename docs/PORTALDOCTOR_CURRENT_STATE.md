@@ -76,8 +76,10 @@ Implement it in this order:
    implications. The accepted boundary is PortalDoctor-owned lifecycle control
    with ASHPD used only where its public API preserves the required request and
    cleanup observability.
-2. Define a stable machine-readable `ProbeResult` contract before adding
-   user-facing findings.
+2. [x] Define a stable machine-readable `ProbeResult` contract before adding
+   user-facing findings. The standalone v1 shape is documented in
+   [`probe-result-schema.md`](probe-result-schema.md) and implemented at
+   `src/model/probe.rs`; it is not embedded in the passive report yet.
 3. Implement the first bounded FileChooser probe only.
 4. Add success, user-cancellation, timeout, unavailable-backend, malformed
    response and transport-failure coverage, including cleanup assertions.
@@ -109,9 +111,9 @@ The first task is complete only when all of the following are true:
 Do not implement all three probe families in the first slice and do not begin
 desktop expansion or remediation as part of it.
 
-The current change stops after item 1. Do not start `ProbeResult` or any probe
-implementation until this decision record has been accepted as the design
-boundary for the next implementation slice.
+The current change stops after item 2. Do not start FileChooser or any other
+active probe implementation until this result contract has been accepted as
+the design boundary for the next implementation slice.
 
 ## Quality gates
 

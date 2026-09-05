@@ -106,6 +106,13 @@ compatibility assumptions, timeout cleanup obligations and error/fallback
 taxonomy. It is a decision record, not an implementation guide for the probe
 commands.
 
+### `probe-result-schema.md`
+
+Use this for the Phase 8 standalone `ProbeResult` v1 contract: operation
+statuses, lifecycle stages, cleanup semantics, JSON versioning and privacy
+boundaries. It defines the model without enabling an active probe or changing
+the v0.2.1 passive report.
+
 ---
 
 ## Project Baseline Decisions

@@ -700,22 +700,39 @@ Active probes arrive after passive diagnostics are stable.
 
 ### Probe contract
 
+The shared machine-readable result model lives in `src/model/probe.rs` as
+`ProbeResult`. It is standalone and versioned with
+`PROBE_RESULT_SCHEMA_VERSION = 1`; it is not added to the passive `Snapshot`
+or `Report` until an explicit active command exists.
+
 ```rust
-trait Probe {
-    async fn run(&self, context: &ProbeContext) -> ProbeResult;
+struct ProbeResult {
+    schema_version: u32,
+    probe: ProbeKind,
+    stage: ProbeStage,
+    status: ProbeStatus,
+    cleanup: CleanupResult,
 }
 ```
 
+`ProbeStatus` distinguishes `success`, `user_cancelled`, `timed_out`,
+`unavailable`, `unsupported`, `malformed_response` and
+`infrastructure_failure`. `CleanupResult` independently reports
+`not_required`, `completed`, `failed` or `unverified`, including the resource
+whose cleanup could not be proven. See
+[`probe-result-schema.md`](probe-result-schema.md) for the canonical JSON
+shape and versioning rules.
+
 ### ScreenCast result
 
-Represent lifecycle stages explicitly:
+Represent lifecycle stages explicitly through `ProbeStage`:
 
 ```text
-CreateSession        pass/fail/timeout/skipped
-SelectSources        pass/fail/timeout/skipped
-Start                pass/fail/timeout/cancelled
-StreamsReturned      pass/fail
-OpenPipeWireRemote   pass/fail/timeout
+CreateSession        success/user_cancelled/timed_out/...
+SelectSources        success/user_cancelled/timed_out/...
+Start                success/user_cancelled/timed_out/...
+StreamsReturned      success/malformed_response/...
+OpenPipeWireRemote   success/timed_out/infrastructure_failure/...
 ```
 
 User cancellation must not be reported as infrastructure failure.
