@@ -108,6 +108,11 @@ Implement it in this order:
 7. [x] Require OS-provided entropy for every `handle_token`. Entropy failure
    fails closed as `infrastructure_failure` before `OpenFile`; no PID/time
    fallback is allowed.
+8. [x] Define the next Screenshot probe's lifecycle, target policy, privacy
+   boundary and release/validation gates in
+   [`PORTALDOCTOR_SCREENSHOT_DECISION.md`](PORTALDOCTOR_SCREENSHOT_DECISION.md).
+   Screenshot implementation remains the next separate bounded task and is
+   not part of this change.
 
 Real-session validation on 2026-09-06 used the release binary in the current
 Ubuntu 26.04 + GNOME + Wayland + systemd user session. An explicit
@@ -147,8 +152,9 @@ Do not implement all three probe families in the first slice and do not begin
 desktop expansion or remediation as part of it.
 
 The current change stops after the FileChooser slice and its audit. Do not
-start Screenshot or ScreenCast in this change; the next probe family remains
-blocked until its own design, privacy review and release gate are opened.
+start Screenshot implementation or ScreenCast in this change. Screenshot's
+design is recorded, but its implementation remains blocked until its own
+privacy, artifact-side-effect and release gate is opened.
 
 ## Quality gates
 

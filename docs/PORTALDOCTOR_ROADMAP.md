@@ -643,8 +643,30 @@ selected file; `Screenshot` and `ScreenCast` remain unchecked future slices.
 ### Screenshot
 
 ```bash
+# Reserved design target; not implemented yet.
 portaldoctor probe screenshot
 ```
+
+The implementation boundary is recorded in
+[`PORTALDOCTOR_SCREENSHOT_DECISION.md`](PORTALDOCTOR_SCREENSHOT_DECISION.md).
+Unlike FileChooser, a successful Screenshot request may create an image and
+return a URI for a portal-managed artifact. The first slice is therefore
+explicitly side-effectful at the portal data boundary and is not considered
+read-only merely because PortalDoctor never opens the image.
+
+- [x] Define a PortalDoctor-owned request lifecycle that reuses the audited
+  FileChooser response-race, timeout, cancellation and `Request.Close` rules.
+- [x] Define the v3 `AvailableTargets` preflight and Window-only target policy;
+  no silent Screen/Area/Active-Window fallback.
+- [x] Define the URI/image privacy and artifact-ownership boundary, including
+  the fact that Request.Close does not delete a screenshot already created by
+  the portal.
+- [x] Define controlled-fake, real-session, package, privacy and release gates.
+- [ ] Implement `org.freedesktop.portal.Screenshot.Screenshot`.
+- [ ] Validate success, cancellation, timeout, malformed response,
+  unsupported target/version and cleanup failure before any v0.3.0 release.
+- [ ] Run the supported real-session validation in a disposable test context;
+  PortalDoctor must not open or inspect the generated image.
 
 ### ScreenCast
 
