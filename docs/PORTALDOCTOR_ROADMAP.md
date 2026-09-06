@@ -673,6 +673,12 @@ read-only merely because PortalDoctor never opens the image.
   Ubuntu 26.04 + GNOME + Wayland context; PortalDoctor must not open or
   inspect the generated image. The current portal exposes version 2, so its
   unsupported fail-closed result is recorded but does not satisfy success.
+  The 2026-09-06 audit verified Ubuntu's installed frontend/backend versions
+  (`xdg-desktop-portal 1.21.1`, `xdg-desktop-portal-gnome 50.0`) and confirmed
+  that the current GNOME backend still advertises Screenshot implementation
+  version 2. The gate therefore remains externally blocked; do not substitute
+  a v2 bypass, controlled fake or wlroots backend for the required GNOME
+  success/cancellation evidence.
 
 ### ScreenCast
 

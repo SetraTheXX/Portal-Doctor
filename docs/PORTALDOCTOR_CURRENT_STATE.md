@@ -142,6 +142,19 @@ The same session reports Screenshot interface version `2` and no
 a request or artifact. This is the required fail-closed behavior, but it is
 not success/cancellation evidence for the v3 Window-target release gate.
 
+The provider limitation was rechecked on 2026-09-06, rather than inferred
+from the application result: the host has Ubuntu packages
+`xdg-desktop-portal 1.21.1+ds-1ubuntu3` and
+`xdg-desktop-portal-gnome 50.0-0ubuntu1`, while the upstream XDG portal
+changelog records Screenshot target selection in frontend `1.21.2` and the
+current GNOME backend source still advertises implementation version `2`.
+This is an external capability blocker, not a PortalDoctor test failure. A
+controlled fake portal or a wlroots backend would not be evidence for the
+required GNOME session, and the v2 session must not be bypassed.
+
+References: [XDG portal changelog](https://github.com/flatpak/xdg-desktop-portal/blob/main/NEWS.md),
+[GNOME Screenshot backend](https://github.com/GNOME/xdg-desktop-portal-gnome/blob/main/src/screenshot.c#L349).
+
 Active probes must never run from `portaldoctor` or `portaldoctor check` by
 default. They must clearly warn about possible dialogs, remain rootless, use
 the central timeout policy and clean up every request/session resource on
