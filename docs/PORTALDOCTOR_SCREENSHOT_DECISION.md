@@ -150,14 +150,14 @@ be called complete, the repository must have:
 - [ ] real supported-session cancellation and successful Window-target validation
   using a disposable test context, with no image opened or inspected by
   PortalDoctor; and
-- [ ] fmt, strict locked Clippy, locked tests, release build, locked package,
+- [x] fmt, strict locked Clippy, locked tests, release build, locked package,
   clean-root install, passive regression, audit/docs and GitHub Actions gates.
 
 The current Ubuntu 26.04 session exposes Screenshot version 2 and no
 `AvailableTargets` property, so the real-session item is intentionally still
-open; the binary returns `unsupported` before issuing a request. The final
-quality-gate item is marked only after the release build, package/install,
-passive regression and remote CI run are rechecked for this implementation.
+open; the binary returns `unsupported` before issuing a request. The local and
+remote quality-gate evidence is complete for the controlled implementation,
+but it does not substitute for the missing v3-capable real-session evidence.
 
 The v0.3.0 release must not advertise Screenshot as ready until the warning,
 side-effect boundary, disposable validation context and artifact ownership
