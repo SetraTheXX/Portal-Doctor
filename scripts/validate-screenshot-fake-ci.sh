@@ -2,7 +2,7 @@
 set -euo pipefail
 
 binary="${PORTALDOCTOR_BIN:-target/release/portaldoctor}"
-harness="${PORTALDOCTOR_FAKE_HARNESS:-scripts/validate-filechooser-fake.py}"
+harness="${PORTALDOCTOR_SCREENSHOT_FAKE_HARNESS:-scripts/validate-screenshot-fake.py}"
 python_bin="${PORTALDOCTOR_PYTHON:-python3}"
 
 test -x "$binary"
@@ -21,12 +21,16 @@ for mode in \
     close-failure \
     cancel \
     malformed \
+    malformed-type \
+    portal-failure \
     response-timeout \
     late-reply \
     request-timeout \
     transport-failure \
-    unsupported; do
-    echo "FileChooser controlled lifecycle: $mode"
+    unsupported-version \
+    unsupported-target \
+    unavailable; do
+    echo "Screenshot controlled lifecycle: $mode"
     dbus-run-session -- "$python_bin" "$harness" \
-        --mode "$mode" -- "$binary" probe filechooser --json
+        --mode "$mode" -- "$binary" probe screenshot --json
 done

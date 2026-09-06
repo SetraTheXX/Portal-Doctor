@@ -25,8 +25,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   explicit no-request paths).
 - The probe never reads, copies, modifies or persists selected-file content;
   controlled fake-portal and real Ubuntu/GNOME/Wayland validation cover both
-  success and cancellation; Screenshot and ScreenCast remain future v0.3.0
-  work.
+  success and cancellation.
+- Added the explicit, unreleased Phase 8 `portaldoctor probe screenshot`
+  lifecycle. It requires Screenshot v3+ and the Window target bit, never
+  falls back to another target, and never emits or persists the portal URI,
+  image bytes, path, filename or metadata.
+- Added a permanent controlled Screenshot CI gate for success, cancellation,
+  timeout, malformed response, capability, transport, unavailable and cleanup
+  failure paths. A real v3-capable session is still required before v0.3.0
+  release approval; ScreenCast remains future work.
 
 ## [0.2.1] — 2026-08-31
 

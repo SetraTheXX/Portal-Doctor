@@ -22,8 +22,13 @@ they are untested in v0.2 and no support is claimed.
 - **Published active probes** — v0.2.1 never calls portal interfaces. The
   development `main` branch has a separate, unreleased FileChooser probe, but
   it does not extend the v0.2.1 support claim or release contract.
-- **Screenshot/ScreenCast active lifecycles** — those probes are not yet
-  implemented or validated.
+- **Screenshot active lifecycle** — the development `main` branch implements
+  an explicit v3+ Window-target probe with controlled fake coverage. A real
+  success/cancellation claim requires a portal that advertises
+  `AvailableTargets`; the current Ubuntu 26.04 session exposes version 2 and
+  is correctly reported as unsupported. The published v0.2.1 package does not
+  include the probe.
+- **ScreenCast active lifecycle** — not implemented or validated.
 - **KDE / wlroots / Hyprland / Niri** — no support claims; route resolution
   may work but is unvalidated.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.

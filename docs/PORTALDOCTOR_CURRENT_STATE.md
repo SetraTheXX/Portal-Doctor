@@ -16,9 +16,10 @@ D-Bus and systemd user services, PipeWire/WirePlumber health, optional bounded
 journal evidence and shareable reports.
 
 The published `v0.2.1` line is a stabilized passive diagnostic product. The
-next product step is the explicitly invoked, bounded active-probe work in Phase
-8. The current development branch now contains the first FileChooser slice;
-it is not yet part of the published `v0.2.1` release.
+development branch now contains explicit, bounded FileChooser and Screenshot
+active probes; neither is part of the published `v0.2.1` release. Screenshot
+is implemented and fake-tested, but its release gate still requires a
+v3-capable real portal session with the Window target.
 
 ## Release and repository state
 
@@ -57,8 +58,8 @@ The documented and validated baseline is:
 Other distributions and desktops may work, but they are not v0.2 support
 claims. The following remain outside the published v0.2.1 boundary:
 
-- the unreleased development FileChooser probe,
-- Screenshot and ScreenCast active probes,
+- the unreleased development FileChooser and Screenshot probes,
+- the ScreenCast active probe,
 - validated KDE, wlroots/Sway, Hyprland or Niri behavior,
 - automatic fixes,
 - GUI workflows.
@@ -108,11 +109,22 @@ Implement it in this order:
 7. [x] Require OS-provided entropy for every `handle_token`. Entropy failure
    fails closed as `infrastructure_failure` before `OpenFile`; no PID/time
    fallback is allowed.
-8. [x] Define the next Screenshot probe's lifecycle, target policy, privacy
+8. [x] Define the Screenshot probe's lifecycle, target policy, privacy
    boundary and release/validation gates in
    [`PORTALDOCTOR_SCREENSHOT_DECISION.md`](PORTALDOCTOR_SCREENSHOT_DECISION.md).
-   Screenshot implementation remains the next separate bounded task and is
-   not part of this change.
+9. [x] Implement the explicit Screenshot lifecycle using the shared
+   PortalDoctor-owned zbus request mechanics. The command is limited to
+   Screenshot v3+ with the advertised Window target bit (`2`) and has no
+   target fallback.
+10. [x] Add the permanent controlled Screenshot matrix for success,
+    cancellation, malformed response, portal failure, request/response
+    timeout, late reply, transport failure, unsupported version/target,
+    unavailable service and cleanup failure. It asserts close calls, exit
+    code, result shape and privacy redaction.
+11. [ ] Validate Screenshot success and cancellation in a real v3-capable
+    Ubuntu 26.04 + GNOME + Wayland session. The current session exposes
+    Screenshot version 2 without `AvailableTargets`, so only the
+    unsupported fail-closed path is currently evidenced.
 
 Real-session validation on 2026-09-06 used the release binary in the current
 Ubuntu 26.04 + GNOME + Wayland + systemd user session. An explicit
@@ -124,10 +136,18 @@ existing file through the GNOME chooser and produced `success`,
 Neither run emitted a URI, filename or file content. A separate no-session-bus
 run produced `unavailable` within the bounded setup window.
 
+The same session reports Screenshot interface version `2` and no
+`AvailableTargets` property. `probe screenshot --json` therefore returns
+`unsupported`, `cleanup.status: not_required` and exit `1` before creating
+a request or artifact. This is the required fail-closed behavior, but it is
+not success/cancellation evidence for the v3 Window-target release gate.
+
 Active probes must never run from `portaldoctor` or `portaldoctor check` by
-default. They must clearly warn about possible dialogs, remain rootless and
-read-only, use the central timeout policy and clean up every request/session
-resource on success, cancellation and failure.
+default. They must clearly warn about possible dialogs, remain rootless, use
+the central timeout policy and clean up every request/session resource on
+success, cancellation and failure. FileChooser never reads selected content;
+Screenshot never reads the image, but the portal may create a
+portal-managed artifact that `Request.Close` does not delete.
 
 ### First bounded task acceptance criteria
 
@@ -148,13 +168,27 @@ The first task is complete only when all of the following are true:
 - `cargo fmt --check`, strict locked Clippy, locked tests, locked release build,
   locked package and clean-root install smoke all pass.
 
+### Screenshot acceptance checkpoint
+
+The Screenshot slice is implementation-complete in the controlled environment
+only. Its release gate additionally requires:
+
+- Screenshot v3+ introspection and AvailableTargets Window-bit enforcement with
+  no Screen/Area/Active-Window fallback,
+- a warning before the portal call and no URI/path/image output or persistence,
+- bounded success, cancellation, request/response timeout, late-reply,
+  malformed, transport, unsupported and cleanup-failure coverage,
+- a real v3-capable Ubuntu 26.04 + GNOME + Wayland session proving success and
+  cancellation without opening or inspecting the generated image, and
+- the full locked package/install, passive regression, audit and CI gates.
+
 Do not implement all three probe families in the first slice and do not begin
 desktop expansion or remediation as part of it.
 
-The current change stops after the FileChooser slice and its audit. Do not
-start Screenshot implementation or ScreenCast in this change. Screenshot's
-design is recorded, but its implementation remains blocked until its own
-privacy, artifact-side-effect and release gate is opened.
+The current change includes the Screenshot implementation and its controlled
+fake audit. Do not start ScreenCast or desktop compatibility work. Screenshot
+remains unreleased until a v3-capable real-session success/cancellation
+validation proves the Window-target path and the final release gates pass.
 
 ## Quality gates
 
@@ -186,6 +220,8 @@ independent cleanup axis:
 ```sh
 PORTALDOCTOR_BIN=target/release/portaldoctor \
   ./scripts/validate-filechooser-fake-ci.sh
+PORTALDOCTOR_BIN=target/release/portaldoctor \
+  ./scripts/validate-screenshot-fake-ci.sh
 ```
 
 For one scenario during local debugging:

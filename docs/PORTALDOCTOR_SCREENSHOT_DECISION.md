@@ -1,15 +1,16 @@
 # Screenshot Probe Design Boundary for v0.3.0
 
-**Status:** Design accepted for implementation planning; not implemented or
-release-approved
+**Status:** Implemented on development `main`; unreleased and not approved
+for the v0.3.0 release until a v3-capable real-session success/cancellation
+validation passes
 **Scope:** `org.freedesktop.portal.Screenshot.Screenshot` only
 **Out of scope:** `PickColor`, ScreenCast, image inspection, artifact deletion,
 desktop expansion and passive-path changes
 
-This document is the implementation boundary for the next Phase 8 probe. It
-does not add a command or change the published v0.2.1 behavior. The active
-Screenshot command remains unavailable until the implementation and every gate
-in this document pass.
+This document is the implementation and release boundary for the Phase 8
+Screenshot probe. The explicit command is available on development `main`
+and does not change the published v0.2.1 passive behavior. It remains
+unreleased until every gate in this document passes.
 
 ## Decision
 
@@ -26,9 +27,10 @@ proven by FileChooser:
   `Request.Close` policy.
 
 The reusable boundary is lifecycle behavior and invariants, not a copy of the
-FileChooser implementation. When implementation begins, common request/token
-helpers may be extracted only if that refactor preserves the already-tested
-FileChooser behavior and does not alter the passive path.
+FileChooser implementation. The shared request/token, response-wait and
+Request.Close mechanics now live in `src/probes/portal.rs`; the refactor
+preserves the already-tested FileChooser behavior and does not alter the
+passive path.
 
 ## Portal contract and first target policy
 
@@ -135,20 +137,27 @@ systemd user session. No KDE, wlroots/Sway, Hyprland or Niri support claim is
 created. The probe must call `org.freedesktop.portal.Desktop` and must never
 bypass portal routing by invoking a backend directly.
 
-Before implementation can be called complete, the repository must have:
+The controlled implementation gates now pass. Before the v0.3.0 release can
+be called complete, the repository must have:
 
-- a controlled fake portal covering success, user cancellation, malformed
+- [x] a controlled fake portal covering success, user cancellation, malformed
   response, response timeout, request-stage timeout, late reply, transport
   failure, unsupported target/version and Request.Close failure;
-- assertions for cleanup calls, exit code, `ProbeResult` shape and absence of
+- [x] assertions for cleanup calls, exit code, `ProbeResult` shape and absence of
   URI/path/image data from stdout and stderr;
-- unit tests for capability-bitmask parsing, target policy, URI type checking,
+- [x] unit tests for capability-bitmask parsing, target policy, URI type checking,
   response mapping and v1 serialization without serializing the URI;
-- real supported-session cancellation and successful Window-target validation
+- [ ] real supported-session cancellation and successful Window-target validation
   using a disposable test context, with no image opened or inspected by
   PortalDoctor; and
-- fmt, strict locked Clippy, locked tests, release build, locked package,
+- [ ] fmt, strict locked Clippy, locked tests, release build, locked package,
   clean-root install, passive regression, audit/docs and GitHub Actions gates.
+
+The current Ubuntu 26.04 session exposes Screenshot version 2 and no
+`AvailableTargets` property, so the real-session item is intentionally still
+open; the binary returns `unsupported` before issuing a request. The final
+quality-gate item is marked only after the release build, package/install,
+passive regression and remote CI run are rechecked for this implementation.
 
 The v0.3.0 release must not advertise Screenshot as ready until the warning,
 side-effect boundary, disposable validation context and artifact ownership

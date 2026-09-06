@@ -17,6 +17,10 @@ evidence-backed diagnostic report.
 > **v0.2.1** — Stabilization release for the passive ScreenCast-readiness path. The validated baseline is Ubuntu
 > 26.04 with GNOME, Wayland, and a systemd user session.
 
+The default command remains passive and read-only. The development branch also
+contains explicit active probes; Screenshot can ask the portal to create an
+artifact and is not part of the published v0.2.1 package.
+
 ## Why PortalDoctor?
 
 Desktop portal failures rarely have a single obvious cause. A missing session
@@ -149,7 +153,34 @@ run the complete controlled lifecycle gate locally (with `dbus-x11`,
 ```sh
 PORTALDOCTOR_BIN=target/release/portaldoctor \
   ./scripts/validate-filechooser-fake-ci.sh
+PORTALDOCTOR_BIN=target/release/portaldoctor \
+  ./scripts/validate-screenshot-fake-ci.sh
 ```
+
+### Explicit Screenshot probe (development on main)
+
+The bounded Screenshot probe is available only on the development branch and
+is not part of the published crates.io v0.2.1 binary:
+
+    portaldoctor probe screenshot
+    portaldoctor probe screenshot --json
+
+Before the portal call, PortalDoctor warns that the user may be asked to
+choose a window and that the portal may create a screenshot artifact. The
+first slice requires Screenshot interface version 3 or newer and the
+AvailableTargets Window bit (2); it never falls back to Screen, Area or
+Active Window. The command never opens or decodes image data and never reads,
+copies, logs, persists or deletes the screenshot, URI, path, filename or
+metadata. Request.Close ends only the portal request lifecycle and is not image
+deletion.
+
+The machine-readable result contains only ProbeResult v1 lifecycle facts. The
+controlled gate covers success, cancellation, malformed response, portal
+failure, request/response timeout, late reply, transport failure, unsupported
+version/target, unavailable service and cleanup failure:
+
+    PORTALDOCTOR_BIN=target/release/portaldoctor \
+      ./scripts/validate-screenshot-fake-ci.sh
 
 ## What it checks
 
@@ -243,12 +274,13 @@ v0.2 until they have a dedicated validation matrix.
 - validated KDE, wlroots, Sway, Hyprland, or Niri behavior,
 - automatic fixes and GUI workflows.
 
-The development `main` branch contains the audited first explicit FileChooser
-probe described above; active Screenshot and ScreenCast probes remain outside
-the published `v0.2.1` boundary and are not implemented yet. The FileChooser
-success and cancellation lifecycle has been validated on Ubuntu 26.04/GNOME/
-Wayland, but the active command is still unreleased until the v0.3.0 release
-decision.
+The development `main` branch contains the audited explicit FileChooser
+and Screenshot probes described above; both remain outside the published
+`v0.2.1` boundary and are unreleased until the v0.3.0 release
+decision. Screenshot success still requires a real v3-capable portal session
+with the Window target; the current Ubuntu 26.04 session exposes Screenshot
+version 2, so it is correctly classified as unsupported without opening a
+request.
 
 For the exact compatibility contract and known resolver limitations, see
 [compatibility and known limitations](docs/compatibility.md).
@@ -324,18 +356,19 @@ The package and install commands verify the artifact before publication. The
 fault-injection harness exercises the v0.1-compatible finding contract and
 stable parser/runtime exit codes without modifying the host system. See the
 [fault-injection harness](scripts/validate-v0.1-faults.py) for the fixture
-scenarios. The FileChooser wrapper runs the controlled success, cancellation,
-timeout, malformed-response, transport and cleanup-failure scenarios used by
-CI; it verifies `Request.Close` calls and privacy redaction, not only JSON
-shape.
+scenarios. The FileChooser and Screenshot wrappers run controlled success,
+cancellation, timeout, malformed-response, transport,
+unsupported-capability and cleanup-failure scenarios used by CI; they verify
+`Request.Close` calls and privacy redaction, not only JSON shape.
 
 ## Roadmap
 
 The v0.2.1 release completes the passive diagnostic stabilization gate; the
 next expansion is deliberately layered:
 
-1. finish and publish the bounded FileChooser slice in [Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3),
-   then add active probes for selected portal interfaces one family at a time,
+1. finish and publish the bounded FileChooser and Screenshot slices in
+   [Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3), then add
+   active probes for selected portal interfaces one family at a time,
 2. expand validation across KDE and wlroots-based sessions,
 3. harden the compatibility matrix and release artifacts,
 4. document and ship the next compatible release only after its acceptance
