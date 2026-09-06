@@ -159,6 +159,15 @@ open; the binary returns `unsupported` before issuing a request. The local and
 remote quality-gate evidence is complete for the controlled implementation,
 but it does not substitute for the missing v3-capable real-session evidence.
 
+The 2026-09-06 provider audit identified the reason this gate cannot currently
+be closed on the supported host: Ubuntu supplies `xdg-desktop-portal 1.21.1`
+and `xdg-desktop-portal-gnome 50.0`, the XDG frontend records Screenshot target
+selection beginning with `1.21.2`, and the current GNOME backend still exports
+Screenshot implementation version `2`. This does not authorize a v2 bypass,
+backend fork, wlroots session or controlled fake to count as GNOME evidence.
+The gate remains open until a supported GNOME provider genuinely exposes v3+
+and Window bit `2` in a disposable session.
+
 The v0.3.0 release must not advertise Screenshot as ready until the warning,
 side-effect boundary, disposable validation context and artifact ownership
 language are reviewed together. Screenshot implementation must not begin in
