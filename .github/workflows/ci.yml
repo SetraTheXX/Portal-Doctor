@@ -69,4 +69,9 @@ jobs:
           PORTALDOCTOR_BIN=target/release/portaldoctor \
           PORTALDOCTOR_PYTHON=/usr/bin/python3 \
           ./scripts/validate-filechooser-fake-ci.sh
+      - name: Screenshot controlled lifecycle gate
+        run: |
+          PORTALDOCTOR_BIN=target/release/portaldoctor \
+          PORTALDOCTOR_PYTHON=/usr/bin/python3 \
+          ./scripts/validate-screenshot-fake-ci.sh
       - run: PORTALDOCTOR_BIN=target/release/portaldoctor python3 scripts/validate-v0.1-faults.py

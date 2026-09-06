@@ -142,8 +142,10 @@ Phase 4 is complete and v0.1.0 is published on both GitHub Releases and
 crates.io. Phases 5–7 (PipeWire/WirePlumber, opt-in bounded journal evidence
 and shareable reports/privacy) shipped in v0.2.0; v0.2.1 was published with
 the stabilization and release gates. The validated support target remains
-Ubuntu 26.04 + GNOME + Wayland + systemd. The next implementation gate is
-Phase 8 / v0.3.0, beginning with the bounded FileChooser probe sequence in
+Ubuntu 26.04 + GNOME + Wayland + systemd. Phase 8 / v0.3.0 now has bounded
+FileChooser and Screenshot implementations on development `main`; the
+Screenshot release gate remains open until a v3-capable real session proves
+success and cancellation. Both slices are tracked in
 [GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
 
 For a direct handoff, use

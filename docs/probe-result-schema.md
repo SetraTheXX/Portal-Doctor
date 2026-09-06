@@ -1,13 +1,14 @@
 # Active ProbeResult Schema v1
 
-**Status:** v1 implemented for the first Phase 8 FileChooser slice on `main`
+**Status:** v1 implemented for the Phase 8 FileChooser and Screenshot slices on development `main`
 **Scope:** Standalone active-probe result contract; passive v0.2.1 output remains unchanged
 
 This document defines the machine-readable result that explicit FileChooser,
-Screenshot and ScreenCast probes emit. The development
-branch currently implements only `portaldoctor probe filechooser`; Screenshot
-and ScreenCast remain future slices. It does not change the published v0.2.1
-passive commands or their existing `--json` document.
+Screenshot and ScreenCast probes emit. The development branch currently
+implements `portaldoctor probe filechooser` and
+`portaldoctor probe screenshot`; ScreenCast remains a future slice. It does
+not change the published v0.2.1 passive commands or their existing
+`--json` document.
 
 ## Canonical shape
 
@@ -166,14 +167,15 @@ malformed response, infrastructure failure or cleanup failure. JSON is emitted
 even for a result mapped to `1`; process-level runtime/output failures retain
 the existing generic error path.
 
-## Screenshot boundary (design only)
+## Screenshot command boundary
 
-The v1 model is ready for Screenshot, but the command is not implemented. The
-planned contract is documented in
+The development branch implements the explicit Screenshot command. Its
+capability and privacy boundary is documented in
 [`PORTALDOCTOR_SCREENSHOT_DECISION.md`](PORTALDOCTOR_SCREENSHOT_DECISION.md).
 Screenshot may produce a portal-managed image and a sensitive `uri`; neither
 is a `ProbeResult` field. `CleanupResource::Request` describes only the
 Request object lifecycle and never promises deletion of the image artifact.
+The command is unreleased and does not alter the passive v0.2.1 report.
 
 ## Versioning and compatibility
 
@@ -206,9 +208,10 @@ errors or arbitrary environment values. Future probe-specific evidence must
 pass the existing privacy review before it is added.
 
 Serialization, round-trip compatibility, all operation statuses, independent
-cleanup failure, FileChooser protocol fixtures and passive report
-non-regression are covered by unit tests in `src/model/probe.rs`,
-`src/probes/filechooser.rs` and `src/report/mod.rs`. Real-session validation
-and the controlled fake-portal matrix are also required gates for this slice;
-both are now recorded in the Phase 8 handoff. The active command remains
-unreleased until the v0.3.0 release decision.
+cleanup failure, FileChooser and Screenshot protocol fixtures, privacy
+redaction and passive report non-regression are covered by unit tests in
+`src/model/probe.rs`, `src/probes/filechooser.rs`,
+`src/probes/screenshot.rs` and `src/report/mod.rs`. The controlled
+fake-portal matrices are permanent quality gates. A v3-capable real-session
+success/cancellation validation is still required before the v0.3.0 release
+decision.

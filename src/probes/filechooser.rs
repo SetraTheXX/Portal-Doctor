@@ -6,35 +6,27 @@
 //! the required `Request.Close` cleanup call.
 
 use std::collections::HashMap;
-use std::fmt::Write as _;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 
-use futures_lite::StreamExt;
-use zbus::zvariant::{Array, OwnedObjectPath, OwnedValue, Value};
-use zbus::{Connection, MatchRule, MessageStream, Proxy};
+use zbus::zvariant::{Array, OwnedObjectPath, OwnedValue};
+use zbus::{Connection, MessageStream};
 
 use crate::collectors::timeouts::{
-    ACTIVE_PROBE_CLEANUP, ACTIVE_PROBE_REQUEST, ACTIVE_PROBE_REQUEST_RECOVERY,
-    ACTIVE_PROBE_RESPONSE, ACTIVE_PROBE_SETUP,
+    ACTIVE_PROBE_REQUEST, ACTIVE_PROBE_REQUEST_RECOVERY, ACTIVE_PROBE_SETUP,
 };
 use crate::error::Error;
 use crate::model::probe::{
     CleanupResource, CleanupResult, CleanupStatus, ProbeKind, ProbeResult, ProbeStage, ProbeStatus,
 };
+use crate::probes::portal::{
+    HandleTokenError, INTROSPECTABLE_INTERFACE, ResponseWait, bounded_proxy, classify_error,
+    close_request, open_session, request_metadata, request_options, response_match_rule,
+    valid_request_path_for_sender, wait_for_response,
+};
 
-const PORTAL_DESTINATION: &str = "org.freedesktop.portal.Desktop";
-const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
 const FILE_CHOOSER_INTERFACE: &str = "org.freedesktop.portal.FileChooser";
-const REQUEST_INTERFACE: &str = "org.freedesktop.portal.Request";
-const INTROSPECTABLE_INTERFACE: &str = "org.freedesktop.DBus.Introspectable";
-const RESPONSE_MEMBER: &str = "Response";
 const FILE_CHOOSER_TITLE: &str = "PortalDoctor FileChooser probe";
-const HANDLE_TOKEN_PREFIX: &str = "portaldoctor";
-const REQUEST_PATH_PREFIX: &str = "/org/freedesktop/portal/desktop/request/";
-
-static HANDLE_TOKEN_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Run the explicit `FileChooser` lifecycle in a short-lived current-thread
 /// Tokio runtime. Expected portal outcomes are represented by `ProbeResult`;
@@ -48,22 +40,9 @@ pub fn run() -> Result<ProbeResult, Error> {
 }
 
 async fn run_async() -> ProbeResult {
-    let connection = match tokio::time::timeout(ACTIVE_PROBE_SETUP, Connection::session()).await {
-        Ok(Ok(connection)) => connection,
-        Ok(Err(error)) => {
-            return result(
-                ProbeStage::Prepare,
-                classify_error(&error),
-                CleanupResult::not_required(),
-            );
-        }
-        Err(_) => {
-            return result(
-                ProbeStage::Prepare,
-                ProbeStatus::TimedOut,
-                CleanupResult::not_required(),
-            );
-        }
+    let connection = match open_session().await {
+        Ok(connection) => connection,
+        Err(outcome) => return result(ProbeStage::Prepare, outcome, CleanupResult::not_required()),
     };
 
     match inspect_filechooser(&connection).await {
@@ -92,7 +71,13 @@ async fn run_async() -> ProbeResult {
     };
     let (handle_token, expected_path) = match request_metadata(&connection) {
         Ok(metadata) => metadata,
-        Err(failure) => return failure,
+        Err(HandleTokenError::EntropyUnavailable | HandleTokenError::UniqueNameUnavailable) => {
+            return result(
+                ProbeStage::Request,
+                ProbeStatus::InfrastructureFailure,
+                CleanupResult::not_required(),
+            );
+        }
     };
     let options = request_options(&handle_token);
     let request_body = ("", FILE_CHOOSER_TITLE, options);
@@ -220,190 +205,10 @@ async fn inspect_filechooser(connection: &Connection) -> Result<(), ProbeStatus>
     }
 }
 
-async fn bounded_proxy<'a>(
-    connection: &'a Connection,
-    interface: &'a str,
-) -> Result<Proxy<'a>, ProbeStatus> {
-    match tokio::time::timeout(
-        ACTIVE_PROBE_SETUP,
-        Proxy::new(connection, PORTAL_DESTINATION, PORTAL_PATH, interface),
-    )
-    .await
-    {
-        Ok(Ok(proxy)) => Ok(proxy),
-        Ok(Err(error)) => Err(classify_error(&error)),
-        Err(_) => Err(ProbeStatus::TimedOut),
-    }
-}
-
-fn response_match_rule() -> MatchRule<'static> {
-    MatchRule::builder()
-        .msg_type(zbus::message::Type::Signal)
-        .sender(PORTAL_DESTINATION)
-        .expect("portal destination is a valid D-Bus bus name")
-        .interface(REQUEST_INTERFACE)
-        .expect("request interface is a valid D-Bus interface name")
-        .member(RESPONSE_MEMBER)
-        .expect("Response is a valid D-Bus member name")
-        .build()
-}
-
-fn valid_request_path(path: &OwnedObjectPath) -> bool {
-    let value = path.as_str();
-    value.starts_with(REQUEST_PATH_PREFIX) && value.len() > REQUEST_PATH_PREFIX.len()
-}
-
-fn valid_request_path_for_sender(path: &OwnedObjectPath, expected_path: &OwnedObjectPath) -> bool {
-    if !valid_request_path(path) {
-        return false;
-    }
-    let Some((expected_sender, _)) = expected_path.as_str().rsplit_once('/') else {
-        return false;
-    };
-    let sender_prefix = format!("{expected_sender}/");
-    path.as_str().starts_with(&sender_prefix)
-}
-
-const HANDLE_TOKEN_RANDOM_BYTES: usize = 16;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HandleTokenError {
-    EntropyUnavailable,
-}
-
-fn handle_token() -> Result<String, HandleTokenError> {
-    handle_token_with_entropy(|random| {
-        getrandom::fill(random).map_err(|_| HandleTokenError::EntropyUnavailable)
-    })
-}
-
-fn handle_token_with_entropy<F>(fill: F) -> Result<String, HandleTokenError>
-where
-    F: FnOnce(&mut [u8; HANDLE_TOKEN_RANDOM_BYTES]) -> Result<(), HandleTokenError>,
-{
-    let mut random = [0_u8; HANDLE_TOKEN_RANDOM_BYTES];
-    fill(&mut random)?;
-    let sequence = HANDLE_TOKEN_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let mut random_hex = String::with_capacity(random.len() * 2);
-    for byte in random {
-        write!(&mut random_hex, "{byte:02x}").expect("writing to a String cannot fail");
-    }
-    Ok(format!("{HANDLE_TOKEN_PREFIX}_{random_hex}_{sequence:x}"))
-}
-
-fn request_options(handle_token: &str) -> HashMap<String, OwnedValue> {
-    HashMap::from([(
-        "handle_token".to_owned(),
-        OwnedValue::try_from(Value::from(handle_token.to_owned()))
-            .expect("a token is a valid D-Bus string"),
-    )])
-}
-
-fn expected_request_path(connection: &Connection, handle_token: &str) -> Option<OwnedObjectPath> {
-    request_path_for_sender(connection.unique_name()?.as_str(), handle_token)
-}
-
-fn request_metadata(connection: &Connection) -> Result<(String, OwnedObjectPath), ProbeResult> {
-    let handle_token = handle_token().map_err(|HandleTokenError::EntropyUnavailable| {
-        result(
-            ProbeStage::Request,
-            ProbeStatus::InfrastructureFailure,
-            CleanupResult::not_required(),
-        )
-    })?;
-    let expected_path = expected_request_path(connection, &handle_token).ok_or_else(|| {
-        result(
-            ProbeStage::Request,
-            ProbeStatus::InfrastructureFailure,
-            CleanupResult::not_required(),
-        )
-    })?;
-    Ok((handle_token, expected_path))
-}
-
-fn request_path_for_sender(unique_name: &str, handle_token: &str) -> Option<OwnedObjectPath> {
-    let sender = unique_name.strip_prefix(':')?;
-    let sender = sender.replace('.', "_");
-    let path = format!("{REQUEST_PATH_PREFIX}{sender}/{handle_token}");
-    OwnedObjectPath::try_from(path).ok()
-}
-
-#[derive(Clone, Copy)]
-enum ResponseWait {
-    Outcome(ProbeStatus),
-    UserCancelled,
-    TimedOut,
-}
-
-async fn wait_for_response(stream: &mut MessageStream, request_path: &str) -> ResponseWait {
-    let response = async {
-        loop {
-            let Some(message) = stream.next().await else {
-                return ResponseWait::Outcome(ProbeStatus::InfrastructureFailure);
-            };
-            let Ok(message) = message else {
-                return ResponseWait::Outcome(ProbeStatus::InfrastructureFailure);
-            };
-            let header = message.header();
-            let Some(path) = header.path() else {
-                continue;
-            };
-            if path.as_str() != request_path {
-                continue;
-            }
-            let body: (u32, HashMap<String, OwnedValue>) = match message.body().deserialize() {
-                Ok(body) => body,
-                Err(_) => return ResponseWait::Outcome(ProbeStatus::MalformedResponse),
-            };
-            return ResponseWait::Outcome(decode_response(body.0, &body.1));
-        }
-    };
-    tokio::pin!(response);
-    let cancellation = async { tokio::signal::ctrl_c().await.ok() };
-    tokio::pin!(cancellation);
-    tokio::select! {
-        outcome = &mut response => outcome,
-        _ = &mut cancellation => ResponseWait::UserCancelled,
-        () = tokio::time::sleep(ACTIVE_PROBE_RESPONSE) => ResponseWait::TimedOut,
-    }
-}
-
-async fn close_request(
-    connection: &Connection,
-    request_path: &str,
-    unknown_is_completed: bool,
-) -> CleanupResult {
-    let Ok(Ok(proxy)) = tokio::time::timeout(
-        ACTIVE_PROBE_CLEANUP,
-        Proxy::new(
-            connection,
-            PORTAL_DESTINATION,
-            request_path,
-            REQUEST_INTERFACE,
-        ),
-    )
-    .await
-    else {
-        return failed_request_cleanup();
-    };
-    match tokio::time::timeout(ACTIVE_PROBE_CLEANUP, proxy.call::<_, _, ()>("Close", &())).await {
-        Ok(Ok(())) => CleanupResult::completed(),
-        Ok(Err(error)) if request_already_gone(&error) && unknown_is_completed => {
-            CleanupResult::completed()
-        }
-        Ok(Err(error)) if request_already_gone(&error) => CleanupResult::unverified(),
-        Ok(Err(_)) | Err(_) => failed_request_cleanup(),
-    }
-}
-
-fn failed_request_cleanup() -> CleanupResult {
-    CleanupResult::failed(vec![CleanupResource::Request])
-        .expect("the FileChooser cleanup resource is valid")
-}
-
 fn finalize(response: ResponseWait, cleanup: CleanupResult) -> ProbeResult {
     let (status, stage) = match response {
-        ResponseWait::Outcome(status) => {
+        ResponseWait::Outcome { code, results } => {
+            let status = decode_response(code, &results);
             let stage = if matches!(status, ProbeStatus::Success | ProbeStatus::UserCancelled) {
                 ProbeStage::Complete
             } else {
@@ -413,6 +218,10 @@ fn finalize(response: ResponseWait, cleanup: CleanupResult) -> ProbeResult {
         }
         ResponseWait::UserCancelled => (ProbeStatus::UserCancelled, ProbeStage::Complete),
         ResponseWait::TimedOut => (ProbeStatus::TimedOut, ProbeStage::Response),
+        ResponseWait::InfrastructureFailure => {
+            (ProbeStatus::InfrastructureFailure, ProbeStage::Response)
+        }
+        ResponseWait::MalformedResponse => (ProbeStatus::MalformedResponse, ProbeStage::Response),
     };
     result(stage, status, cleanup)
 }
@@ -461,51 +270,6 @@ pub(crate) fn introspection_supports_filechooser(xml: &str) -> bool {
         return false;
     };
     interface[..interface_end].contains("<method name=\"OpenFile\"")
-}
-
-fn classify_error(error: &zbus::Error) -> ProbeStatus {
-    classify_error_message(&error.to_string())
-}
-
-pub(crate) fn classify_error_message(message: &str) -> ProbeStatus {
-    let message = message.to_ascii_lowercase();
-    if message.contains("timedout")
-        || message.contains("timed out")
-        || message.contains("noreply")
-        || message.contains("no reply")
-    {
-        ProbeStatus::TimedOut
-    } else if message.contains("serviceunknown")
-        || message.contains("namehasnoowner")
-        || message.contains("no such service")
-        || message.contains("no session bus")
-        || message.contains("dbus_session_bus_address")
-        || message.contains("connection refused")
-        || message.contains("failed to connect")
-        || message.contains("could not connect")
-        || message.contains("no server")
-    {
-        ProbeStatus::Unavailable
-    } else if message.contains("unknownmethod")
-        || message.contains("unknown method")
-        || message.contains("unknowninterface")
-        || message.contains("unknown interface")
-        || message.contains("not supported")
-        || message.contains("notsupported")
-        || message.contains("notimplemented")
-    {
-        ProbeStatus::Unsupported
-    } else {
-        ProbeStatus::InfrastructureFailure
-    }
-}
-
-fn request_already_gone(error: &zbus::Error) -> bool {
-    let message = error.to_string().to_ascii_lowercase();
-    message.contains("unknownobject")
-        || message.contains("unknown object")
-        || message.contains("no such object")
-        || message.contains("does not exist")
 }
 
 /// Stable shell mapping for the explicit command. A user cancellation and
@@ -586,15 +350,17 @@ fn cleanup_resource_name(resource: CleanupResource) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        HandleTokenError, ResponseWait, classify_error_message, decode_response, exit_code,
-        finalize, handle_token, handle_token_with_entropy, has_uri_array,
-        introspection_supports_filechooser, render_terminal, request_options,
-        request_path_for_sender, response_match_rule, valid_request_path,
-        valid_request_path_for_sender,
+        decode_response, exit_code, finalize, has_uri_array, introspection_supports_filechooser,
+        render_terminal,
     };
     use crate::model::probe::{
         CleanupResource, CleanupResult, CleanupStatus, ProbeKind, ProbeResult, ProbeStage,
         ProbeStatus,
+    };
+    use crate::probes::portal::{
+        HandleTokenError, ResponseWait, classify_error_message, handle_token,
+        handle_token_with_entropy, request_options, request_path_for_sender, response_match_rule,
+        valid_request_path, valid_request_path_for_sender,
     };
     use std::collections::HashMap;
     use zbus::zvariant::{Array, OwnedObjectPath, OwnedValue};
@@ -685,8 +451,16 @@ mod tests {
 
     #[test]
     fn cleanup_failure_moves_the_terminal_stage_to_cleanup_without_erasing_status() {
+        let mut successful_results = HashMap::new();
+        successful_results.insert(
+            "uris".to_owned(),
+            OwnedValue::try_from(Array::from(vec!["file:///tmp/not-read"])).unwrap(),
+        );
         let result = finalize(
-            ResponseWait::Outcome(ProbeStatus::Success),
+            ResponseWait::Outcome {
+                code: 0,
+                results: successful_results,
+            },
             CleanupResult::failed(vec![CleanupResource::Request]).unwrap(),
         );
         assert_eq!(result.status(), ProbeStatus::Success);

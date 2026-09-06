@@ -48,6 +48,8 @@ pub enum ProbeCmd {
     /// Open the desktop `FileChooser` portal and report only its lifecycle.
     #[command(name = "filechooser")]
     FileChooser,
+    /// Ask the Screenshot portal to capture one selected window.
+    Screenshot,
 }
 
 /// Options for the `check` command.
@@ -164,5 +166,15 @@ mod tests {
             panic!("expected probe command");
         };
         assert!(matches!(args.command, ProbeCmd::FileChooser));
+    }
+
+    #[test]
+    fn parses_explicit_screenshot_probe() {
+        let cli = Cli::parse_from(["portaldoctor", "probe", "screenshot", "--json"]);
+        assert!(cli.json);
+        let Some(Command::Probe(args)) = cli.command else {
+            panic!("expected probe command");
+        };
+        assert!(matches!(args.command, ProbeCmd::Screenshot));
     }
 }

@@ -124,6 +124,22 @@ fn run_probe(args: &ProbeArgs, json: bool) -> Result<RunOutcome, Error> {
                 exit_code: crate::probes::filechooser::exit_code(&result),
             })
         }
+        ProbeCmd::Screenshot => {
+            eprintln!(
+                "Warning: this explicit probe may ask you to choose a window and may cause the portal to create a screenshot artifact. PortalDoctor will not open, read, copy, modify, delete, or print the screenshot or its URI."
+            );
+            let result = crate::probes::screenshot::run()?;
+            let rendered = if json {
+                serde_json::to_string_pretty(&result)
+                    .map_err(|error| Error::ProbeOutput(error.to_string()))?
+            } else {
+                crate::probes::screenshot::render_terminal(&result)
+            };
+            write_stdout(&rendered)?;
+            Ok(RunOutcome::ActiveProbe {
+                exit_code: crate::probes::screenshot::exit_code(&result),
+            })
+        }
     }
 }
 

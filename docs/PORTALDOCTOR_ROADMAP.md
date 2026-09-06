@@ -7,8 +7,8 @@
 > **Current handoff:** Read [`PORTALDOCTOR_CURRENT_STATE.md`](PORTALDOCTOR_CURRENT_STATE.md)
 > before starting work. Phases 0–7 and the v0.2.1 passive stabilization gate are
 > complete. The current implementation target is Phase 8 / v0.3.0, beginning
-> with the bounded ASHPD strategy, probe-result contract and FileChooser slice
-> tracked in [GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
+> with the bounded ASHPD strategy, probe-result contract, FileChooser slice and
+> Screenshot slice tracked in [GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
 
 ---
 
@@ -618,7 +618,7 @@ subscribes to `Request::Response` before `OpenFile`, supplies a unique
 `handle_token`, validates the returned or token-derived request handle, bounds
 request/recovery/response/cleanup separately, and reports standalone
 `ProbeResult` v1 JSON. It never reads, copies, modifies or persists the
-selected file; `Screenshot` and `ScreenCast` remain unchecked future slices.
+selected file; `ScreenCast` remains the unchecked future slice.
 
 - [x] Validate the cancellation and cleanup path in the supported Ubuntu 26.04
   + GNOME + Wayland + systemd user session.
@@ -643,7 +643,7 @@ selected file; `Screenshot` and `ScreenCast` remain unchecked future slices.
 ### Screenshot
 
 ```bash
-# Reserved design target; not implemented yet.
+# Explicit development command; unreleased until the v0.3.0 gate passes.
 portaldoctor probe screenshot
 ```
 
@@ -662,11 +662,17 @@ read-only merely because PortalDoctor never opens the image.
   the fact that Request.Close does not delete a screenshot already created by
   the portal.
 - [x] Define controlled-fake, real-session, package, privacy and release gates.
-- [ ] Implement `org.freedesktop.portal.Screenshot.Screenshot`.
-- [ ] Validate success, cancellation, timeout, malformed response,
-  unsupported target/version and cleanup failure before any v0.3.0 release.
-- [ ] Run the supported real-session validation in a disposable test context;
-  PortalDoctor must not open or inspect the generated image.
+- [x] Implement `org.freedesktop.portal.Screenshot.Screenshot` using the
+  shared PortalDoctor-owned request/token/response/cleanup mechanics.
+- [x] Validate controlled success, cancellation, request/response timeout,
+  late reply, malformed response, portal/transport failure, unsupported
+  target/version, unavailable service and cleanup failure.
+- [x] Assert ProbeResult v1 semantics, Request.Close observations, exit codes
+  and absence of URI/path/image data from stdout and stderr.
+- [ ] Run the supported real-session validation in a disposable v3-capable
+  Ubuntu 26.04 + GNOME + Wayland context; PortalDoctor must not open or
+  inspect the generated image. The current portal exposes version 2, so its
+  unsupported fail-closed result is recorded but does not satisfy success.
 
 ### ScreenCast
 
