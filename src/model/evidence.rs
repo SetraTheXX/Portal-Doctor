@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 /// Structured evidence attached to findings (architecture §15).
 ///
 /// Variants are added alongside the rule family that consumes them; the
-/// published v0.1.0 report uses the first six, while later phases add
-/// media-stack and opt-in journal evidence.
+/// published v0.1.0 report uses the initial environment/configuration/runtime
+/// variants, while later phases add media-stack, journal and version evidence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(dead_code)] // constructed by the diagnostic rule engine
@@ -20,6 +20,7 @@ pub enum Evidence {
     WirePlumberState,
     ScreenCastRoute,
     JournalExcerpt,
+    PortalFrontendVersion,
 }
 
 impl Evidence {
@@ -36,6 +37,7 @@ impl Evidence {
             Self::WirePlumberState => "wireplumber state",
             Self::ScreenCastRoute => "screencast route",
             Self::JournalExcerpt => "journal excerpt",
+            Self::PortalFrontendVersion => "portal frontend version",
         }
     }
 }

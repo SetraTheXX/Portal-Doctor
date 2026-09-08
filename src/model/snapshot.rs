@@ -5,6 +5,7 @@ use crate::model::environment::{EnvironmentInfo, SessionInfo, SystemInfo};
 use crate::model::journal::JournalInfo;
 use crate::model::pipewire::{PipeWireInfo, WirePlumberInfo};
 use crate::model::portal::{PortalBackend, PortalConfigInfo, PortalRoute};
+use crate::model::portal_frontend::PortalFrontendInfo;
 use crate::model::section::Section;
 use crate::model::service::ServiceInfo;
 
@@ -31,6 +32,9 @@ pub struct Snapshot {
     pub portal_backends: Section<Vec<PortalBackend>>,
     /// Resolved portal route table.
     pub portal_routes: Section<Vec<PortalRoute>>,
+    /// xdg-desktop-portal frontend software-version evidence, kept separate
+    /// from the operating-system `system.version_id` field.
+    pub portal_frontend: Section<PortalFrontendInfo>,
     /// Runtime D-Bus reachability checks.
     pub dbus: Section<DbusInfo>,
     /// Portal-relevant systemd user unit states.
@@ -57,6 +61,7 @@ impl Snapshot {
             portal_config: Section::unsupported("not collected"),
             portal_backends: Section::unsupported("not collected"),
             portal_routes: Section::unsupported("not collected"),
+            portal_frontend: Section::unsupported("not collected"),
             dbus: Section::unsupported("not collected"),
             services: Section::unsupported("not collected"),
             pipewire: Section::unsupported("not collected"),
@@ -102,5 +107,6 @@ mod tests {
         assert_eq!(value["dbus"]["status"], json!("available"));
         assert_eq!(value["services"]["status"], json!("available"));
         assert_eq!(value["journal"]["status"], json!("unsupported"));
+        assert_eq!(value["portal_frontend"]["status"], json!("unsupported"));
     }
 }

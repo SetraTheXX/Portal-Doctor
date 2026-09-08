@@ -4,9 +4,11 @@ Every diagnostic rule produces a stable, structured finding (PRD §8): `id`,
 `severity`, `confidence`, `title`, `summary`, `explanation`, `evidence`,
 `impact`, `recommendation[]` and `source_component`. The first 15 IDs were
 published in v0.1.0. The five media-stack IDs were added for v0.2.0; the
-rule-engine test suite asserts that the complete 20-ID registry is stable and
-unique. Bounded journal excerpts are supporting evidence only; they do not
-create a journal-only diagnosis.
+bounded `XDP006` compatibility risk was added on the development line after
+typed frontend-version evidence was introduced. The rule-engine test suite
+asserts that the complete 21-ID registry is stable and unique. Bounded journal
+excerpts are supporting evidence only; they do not create a journal-only
+diagnosis.
 
 ## Environment
 
@@ -26,6 +28,7 @@ create a journal-only diagnosis.
 | `XDP003` | WARNING | HIGH | No `.portal` backend descriptors were discovered in any effective `XDG` data root. |
 | `XDP004` | WARNING | HIGH | An interface listed in `[preferred]` has no available backend in this desktop context. Explicitly disabled (`none`) interfaces do not fire this rule. |
 | `XDP005` | WARNING | HIGH | A `[preferred]` entry names a backend whose descriptor does not exist (`*` and `none` are exempt). |
+| `XDP006` | WARNING | MEDIUM | Exact `xdg-desktop-portal` version `1.22.0`, pure Niri identity, effective `Settings=gtk`, and both GNOME/GTK Settings-capable descriptors match the narrowly bounded XDP #2033 compatibility-risk fixture. This does not claim an observed duplicate SettingsChanged conflict. |
 
 ## Configuration
 

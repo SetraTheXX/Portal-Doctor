@@ -284,12 +284,14 @@ is not merged. Settings resolves to GTK while capture remains on GNOME, and
 intentional multiple installed descriptors do not produce `CFG004`.
 
 The XDG Desktop Portal 1.22.0 / Issue #2033 behavior is represented as a
-controlled regression fixture only. The current snapshot has no reliable
-xdg-desktop-portal package-version evidence (its version field is OS release
-evidence), so no version-aware compatibility warning is emitted and no wider
-version range is inferred. This remains controlled compatibility coverage, not
-live Niri validation, a Niri support claim or release approval; Phase 8, KDE
-and Sway blockers are unchanged.
+controlled regression fixture. The new additive `portal_frontend` snapshot
+section keeps `xdg-desktop-portal` software evidence separate from the OS
+`system.version_id`: it carries a raw version token, numeric
+`normalized_version`, and source provenance. The collector prefers a bounded
+frontend `--version` command available in `PATH` and falls back to supported
+`dpkg-query` metadata without using a shell. The current host's selected
+fallback evidence is `1.21.1+ds-1ubuntu3`, so the exact `1.22.0` compatibility
+rule does not fire here. No wider version range is inferred.
 
 ### Phase 11 controlled Niri production runtime + activation integration gate — 2026-09-09
 
@@ -314,6 +316,29 @@ still GNOME+GTK, and no `CFG004` is emitted. This is controlled
 production-collector coverage only; live Niri validation, active probes,
 support claims and release approval remain open, and Phase 8/KDE/Sway
 blockers are unchanged.
+
+### Phase 11 xdg-desktop-portal version evidence + XDP #2033 gate — 2026-09-09
+
+The version foundation is now implemented and bounded. Frontend executable
+output is preferred when `xdg-desktop-portal --version` is discoverable through
+the process PATH; on this Ubuntu host that command is not in PATH, so the
+supported `dpkg-query` package source is used. Exact three-component numeric
+versions and conservative distro revisions such as `+ds-1ubuntu3` are
+comparable; pre-release, git/date, malformed, oversized, nonzero and timed-out
+outputs remain unavailable/uncomparable and never create a compatibility
+finding. The OS release field is not reused, and portal interface version
+properties are a separate concept.
+
+`XDP006` is deliberately narrow: it requires exact normalized frontend version
+`1.22.0`, pure `XDG_CURRENT_DESKTOP=niri`/session identity, an effective
+selected `Settings=gtk` preference from the selected config, and both GNOME and
+GTK descriptors advertising Settings. It reports a known upstream compatibility
+risk, not an observed duplicate `SettingsChanged` conflict. Missing or
+uncomparable version evidence, another version/desktop, canonical
+`default=gnome;gtk`, a single capable descriptor, or merely having GNOME and
+GTK installed is silent. This is controlled evidence/compatibility coverage,
+not live Niri validation, active-probe validation, a support claim or release
+approval; Phase 8, KDE and Sway blockers are unchanged.
 
 Implement and release-gate it in this order:
 
@@ -643,6 +668,7 @@ PORTALDOCTOR_BIN=target/release/portaldoctor \
 ./scripts/validate-screencast-streams-returned-ci.sh
 ./scripts/validate-screencast-open-pipe-wire-remote-ci.sh
 ./scripts/validate-screencast-aggregate-ci.sh
+./scripts/validate-portal-version-ci.sh
 ```
 
 For release-facing changes, also verify the GitHub Actions run, release asset

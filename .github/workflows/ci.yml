@@ -113,4 +113,7 @@ jobs:
       - name: Niri isolated runtime and activation gate
         run: |
           ./scripts/validate-niri-runtime-activation-ci.sh
+      - name: Portal frontend version evidence gate
+        run: |
+          ./scripts/validate-portal-version-ci.sh
       - run: PORTALDOCTOR_BIN=target/release/portaldoctor python3 scripts/validate-v0.1-faults.py

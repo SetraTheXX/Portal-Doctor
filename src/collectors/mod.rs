@@ -6,5 +6,6 @@ pub mod os_release;
 pub mod pipewire;
 pub mod portal_config;
 pub mod portal_files;
+pub mod portal_frontend;
 pub mod systemd_user;
 pub mod timeouts;

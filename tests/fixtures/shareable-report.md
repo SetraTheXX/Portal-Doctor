@@ -23,6 +23,7 @@
 
 ## Portal routing
 | Configuration | unsupported: not collected |
+| Frontend version evidence | unsupported: not collected |
 | Backends | unsupported: not collected |
 | Routes | unsupported: not collected |
 
@@ -47,6 +48,7 @@ No findings were produced by the rule engine.
 - `portal_config`: not collected
 - `portal_backends`: not collected
 - `portal_routes`: not collected
+- `portal_frontend`: not collected
 - `dbus`: not collected
 - `services`: not collected
 - `pipewire`: not collected
