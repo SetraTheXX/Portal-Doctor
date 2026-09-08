@@ -1058,6 +1058,27 @@ live Hyprland session, install or start providers, run active Screenshot or
 ScreenCast probes, create a Hyprland support claim, or change the Phase 8,
 KDE or Sway blocker state.
 
+## Controlled production runtime + activation slice — 2026-09-09
+
+- [x] Run the descriptor-derived Hyprland/GTK D-Bus names and exact portal
+  units through the production `dbus::collect()` and
+  `systemd_user::collect()` paths inside a private `dbus-run-session`.
+- [x] Run production `activation_environment::collect()` through the same
+  guarded fake-`systemctl` wrapper, including healthy, stale desktop,
+  stale/missing activation `WAYLAND_DISPLAY`, unavailable and timeout cases.
+- [x] Assert the existing generic rule semantics: healthy mixed runtime is
+  clean; missing/failed Hyprland or missing GTK fallback is only `DBUS002`;
+  activation mismatches are only `ENV004`; unavailable/timeout activation
+  does not create a synthetic mismatch and timed-out children are reaped.
+- [x] Keep the wrapper bounded and hermetic: its temporary `systemctl` accepts
+  only the exact `--user show` unit contract and `--user show-environment`,
+  with no access to the real user systemd manager.
+
+This remains controlled production-collector coverage only. It does not
+validate a live Hyprland session, install or start providers, run active
+Screenshot or ScreenCast probes, create a Hyprland support claim, or change
+the Phase 8, KDE or Sway blocker state.
+
 ## Tasks
 
 - Hyprland backend model/fixtures,

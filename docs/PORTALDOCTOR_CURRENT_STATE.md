@@ -237,6 +237,29 @@ generic; no live Hyprland session, provider installation, active probe,
 support claim or release approval follows from it. Phase 8, KDE and Sway
 blockers are unchanged.
 
+### Phase 11 controlled production runtime + activation slice — 2026-09-09
+
+The same Hyprland mixed-routing fixture is now exercised by an explicit,
+isolated `dbus-run-session` plus guarded fake-`systemctl` gate. The production
+descriptor/resolver output feeds `dbus::collect()`, `systemd_user::collect()`
+and `activation_environment::collect()` before the existing environment
+comparison and passive rule engine run. The fake tool is temporary, accepts
+only the exact `--user show` portal-unit invocations and
+`--user show-environment`, and cannot fall through to the real user systemd
+manager.
+
+Healthy frontend/Hyprland/GTK ownership and active units are finding-free.
+Missing or failed Hyprland runtime produces only generic `DBUS002` with the
+canonical Hyprland D-Bus name; missing GTK fallback likewise remains only
+`DBUS002`, without changing the selected routes. Stale desktop or activation
+Wayland values produce only generic `ENV004`; the process-side
+`WAYLAND_DISPLAY` remains present so no synthetic `ENV003` is emitted.
+Unavailable or timed-out activation collection does not invent a mismatch,
+and the timeout child is reaped. Production collectors remain generic; this is
+controlled production-collector coverage, not live Hyprland validation, an
+active probe, a support claim or release approval. Phase 8, KDE and Sway
+blockers are unchanged.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility
