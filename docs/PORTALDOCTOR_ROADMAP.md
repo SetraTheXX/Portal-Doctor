@@ -947,10 +947,14 @@ Validate mixed-backend routing and activation-environment diagnosis.
 - [x] Verify the resolver honors `UseIn` and the portal rules do not emit false
   missing-provider or duplicate/multi-provider findings for the pinned mixed
   configuration.
+- [x] Add a controlled Sway Wayland environment fixture and aggregate passive
+  snapshot: the healthy mixed route is clean, and a missing `WAYLAND_DISPLAY`
+  produces only the existing `ENV003` finding.
 
 This is static parser/resolver/rule coverage only. It does not validate a live
 Sway session, install a provider, run an active probe or create a wlroots/Sway
-support claim.
+support claim. The aggregate environment coverage is likewise fixture-only and
+does not create a live Sway support claim.
 
 ## Important cases
 

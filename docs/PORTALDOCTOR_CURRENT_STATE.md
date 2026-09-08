@@ -153,7 +153,11 @@ Controlled Sway/wlroots fixtures now cover a desktop-specific
 Screenshot/ScreenCast → `wlr` routing, FileChooser/Settings → GTK fallback,
 desktop-config precedence and quiet provider/duplicate rule evaluation. This
 is parser/resolver/rule coverage only; no live Sway session, active probe,
-provider installation or wlroots support claim follows from it.
+provider installation or wlroots support claim follows from it. A controlled
+passive aggregate now also combines the Sway Wayland environment fixture with
+the mixed route table: a complete `WAYLAND_DISPLAY` run is finding-free, while
+its absence produces only the existing `ENV003` finding. This remains fixture
+coverage, not live Sway validation or a support claim.
 
 Implement and release-gate it in this order:
 

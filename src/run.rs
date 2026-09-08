@@ -631,6 +631,141 @@ mod tests {
         snapshot
     }
 
+    fn sway_fixture_vars() -> BTreeMap<String, String> {
+        include_str!("../tests/fixtures/environment/sway-wayland.env")
+            .lines()
+            .filter_map(|line| line.split_once('='))
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect()
+    }
+
+    fn sway_passive_snapshot(with_wayland_display: bool) -> Snapshot {
+        const WLR_BACKEND: &str = "org.freedesktop.impl.portal.desktop.wlr";
+        const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
+
+        let mut process = sway_fixture_vars();
+        if !with_wayland_display {
+            process.remove("WAYLAND_DISPLAY");
+        }
+        let session = crate::collectors::environment::session_info(&process);
+        let environment =
+            crate::collectors::environment::environment_info(process.clone(), None, Some(&process));
+
+        let (preferences, parse_errors) = crate::collectors::portal_config::parse_config(
+            include_str!("../tests/fixtures/portal-routing/sway-portals.conf"),
+            "/fixture/sway-portals.conf",
+            0,
+        );
+        let config = PortalConfigInfo {
+            candidate_files: vec!["/fixture/sway-portals.conf".to_owned()],
+            selected_file: Some("/fixture/sway-portals.conf".to_owned()),
+            preferences,
+            parse_errors,
+        };
+        let backends = vec![
+            crate::collectors::portal_files::parse_portal_file(
+                include_str!("../tests/fixtures/portal-routing/wlr.portal"),
+                "/fixture/wlr.portal",
+                "wlr".to_owned(),
+            ),
+            crate::collectors::portal_files::parse_portal_file(
+                include_str!("../tests/fixtures/portal-routing/gtk.portal"),
+                "/fixture/gtk.portal",
+                "gtk".to_owned(),
+            ),
+        ];
+        let desktops = crate::resolver::portal_routes::normalize_desktops(
+            process
+                .get("XDG_CURRENT_DESKTOP")
+                .expect("Sway fixture desktop identity"),
+        );
+        let routes = crate::resolver::portal_routes::resolve_routes(&desktops, &config, &backends);
+
+        let mut snapshot = Snapshot::new(0);
+        snapshot.session = Section::available(session);
+        snapshot.environment = Section::available(environment);
+        snapshot.portal_config = Section::available(config);
+        snapshot.portal_backends = Section::available(backends);
+        snapshot.portal_routes = Section::available(routes);
+        snapshot.dbus = Section::available(DbusInfo {
+            connected: true,
+            checks: vec![
+                DbusCheck {
+                    name: PORTAL_FRONTEND_NAME.to_owned(),
+                    outcome: DbusOutcome::HasOwner,
+                },
+                DbusCheck {
+                    name: WLR_BACKEND.to_owned(),
+                    outcome: DbusOutcome::HasOwner,
+                },
+                DbusCheck {
+                    name: GTK_BACKEND.to_owned(),
+                    outcome: DbusOutcome::HasOwner,
+                },
+            ],
+        });
+        snapshot.services = Section::available(ServiceInfo {
+            units: vec![
+                UnitStatus {
+                    unit: ServiceInfo::frontend_unit().to_owned(),
+                    state: UnitState::Active,
+                    sub_state: Some("running".to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("wlr"),
+                    state: UnitState::Active,
+                    sub_state: Some("running".to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("gtk"),
+                    state: UnitState::Active,
+                    sub_state: Some("running".to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+            ],
+        });
+        snapshot.pipewire = Section::available(PipeWireInfo {
+            model_version: 1,
+            version: Some("fixture".to_owned()),
+            object_count: 1,
+            node_count: 0,
+            link_count: 0,
+            portal_client_count: 0,
+            screen_cast_source_count: 1,
+            nodes: Vec::new(),
+            links: Vec::new(),
+        });
+        snapshot.wireplumber = Section::available(WirePlumberInfo {
+            model_version: 1,
+            pipewire_version: Some("fixture".to_owned()),
+            wireplumber_client_count: 1,
+        });
+        snapshot
+    }
+
+    fn assert_sway_mixed_routes(snapshot: &Snapshot) {
+        let routes = snapshot
+            .portal_routes
+            .value
+            .as_ref()
+            .expect("Sway route table");
+        for (interface, backend) in [
+            ("org.freedesktop.impl.portal.Screenshot", "wlr"),
+            ("org.freedesktop.impl.portal.ScreenCast", "wlr"),
+            ("org.freedesktop.impl.portal.FileChooser", "gtk"),
+            ("org.freedesktop.impl.portal.Settings", "gtk"),
+        ] {
+            let route = routes
+                .iter()
+                .find(|route| route.interface == interface)
+                .unwrap_or_else(|| panic!("missing Sway route for {interface}"));
+            assert_eq!(route.status, RouteStatus::Selected, "{interface}");
+            assert_eq!(route.selected_candidates, [backend], "{interface}");
+        }
+    }
+
     fn assert_kde_routes_and_backend(snapshot: &Snapshot) {
         const KDE_BACKEND: &str = "org.freedesktop.impl.portal.desktop.kde";
         for interface in [
@@ -670,6 +805,33 @@ mod tests {
         let report = Report::new(snapshot, findings, "0.2.1");
         assert!(minimum_runtime_context_available(&report.snapshot));
         assert_eq!(RunOutcome::from_report(&report), RunOutcome::Clean);
+    }
+
+    #[test]
+    fn aggregate_sway_wayland_mixed_passive_stack_is_clean() {
+        let snapshot = sway_passive_snapshot(true);
+        assert_sway_mixed_routes(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert!(findings.is_empty());
+        let report = Report::new(snapshot, findings, "0.2.1");
+        assert!(minimum_runtime_context_available(&report.snapshot));
+        assert_eq!(RunOutcome::from_report(&report), RunOutcome::Clean);
+    }
+
+    #[test]
+    fn aggregate_sway_without_wayland_display_emits_env003_only() {
+        let snapshot = sway_passive_snapshot(false);
+        assert_sway_mixed_routes(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["ENV003"]);
+        assert_eq!(
+            RunOutcome::from_report(&Report::new(snapshot, findings, "0.2.1")),
+            RunOutcome::RuntimeContextUnavailable
+        );
     }
 
     #[test]
