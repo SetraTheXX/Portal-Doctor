@@ -188,6 +188,13 @@ mod tests {
             .collect()
     }
 
+    fn fixture_vars(text: &str) -> BTreeMap<String, String> {
+        text.lines()
+            .filter_map(|line| line.split_once('='))
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect()
+    }
+
     #[test]
     fn session_info_parses_known_session_types() {
         let v = vars(&[
@@ -213,6 +220,18 @@ mod tests {
 
         assert_eq!(info.current_desktop.as_deref(), Some("KDE:Plasma"));
         assert_eq!(info.session_desktop.as_deref(), Some("plasma"));
+        assert_eq!(info.session_type, Some(SessionType::Wayland));
+        assert_eq!(info.wayland_display.as_deref(), Some("wayland-1"));
+    }
+
+    #[test]
+    fn session_info_parses_sway_wayland_fixture() {
+        let info = session_info(&fixture_vars(include_str!(
+            "../../tests/fixtures/environment/sway-wayland.env"
+        )));
+
+        assert_eq!(info.current_desktop.as_deref(), Some("Sway"));
+        assert_eq!(info.session_desktop.as_deref(), Some("sway"));
         assert_eq!(info.session_type, Some(SessionType::Wayland));
         assert_eq!(info.wayland_display.as_deref(), Some("wayland-1"));
     }

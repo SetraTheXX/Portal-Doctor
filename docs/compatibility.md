@@ -52,8 +52,10 @@ they are untested in v0.2 and no support is claimed.
   only in a real Plasma Wayland session with a healthy KDE backend/service and
   KDE D-Bus ownership; do not repeatedly force the current host. Phase 10 now
   adds controlled static Sway/wlroots mixed-routing fixtures and rule coverage
-  (`Screenshot`/`ScreenCast` → `wlr`, `FileChooser`/`Settings` → GTK), but no
-  live Sway validation or wlroots support claim.
+  (`Screenshot`/`ScreenCast` → `wlr`, `FileChooser`/`Settings` → GTK), plus a
+  controlled Sway Wayland passive aggregate where a healthy environment is clean
+  and a missing `WAYLAND_DISPLAY` yields only `ENV003`; there is still no live
+  Sway validation or wlroots support claim.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 
