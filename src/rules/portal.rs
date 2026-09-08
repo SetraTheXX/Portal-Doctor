@@ -902,4 +902,85 @@ mod tests {
         );
         assert!(evaluated(Cfg004.evaluate(&s)).is_empty());
     }
+
+    #[test]
+    fn sway_mixed_wlr_gtk_fixture_has_no_false_provider_findings() {
+        use crate::collectors::portal_config::parse_config;
+        use crate::collectors::portal_files::parse_portal_file;
+        use crate::resolver::portal_routes::{normalize_desktops, resolve_routes};
+
+        let config_path = "/usr/share/xdg-desktop-portal/sway-portals.conf";
+        let (preferences, parse_errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/sway-portals.conf"),
+            config_path,
+            0,
+        );
+        let backends = vec![
+            parse_portal_file(
+                include_str!("../../tests/fixtures/portal-routing/wlr.portal"),
+                "/usr/share/xdg-desktop-portal/portals/wlr.portal",
+                "wlr".to_owned(),
+            ),
+            parse_portal_file(
+                include_str!("../../tests/fixtures/portal-routing/gtk.portal"),
+                "/usr/share/xdg-desktop-portal/portals/gtk.portal",
+                "gtk".to_owned(),
+            ),
+        ];
+        let routes = resolve_routes(
+            &normalize_desktops("Sway"),
+            &PortalConfigInfo {
+                candidate_files: vec![config_path.to_owned()],
+                selected_file: Some(config_path.to_owned()),
+                preferences: preferences.clone(),
+                parse_errors: parse_errors.clone(),
+            },
+            &backends,
+        );
+        assert!(parse_errors.is_empty());
+        assert_eq!(
+            routes
+                .iter()
+                .find(|route| route.interface == "org.freedesktop.impl.portal.FileChooser")
+                .expect("FileChooser route")
+                .selected_candidates,
+            ["gtk"]
+        );
+        assert_eq!(
+            routes
+                .iter()
+                .find(|route| route.interface == "org.freedesktop.impl.portal.Screenshot")
+                .expect("Screenshot route")
+                .selected_candidates,
+            ["wlr"]
+        );
+        assert_eq!(
+            routes
+                .iter()
+                .find(|route| route.interface == "org.freedesktop.impl.portal.ScreenCast")
+                .expect("ScreenCast route")
+                .selected_candidates,
+            ["wlr"]
+        );
+
+        let s = snapshot(
+            session("Sway"),
+            config(preferences, Some(config_path), Vec::new()),
+            Section::available(backends),
+            Section::available(routes),
+        );
+        let findings = [
+            Xdp003.evaluate(&s),
+            Xdp004.evaluate(&s),
+            Xdp005.evaluate(&s),
+            Cfg001.evaluate(&s),
+            Cfg002.evaluate(&s),
+            Cfg003.evaluate(&s),
+            Cfg004.evaluate(&s),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        assert!(evaluated(findings).is_empty());
+    }
 }

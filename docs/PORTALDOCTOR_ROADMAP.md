@@ -938,6 +938,20 @@ probes and a documented runtime compatibility claim remain later Phase 9 gates.
 
 Validate mixed-backend routing and activation-environment diagnosis.
 
+## First bounded static slice
+
+- [x] Add controlled `sway-portals.conf`, `wlr.portal` and GTK descriptor
+  fixtures with desktop-specific precedence coverage.
+- [x] Verify `Screenshot` and `ScreenCast` select `wlr`, while `FileChooser`
+  and `Settings` select the appropriate GTK fallback.
+- [x] Verify the resolver honors `UseIn` and the portal rules do not emit false
+  missing-provider or duplicate/multi-provider findings for the pinned mixed
+  configuration.
+
+This is static parser/resolver/rule coverage only. It does not validate a live
+Sway session, install a provider, run an active probe or create a wlroots/Sway
+support claim.
+
 ## Important cases
 
 `xdg-desktop-portal-wlr` implements a limited subset of portals, so mixed backend usage is expected.

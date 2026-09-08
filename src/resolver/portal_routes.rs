@@ -522,6 +522,64 @@ mod tests {
     }
 
     #[test]
+    fn sway_fixture_routes_capture_to_wlr_and_filechooser_to_gtk() {
+        use crate::collectors::portal_config::parse_config;
+        use crate::collectors::portal_files::parse_portal_file;
+
+        let (preferences, errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/sway-portals.conf"),
+            "/usr/share/xdg-desktop-portal/sway-portals.conf",
+            0,
+        );
+        assert!(errors.is_empty());
+        let backends = vec![
+            parse_portal_file(
+                include_str!("../../tests/fixtures/portal-routing/wlr.portal"),
+                "/usr/share/xdg-desktop-portal/portals/wlr.portal",
+                "wlr".to_owned(),
+            ),
+            parse_portal_file(
+                include_str!("../../tests/fixtures/portal-routing/gtk.portal"),
+                "/usr/share/xdg-desktop-portal/portals/gtk.portal",
+                "gtk".to_owned(),
+            ),
+        ];
+        let routes = resolve_routes(&normalize_desktops("Sway"), &config(preferences), &backends);
+
+        let screenshot = route(SCREENSHOT, &routes);
+        assert_eq!(screenshot.requested_candidates, ["wlr", "gtk"]);
+        assert_eq!(screenshot.available_candidates, ["wlr"]);
+        assert_eq!(screenshot.selected_candidates, ["wlr"]);
+        assert_eq!(screenshot.status, RouteStatus::Selected);
+
+        let screencast = route(SCREENCAST, &routes);
+        assert_eq!(screencast.available_candidates, ["wlr"]);
+        assert_eq!(screencast.selected_candidates, ["wlr"]);
+        assert_eq!(screencast.status, RouteStatus::Selected);
+
+        let filechooser = route(FILE_CHOOSER, &routes);
+        assert_eq!(filechooser.requested_candidates, ["gtk"]);
+        assert_eq!(filechooser.available_candidates, ["gtk"]);
+        assert_eq!(filechooser.selected_candidates, ["gtk"]);
+        assert_eq!(filechooser.status, RouteStatus::Selected);
+    }
+
+    #[test]
+    fn sway_wlr_use_in_is_not_selected_for_gnome() {
+        let backends = vec![backend("wlr", "d.wlr", &[SCREENSHOT], &["Sway", "wlroots"])];
+        let routes = resolve_routes(&normalize_desktops("GNOME"), &config(Vec::new()), &backends);
+        let screenshot = route(SCREENSHOT, &routes);
+        assert_eq!(screenshot.status, RouteStatus::NoProvider);
+        assert!(screenshot.available_candidates.is_empty());
+        assert!(
+            screenshot
+                .evidence
+                .iter()
+                .any(|e| e.message.contains("UseIn"))
+        );
+    }
+
+    #[test]
     fn kde_fixture_use_in_is_not_selected_for_gnome() {
         let backends = vec![backend("kde", "d.kde", &[SCREENSHOT], &["KDE"])];
         let routes = resolve_routes(&normalize_desktops("GNOME"), &config(Vec::new()), &backends);
