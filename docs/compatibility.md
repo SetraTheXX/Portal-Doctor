@@ -54,8 +54,11 @@ they are untested in v0.2 and no support is claimed.
   adds controlled static Sway/wlroots mixed-routing fixtures and rule coverage
   (`Screenshot`/`ScreenCast` → `wlr`, `FileChooser`/`Settings` → GTK), plus a
   controlled Sway Wayland passive aggregate where a healthy environment is clean
-  and a missing `WAYLAND_DISPLAY` yields only `ENV003`; there is still no live
-  Sway validation or wlroots support claim.
+and a missing `WAYLAND_DISPLAY` yields only `ENV003`; there is still no live
+Sway validation or wlroots support claim. Controlled runtime-correlation tests
+also cover the generic `wlr`/GTK D-Bus and systemd mappings, with degraded
+provider states remaining generic `DBUS002` findings; this is not live runtime
+validation or a support claim.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 

@@ -159,6 +159,18 @@ the mixed route table: a complete `WAYLAND_DISPLAY` run is finding-free, while
 its absence produces only the existing `ENV003` finding. This remains fixture
 coverage, not live Sway validation or a support claim.
 
+### Phase 10 controlled runtime-correlation slice
+
+The generic runtime correlation path is covered against the same mixed Sway
+fixture: `wlr` resolves to
+`org.freedesktop.impl.portal.desktop.wlr` and
+`xdg-desktop-portal-wlr.service`, while `gtk` resolves to
+`org.freedesktop.impl.portal.desktop.gtk` and
+`xdg-desktop-portal-gtk.service`. Healthy owner/unit states are silent;
+missing or failed `wlr`, and missing GTK fallback runtime, produce only the
+existing generic `DBUS002` finding. This is controlled snapshot/rule coverage,
+not a live Sway runtime, provider or active-probe validation.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility
