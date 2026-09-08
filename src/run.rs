@@ -125,9 +125,6 @@ fn run_probe(args: &ProbeArgs, json: bool) -> Result<RunOutcome, Error> {
             })
         }
         ProbeCmd::Screenshot => {
-            eprintln!(
-                "Warning: this explicit probe may ask you to choose a window and may cause the portal to create a screenshot artifact. PortalDoctor will not open, read, copy, modify, delete, or print the screenshot or its URI."
-            );
             let result = crate::probes::screenshot::run()?;
             let rendered = if json {
                 serde_json::to_string_pretty(&result)
@@ -402,13 +399,18 @@ fn unix_epoch_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{RunOutcome, minimum_runtime_context_available};
-    use crate::model::dbus::DbusInfo;
+    use super::{RunOutcome, minimum_runtime_context_available, selected_backend_dbus_names};
+    use crate::model::dbus::{DbusCheck, DbusInfo, DbusOutcome, PORTAL_FRONTEND_NAME};
     use crate::model::environment::{SessionInfo, SessionType};
     use crate::model::finding::{Confidence, Finding, Severity};
+    use crate::model::pipewire::{PipeWireInfo, WirePlumberInfo};
+    use crate::model::portal::{PortalBackend, PortalConfigInfo, PortalRoute, RouteStatus};
     use crate::model::section::Section;
+    use crate::model::service::{ServiceInfo, UnitState, UnitStatus};
     use crate::model::snapshot::Snapshot;
     use crate::report::Report;
+    use crate::rules::engine::evaluate;
+    use std::collections::{BTreeMap, BTreeSet};
 
     fn runtime_ready_snapshot() -> Snapshot {
         let mut snapshot = Snapshot::new(0);
@@ -492,5 +494,401 @@ mod tests {
             display: Some(":0".to_owned()),
         });
         assert!(minimum_runtime_context_available(&snapshot));
+    }
+
+    #[test]
+    fn selected_kde_route_targets_the_kde_backend_bus_name() {
+        const KDE_BACKEND: &str = "org.freedesktop.impl.portal.desktop.kde";
+
+        let routes = Section::available(vec![PortalRoute {
+            interface: "org.freedesktop.impl.portal.ScreenCast".to_owned(),
+            requested_candidates: vec!["kde".to_owned()],
+            available_candidates: vec!["kde".to_owned()],
+            selected_candidates: vec!["kde".to_owned()],
+            evidence: Vec::new(),
+            status: RouteStatus::Selected,
+        }]);
+        let backends = Section::available(vec![PortalBackend {
+            id: "kde".to_owned(),
+            descriptor_path: "kde.portal".to_owned(),
+            duplicate_descriptors: Vec::new(),
+            dbus_name: KDE_BACKEND.to_owned(),
+            interfaces: BTreeSet::new(),
+            legacy_use_in: Vec::new(),
+        }]);
+
+        assert_eq!(
+            selected_backend_dbus_names(&routes, &backends),
+            vec![KDE_BACKEND.to_owned()]
+        );
+    }
+
+    fn string_map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect()
+    }
+
+    fn kde_passive_snapshot(kde_outcome: DbusOutcome, kde_unit_state: UnitState) -> Snapshot {
+        const KDE_BACKEND: &str = "org.freedesktop.impl.portal.desktop.kde";
+        const SETTINGS: &str = "org.freedesktop.impl.portal.Settings";
+
+        let process = string_map(&[
+            ("XDG_CURRENT_DESKTOP", "KDE:Plasma"),
+            ("XDG_SESSION_DESKTOP", "plasma"),
+            ("XDG_SESSION_TYPE", "wayland"),
+            ("WAYLAND_DISPLAY", "wayland-0"),
+        ]);
+        let session = crate::collectors::environment::session_info(&process);
+        let environment =
+            crate::collectors::environment::environment_info(process.clone(), None, Some(&process));
+
+        let (preferences, parse_errors) = crate::collectors::portal_config::parse_config(
+            include_str!("../tests/fixtures/portal-routing/kde-portals.conf"),
+            "/fixture/kde-portals.conf",
+            0,
+        );
+        let config = PortalConfigInfo {
+            candidate_files: vec!["/fixture/kde-portals.conf".to_owned()],
+            selected_file: Some("/fixture/kde-portals.conf".to_owned()),
+            preferences,
+            parse_errors,
+        };
+        let kde = crate::collectors::portal_files::parse_portal_file(
+            include_str!("../tests/fixtures/portal-routing/kde.portal"),
+            "/fixture/kde.portal",
+            "kde".to_owned(),
+        );
+        // The fixture config references gtk for Settings. Keep that
+        // descriptor in the controlled inventory so XDP005 tests the actual
+        // aggregate inventory rather than a missing synthetic dependency.
+        let gtk = PortalBackend {
+            id: "gtk".to_owned(),
+            descriptor_path: "/fixture/gtk.portal".to_owned(),
+            duplicate_descriptors: Vec::new(),
+            dbus_name: "org.freedesktop.impl.portal.desktop.gtk".to_owned(),
+            interfaces: BTreeSet::from([SETTINGS.to_owned()]),
+            legacy_use_in: Vec::new(),
+        };
+        let backends = vec![kde, gtk];
+        let desktops = crate::resolver::portal_routes::normalize_desktops(
+            process.get("XDG_CURRENT_DESKTOP").unwrap(),
+        );
+        let routes = crate::resolver::portal_routes::resolve_routes(&desktops, &config, &backends);
+
+        let mut snapshot = Snapshot::new(0);
+        snapshot.session = Section::available(session);
+        snapshot.environment = Section::available(environment);
+        snapshot.portal_config = Section::available(config);
+        snapshot.portal_backends = Section::available(backends);
+        snapshot.portal_routes = Section::available(routes);
+        snapshot.dbus = Section::available(DbusInfo {
+            connected: true,
+            checks: vec![
+                DbusCheck {
+                    name: PORTAL_FRONTEND_NAME.to_owned(),
+                    outcome: DbusOutcome::HasOwner,
+                },
+                DbusCheck {
+                    name: KDE_BACKEND.to_owned(),
+                    outcome: kde_outcome,
+                },
+            ],
+        });
+        snapshot.services = Section::available(ServiceInfo {
+            units: vec![
+                UnitStatus {
+                    unit: ServiceInfo::frontend_unit().to_owned(),
+                    state: UnitState::Active,
+                    sub_state: Some("running".to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("kde"),
+                    state: kde_unit_state,
+                    sub_state: Some(kde_unit_state.as_str().to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+            ],
+        });
+        snapshot.pipewire = Section::available(PipeWireInfo {
+            model_version: 1,
+            version: Some("fixture".to_owned()),
+            object_count: 1,
+            node_count: 0,
+            link_count: 0,
+            portal_client_count: 0,
+            screen_cast_source_count: 1,
+            nodes: Vec::new(),
+            links: Vec::new(),
+        });
+        snapshot.wireplumber = Section::available(WirePlumberInfo {
+            model_version: 1,
+            pipewire_version: Some("fixture".to_owned()),
+            wireplumber_client_count: 1,
+        });
+        snapshot
+    }
+
+    fn assert_kde_routes_and_backend(snapshot: &Snapshot) {
+        const KDE_BACKEND: &str = "org.freedesktop.impl.portal.desktop.kde";
+        for interface in [
+            "org.freedesktop.impl.portal.FileChooser",
+            "org.freedesktop.impl.portal.Screenshot",
+            "org.freedesktop.impl.portal.ScreenCast",
+        ] {
+            let route = snapshot
+                .portal_routes
+                .value
+                .as_ref()
+                .unwrap()
+                .iter()
+                .find(|route| route.interface == interface)
+                .unwrap();
+            assert_eq!(route.status, RouteStatus::Selected, "{interface}");
+            assert_eq!(route.selected_candidates, ["kde"], "{interface}");
+        }
+        assert_eq!(
+            selected_backend_dbus_names(&snapshot.portal_routes, &snapshot.portal_backends),
+            vec![KDE_BACKEND.to_owned()]
+        );
+    }
+
+    fn finding_ids(findings: &[Finding]) -> Vec<&str> {
+        findings.iter().map(|finding| finding.id.as_str()).collect()
+    }
+
+    #[test]
+    fn aggregate_kde_plasma_wayland_healthy_passive_stack_is_clean() {
+        let snapshot = kde_passive_snapshot(DbusOutcome::HasOwner, UnitState::Active);
+        assert_kde_routes_and_backend(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert!(findings.is_empty());
+        let report = Report::new(snapshot, findings, "0.2.1");
+        assert!(minimum_runtime_context_available(&report.snapshot));
+        assert_eq!(RunOutcome::from_report(&report), RunOutcome::Clean);
+    }
+
+    #[test]
+    fn aggregate_kde_backend_missing_is_a_runtime_finding_only() {
+        let snapshot = kde_passive_snapshot(DbusOutcome::NoOwner, UnitState::NotFound);
+        assert_kde_routes_and_backend(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["DBUS002"]);
+        assert!(
+            findings[0]
+                .summary
+                .contains("org.freedesktop.impl.portal.desktop.kde")
+        );
+        assert_eq!(
+            RunOutcome::from_report(&Report::new(snapshot, findings, "0.2.1")),
+            RunOutcome::Clean
+        );
+    }
+
+    #[test]
+    fn aggregate_kde_backend_activation_failure_is_a_runtime_finding_only() {
+        let snapshot = kde_passive_snapshot(DbusOutcome::ActivationFailure, UnitState::Failed);
+        assert_kde_routes_and_backend(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["DBUS002"]);
+        assert!(
+            findings[0]
+                .summary
+                .contains("org.freedesktop.impl.portal.desktop.kde")
+        );
+        assert_eq!(
+            RunOutcome::from_report(&Report::new(snapshot, findings, "0.2.1")),
+            RunOutcome::Clean
+        );
+    }
+
+    /// Run only from `scripts/validate-kde-runtime-aggregate-ci.sh`: both
+    /// runtime collectors must use the isolated D-Bus/fake-systemctl setup.
+    #[test]
+    #[cfg(unix)]
+    #[ignore = "requires the explicit isolated KDE runtime aggregate gate"]
+    #[allow(clippy::too_many_lines)]
+    fn isolated_kde_runtime_collectors_feed_the_passive_rule_pipeline() {
+        use std::fs;
+        use std::path::Path;
+
+        const FRONTEND: &str = PORTAL_FRONTEND_NAME;
+        const KDE_BACKEND: &str = "org.freedesktop.impl.portal.desktop.kde";
+        const KDE_UNIT: &str = "xdg-desktop-portal-kde.service";
+
+        let mode_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_MODE_FILE")
+            .expect("explicit aggregate wrapper must provide a mode file");
+        let log_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_LOG")
+            .expect("explicit aggregate wrapper must provide an invocation log");
+        let fake_dir = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_FAKE_DIR")
+            .expect("explicit aggregate wrapper must provide a fake directory");
+        let path = std::env::var_os("PATH").expect("aggregate wrapper must provide PATH");
+        assert_eq!(
+            std::env::split_paths(&path).next(),
+            Some(Path::new(&fake_dir).to_path_buf())
+        );
+        assert_eq!(
+            std::env::var("PORTALDOCTOR_SYSTEMCTL_FAKE_GUARD").as_deref(),
+            Ok("isolated-kde-runtime-aggregate")
+        );
+
+        let set_mode = |mode: &str| {
+            fs::write(&mode_file, format!("{mode}\n")).expect("write aggregate fake mode");
+        };
+        let collect_runtime = || {
+            let dbus = crate::collectors::dbus::collect(&[KDE_BACKEND.to_owned()]);
+            let services = crate::collectors::systemd_user::collect(&[
+                ServiceInfo::frontend_unit().to_owned(),
+                KDE_UNIT.to_owned(),
+            ]);
+            (dbus, services)
+        };
+
+        let owner = zbus::blocking::Connection::session().expect("isolated session bus");
+        owner
+            .request_name(FRONTEND)
+            .expect("acquire isolated portal frontend name");
+        owner
+            .request_name(KDE_BACKEND)
+            .expect("acquire isolated KDE backend name");
+
+        set_mode("healthy");
+        let (healthy_dbus, healthy_services) = collect_runtime();
+        let healthy_dbus_info = healthy_dbus.value.as_ref().expect("healthy D-Bus result");
+        assert!(healthy_dbus_info.connected);
+        assert_eq!(
+            healthy_dbus_info
+                .checks
+                .iter()
+                .find(|check| check.name == FRONTEND)
+                .expect("frontend D-Bus check")
+                .outcome,
+            DbusOutcome::HasOwner
+        );
+        assert_eq!(
+            healthy_dbus_info
+                .checks
+                .iter()
+                .find(|check| check.name == KDE_BACKEND)
+                .expect("KDE D-Bus check")
+                .outcome,
+            DbusOutcome::HasOwner
+        );
+        let healthy_service_info = healthy_services.value.as_ref().expect("healthy services");
+        assert_eq!(
+            healthy_service_info
+                .unit(KDE_UNIT)
+                .expect("KDE service")
+                .state,
+            UnitState::Active
+        );
+        assert_eq!(
+            healthy_service_info
+                .unit(ServiceInfo::frontend_unit())
+                .expect("frontend service")
+                .state,
+            UnitState::Active
+        );
+        let mut healthy = kde_passive_snapshot(DbusOutcome::HasOwner, UnitState::Active);
+        healthy.dbus = healthy_dbus;
+        healthy.services = healthy_services;
+        assert_kde_routes_and_backend(&healthy);
+        let healthy_findings = evaluate(&healthy);
+        crate::rules::contract::assert_contract(&healthy_findings);
+        assert!(healthy_findings.is_empty());
+        assert_eq!(
+            RunOutcome::from_report(&Report::new(healthy, healthy_findings, "0.2.1")),
+            RunOutcome::Clean
+        );
+
+        owner
+            .release_name(KDE_BACKEND)
+            .expect("release isolated KDE backend name");
+
+        set_mode("missing");
+        let (missing_dbus, missing_services) = collect_runtime();
+        let missing_info = missing_dbus.value.as_ref().expect("missing D-Bus result");
+        assert!(missing_info.connected);
+        assert_eq!(
+            missing_info
+                .checks
+                .iter()
+                .find(|check| check.name == KDE_BACKEND)
+                .expect("missing KDE D-Bus check")
+                .outcome,
+            DbusOutcome::NoOwner
+        );
+        assert_eq!(
+            missing_services
+                .value
+                .as_ref()
+                .expect("missing services")
+                .unit(KDE_UNIT)
+                .expect("missing KDE service")
+                .state,
+            UnitState::NotFound
+        );
+        let mut missing = kde_passive_snapshot(DbusOutcome::NoOwner, UnitState::NotFound);
+        missing.dbus = missing_dbus;
+        missing.services = missing_services;
+        let missing_findings = evaluate(&missing);
+        crate::rules::contract::assert_contract(&missing_findings);
+        assert_eq!(finding_ids(&missing_findings), ["DBUS002"]);
+        assert_eq!(
+            RunOutcome::from_report(&Report::new(missing, missing_findings, "0.2.1")),
+            RunOutcome::Clean
+        );
+
+        set_mode("failed");
+        let (failed_dbus, failed_services) = collect_runtime();
+        let failed_info = failed_dbus.value.as_ref().expect("failed D-Bus result");
+        assert!(failed_info.connected);
+        assert_eq!(
+            failed_info
+                .checks
+                .iter()
+                .find(|check| check.name == KDE_BACKEND)
+                .expect("failed KDE D-Bus check")
+                .outcome,
+            DbusOutcome::NoOwner
+        );
+        assert_eq!(
+            failed_services
+                .value
+                .as_ref()
+                .expect("failed services")
+                .unit(KDE_UNIT)
+                .expect("failed KDE service")
+                .state,
+            UnitState::Failed
+        );
+        let mut failed = kde_passive_snapshot(DbusOutcome::NoOwner, UnitState::Failed);
+        failed.dbus = failed_dbus;
+        failed.services = failed_services;
+        let failed_findings = evaluate(&failed);
+        crate::rules::contract::assert_contract(&failed_findings);
+        assert_eq!(finding_ids(&failed_findings), ["DBUS002"]);
+        assert_eq!(
+            RunOutcome::from_report(&Report::new(failed, failed_findings, "0.2.1")),
+            RunOutcome::Clean
+        );
+
+        let invocations = fs::read_to_string(log_file).expect("aggregate invocation log");
+        assert_eq!(invocations.lines().count(), 6);
+        assert!(invocations.lines().all(|line| {
+            matches!(
+                line,
+                "--user show xdg-desktop-portal.service -p ActiveState -p SubState -p UnitFileState --value"
+                    | "--user show xdg-desktop-portal-kde.service -p ActiveState -p SubState -p UnitFileState --value"
+            )
+        }));
     }
 }

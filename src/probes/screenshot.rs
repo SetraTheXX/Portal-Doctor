@@ -1,9 +1,12 @@
 //! Explicit, bounded Screenshot portal lifecycle.
 //!
-//! The probe validates only the v3 Window target. It never opens, reads,
-//! decodes, copies, logs or persists the portal-created screenshot artifact or
-//! its URI. The URI is inspected only for its D-Bus value type and then
-//! dropped with the raw response map.
+//! The probe validates either the v3 Window target or the explicitly negotiated
+//! GNOME v2 interactive compatibility path. It never opens, reads, decodes,
+//! copies, logs or persists the portal-created screenshot artifact or its URI.
+//! The URI is inspected only for its D-Bus value type and then dropped with the
+//! raw response map. A matching `Request.Response` is terminal and therefore
+//! uses `cleanup.status: not_required`; `Request.Close` is used only when the
+//! response never arrives.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -15,19 +18,36 @@ use zbus::{Connection, MessageStream, Proxy};
 use crate::collectors::timeouts::{
     ACTIVE_PROBE_REQUEST, ACTIVE_PROBE_REQUEST_RECOVERY, ACTIVE_PROBE_SETUP,
 };
+use crate::collectors::{environment, portal_config, portal_files};
 use crate::error::Error;
+use crate::model::environment::SessionType;
 use crate::model::probe::{
     CleanupResult, CleanupStatus, ProbeKind, ProbeResult, ProbeStage, ProbeStatus,
 };
 use crate::probes::portal::{
     HandleTokenError, INTROSPECTABLE_INTERFACE, ResponseWait, bounded_proxy, classify_error,
-    close_request, open_session, request_metadata, request_options, response_match_rule,
-    valid_request_path_for_sender, wait_for_response,
+    cleanup_after_response_wait, close_request, open_session, request_metadata, request_options,
+    response_match_rule, valid_request_path_for_sender, wait_for_response,
 };
 
 const SCREENSHOT_INTERFACE: &str = "org.freedesktop.portal.Screenshot";
+const GNOME_BACKEND_ID: &str = "gnome";
+const GNOME_BACKEND_BUS: &str = "org.freedesktop.impl.portal.desktop.gnome";
+const DBUS_DESTINATION: &str = "org.freedesktop.DBus";
+const DBUS_PATH: &str = "/org/freedesktop/DBus";
+const DBUS_INTERFACE: &str = "org.freedesktop.DBus";
 const WINDOW_TARGET: u32 = 2;
+const V2_SCREENSHOT_VERSION: u32 = 2;
 const MINIMUM_SCREENSHOT_VERSION: u32 = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScreenshotCapability {
+    /// GNOME's v2 portal owns target selection in its interactive UI. The
+    /// request must not send the v3-only `target` option.
+    V2GnomeInteractive,
+    /// The v3 contract explicitly advertises and requests the Window target.
+    V3Window,
+}
 
 /// Run the explicit Screenshot lifecycle in a short-lived current-thread
 /// Tokio runtime. Portal outcomes stay in `ProbeResult`; only local runtime
@@ -46,10 +66,12 @@ async fn run_async() -> ProbeResult {
         Err(outcome) => return result(ProbeStage::Prepare, outcome, CleanupResult::not_required()),
     };
 
-    match inspect_screenshot(&connection).await {
-        Ok(()) => {}
+    let capability = match inspect_screenshot(&connection).await {
+        Ok(capability) => capability,
         Err(outcome) => return result(ProbeStage::Prepare, outcome, CleanupResult::not_required()),
-    }
+    };
+
+    eprintln!("{}", warning_text(capability));
 
     // Subscribe before Screenshot is called so a fast portal response cannot
     // race the first signal.
@@ -79,7 +101,7 @@ async fn run_async() -> ProbeResult {
             );
         }
     };
-    let options = screenshot_options(&handle_token);
+    let options = screenshot_options(&handle_token, capability);
     let request_body = ("", options);
     let screenshot_call = screenshot.call::<_, _, OwnedObjectPath>("Screenshot", &request_body);
     tokio::pin!(screenshot_call);
@@ -128,7 +150,7 @@ async fn run_async() -> ProbeResult {
     };
 
     let response = wait_for_response(&mut response_stream, request_path.as_str()).await;
-    let cleanup = close_request(&connection, request_path.as_str(), true).await;
+    let cleanup = cleanup_after_response_wait(&connection, request_path.as_str(), &response).await;
     finalize(response, cleanup)
 }
 
@@ -182,7 +204,7 @@ async fn cleanup_for_possible_request(
     }
 }
 
-async fn inspect_screenshot(connection: &Connection) -> Result<(), ProbeStatus> {
+async fn inspect_screenshot(connection: &Connection) -> Result<ScreenshotCapability, ProbeStatus> {
     let introspection = bounded_proxy(connection, INTROSPECTABLE_INTERFACE).await?;
     let xml: String =
         match tokio::time::timeout(ACTIVE_PROBE_SETUP, introspection.call("Introspect", &())).await
@@ -197,14 +219,17 @@ async fn inspect_screenshot(connection: &Connection) -> Result<(), ProbeStatus> 
 
     let screenshot = bounded_proxy(connection, SCREENSHOT_INTERFACE).await?;
     let version = read_property(&screenshot, "version").await?;
-    if version < MINIMUM_SCREENSHOT_VERSION {
-        return Err(ProbeStatus::Unsupported);
+    if version == V2_SCREENSHOT_VERSION {
+        let trusted_gnome = gnome_provider_evidence(connection).await?;
+        return negotiate_capability(version, false, 0, trusted_gnome);
     }
-    let available_targets = read_property(&screenshot, "AvailableTargets").await?;
-    if !window_target_is_available(available_targets) {
-        return Err(ProbeStatus::Unsupported);
+
+    if version >= MINIMUM_SCREENSHOT_VERSION && introspection_supports_window_targets(&xml) {
+        let available_targets = read_property(&screenshot, "AvailableTargets").await?;
+        return negotiate_capability(version, true, available_targets, false);
     }
-    Ok(())
+
+    Err(ProbeStatus::Unsupported)
 }
 
 async fn read_property(proxy: &Proxy<'_>, name: &str) -> Result<u32, ProbeStatus> {
@@ -215,7 +240,10 @@ async fn read_property(proxy: &Proxy<'_>, name: &str) -> Result<u32, ProbeStatus
     }
 }
 
-fn screenshot_options(handle_token: &str) -> HashMap<String, OwnedValue> {
+fn screenshot_options(
+    handle_token: &str,
+    capability: ScreenshotCapability,
+) -> HashMap<String, OwnedValue> {
     let mut options = request_options(handle_token);
     options.insert(
         "modal".to_owned(),
@@ -225,12 +253,121 @@ fn screenshot_options(handle_token: &str) -> HashMap<String, OwnedValue> {
         "interactive".to_owned(),
         OwnedValue::try_from(Value::from(true)).expect("a boolean is a valid D-Bus value"),
     );
-    options.insert(
-        "target".to_owned(),
-        OwnedValue::try_from(Value::from(WINDOW_TARGET))
-            .expect("a target bitmask is a valid D-Bus value"),
-    );
+    if matches!(capability, ScreenshotCapability::V3Window) {
+        options.insert(
+            "target".to_owned(),
+            OwnedValue::try_from(Value::from(WINDOW_TARGET))
+                .expect("a target bitmask is a valid D-Bus value"),
+        );
+    }
     options
+}
+
+fn negotiate_capability(
+    version: u32,
+    has_window_property: bool,
+    available_targets: u32,
+    trusted_gnome: bool,
+) -> Result<ScreenshotCapability, ProbeStatus> {
+    if version == V2_SCREENSHOT_VERSION {
+        return trusted_gnome
+            .then_some(ScreenshotCapability::V2GnomeInteractive)
+            .ok_or(ProbeStatus::Unsupported);
+    }
+    if version >= MINIMUM_SCREENSHOT_VERSION
+        && has_window_property
+        && window_target_is_available(available_targets)
+    {
+        return Ok(ScreenshotCapability::V3Window);
+    }
+    Err(ProbeStatus::Unsupported)
+}
+
+/// Prove that a v2 request is going through the real GNOME provider without
+/// invoking the provider directly. The public portal remains the only
+/// operation endpoint. Environment alone is insufficient: the effective
+/// portal route, the provider descriptor and its live D-Bus ownership must
+/// agree before the compatibility path is enabled.
+async fn gnome_provider_evidence(connection: &Connection) -> Result<bool, ProbeStatus> {
+    let session_ok = wayland_gnome_session();
+    let route_ok = gnome_screenshot_route_selected();
+    if !session_ok || !route_ok {
+        return Ok(false);
+    }
+
+    let dbus = match tokio::time::timeout(
+        ACTIVE_PROBE_SETUP,
+        Proxy::new(connection, DBUS_DESTINATION, DBUS_PATH, DBUS_INTERFACE),
+    )
+    .await
+    {
+        Ok(Ok(proxy)) => proxy,
+        Ok(Err(error)) => return Err(classify_error(&error)),
+        Err(_) => return Err(ProbeStatus::TimedOut),
+    };
+    match tokio::time::timeout(
+        ACTIVE_PROBE_SETUP,
+        dbus.call::<_, _, bool>("NameHasOwner", &(GNOME_BACKEND_BUS,)),
+    )
+    .await
+    {
+        Ok(Ok(owned)) => Ok(owned),
+        Ok(Err(error)) => Err(classify_error(&error)),
+        Err(_) => Err(ProbeStatus::TimedOut),
+    }
+}
+
+fn wayland_gnome_session() -> bool {
+    let variables = environment::collect_process_environment();
+    let session = environment::session_info(&variables);
+    session.session_type == Some(SessionType::Wayland)
+        && session.wayland_display.is_some()
+        && session
+            .current_desktop
+            .as_deref()
+            .map(crate::resolver::portal_routes::normalize_desktops)
+            .is_some_and(|desktops| desktops.iter().any(|desktop| desktop == GNOME_BACKEND_ID))
+}
+
+fn gnome_screenshot_route_selected() -> bool {
+    let variables = environment::collect_process_environment();
+    let desktops = variables
+        .get("XDG_CURRENT_DESKTOP")
+        .map(|raw| crate::resolver::portal_routes::normalize_desktops(raw))
+        .unwrap_or_default();
+    let roots = environment::search_roots(&variables, std::env::var("HOME").ok().as_deref());
+    let config = portal_config::collect(&roots, &desktops);
+    let backends = portal_files::collect(&roots);
+    let (Some(config), Some(backends)) = (config.value, backends.value) else {
+        return false;
+    };
+    let routes = crate::resolver::portal_routes::resolve_routes(&desktops, &config, &backends);
+    let Some(backend) = backends.iter().find(|backend| {
+        backend.id == GNOME_BACKEND_ID
+            && backend.dbus_name == GNOME_BACKEND_BUS
+            && backend
+                .interfaces
+                .contains("org.freedesktop.impl.portal.Screenshot")
+    }) else {
+        return false;
+    };
+    let _ = backend;
+    routes.iter().any(|route| {
+        route.interface == "org.freedesktop.impl.portal.Screenshot"
+            && route.status == crate::model::portal::RouteStatus::Selected
+            && route.selected_candidates == [GNOME_BACKEND_ID]
+    })
+}
+
+fn warning_text(capability: ScreenshotCapability) -> &'static str {
+    match capability {
+        ScreenshotCapability::V3Window => {
+            "Warning: the portal may ask you to choose a window and may create a screenshot artifact. PortalDoctor will not open, read, copy, modify, delete, or print the screenshot or its URI."
+        }
+        ScreenshotCapability::V2GnomeInteractive => {
+            "Warning: the GNOME portal UI will choose the screenshot target; it may include a screen, window, or area and may create a screenshot artifact. PortalDoctor will not open, read, copy, modify, delete, or print the screenshot or its URI."
+        }
+    }
 }
 
 fn finalize(response: ResponseWait, cleanup: CleanupResult) -> ProbeResult {
@@ -294,9 +431,28 @@ pub(crate) fn introspection_supports_screenshot(xml: &str) -> bool {
         return false;
     };
     let interface = &interface[..interface_end];
-    interface.contains("<method name=\"Screenshot\"")
-        && interface.contains("<property name=\"version\"")
-        && interface.contains("<property name=\"AvailableTargets\"")
+    xml_member_present(interface, "method", "Screenshot")
+        && xml_member_present(interface, "property", "version")
+}
+
+pub(crate) fn introspection_supports_window_targets(xml: &str) -> bool {
+    let Some(interface_start) = xml.find("<interface name=\"org.freedesktop.portal.Screenshot\"")
+    else {
+        return false;
+    };
+    let interface = &xml[interface_start..];
+    let Some(interface_end) = interface.find("</interface>") else {
+        return false;
+    };
+    xml_member_present(&interface[..interface_end], "property", "AvailableTargets")
+}
+
+fn xml_member_present(interface: &str, member: &str, name: &str) -> bool {
+    let tag = format!("<{member} ");
+    let name = format!("name=\"{name}\"");
+    interface
+        .lines()
+        .any(|line| line.contains(&tag) && line.contains(&name))
 }
 
 pub(crate) const fn window_target_is_available(available_targets: u32) -> bool {
@@ -373,15 +529,38 @@ fn cleanup_status_name(status: CleanupStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_response, exit_code, has_uri_string, introspection_supports_screenshot,
-        render_terminal, screenshot_options, window_target_is_available,
+        ScreenshotCapability, decode_response, exit_code, has_uri_string,
+        introspection_supports_screenshot, introspection_supports_window_targets,
+        negotiate_capability, render_terminal, screenshot_options, warning_text,
+        window_target_is_available,
     };
     use crate::model::probe::{CleanupResult, ProbeKind, ProbeResult, ProbeStage, ProbeStatus};
     use std::collections::HashMap;
     use zbus::zvariant::{OwnedValue, Value};
 
     #[test]
-    fn introspection_requires_v3_properties_and_method() {
+    fn introspection_distinguishes_v2_and_v3_shapes() {
+        let v2_xml = r#"
+            <node>
+              <interface name="org.freedesktop.portal.Screenshot">
+                <property name="version" type="u" access="read"/>
+                <method name="Screenshot"/>
+              </interface>
+            </node>
+        "#;
+        assert!(introspection_supports_screenshot(v2_xml));
+        assert!(!introspection_supports_window_targets(v2_xml));
+
+        let real_portal_order = r#"
+            <interface name="org.freedesktop.portal.Screenshot">
+              <method name="Screenshot"/>
+              <property type="u" name="version" access="read"/>
+              <property type="u" name="AvailableTargets" access="read"/>
+            </interface>
+        "#;
+        assert!(introspection_supports_screenshot(real_portal_order));
+        assert!(introspection_supports_window_targets(real_portal_order));
+
         let xml = r#"
             <node>
               <interface name="org.freedesktop.portal.Screenshot">
@@ -392,6 +571,7 @@ mod tests {
             </node>
         "#;
         assert!(introspection_supports_screenshot(xml));
+        assert!(introspection_supports_window_targets(xml));
         assert!(!introspection_supports_screenshot(
             "<interface name=\"org.freedesktop.portal.Screenshot\"><method name=\"Screenshot\"/></interface>"
         ));
@@ -410,8 +590,8 @@ mod tests {
     }
 
     #[test]
-    fn options_are_explicitly_window_interactive_and_modal() {
-        let options = screenshot_options("private-token");
+    fn v3_options_are_explicitly_window_interactive_and_modal() {
+        let options = screenshot_options("private-token", ScreenshotCapability::V3Window);
         assert_eq!(
             String::try_from(&**options.get("handle_token").unwrap()).unwrap(),
             "private-token"
@@ -419,6 +599,49 @@ mod tests {
         assert!(bool::try_from(&**options.get("modal").unwrap()).unwrap());
         assert!(bool::try_from(&**options.get("interactive").unwrap()).unwrap());
         assert_eq!(u32::try_from(&**options.get("target").unwrap()).unwrap(), 2);
+    }
+
+    #[test]
+    fn v2_options_are_interactive_without_v3_target() {
+        let options = screenshot_options("private-token", ScreenshotCapability::V2GnomeInteractive);
+        assert_eq!(
+            String::try_from(&**options.get("handle_token").unwrap()).unwrap(),
+            "private-token"
+        );
+        assert!(bool::try_from(&**options.get("modal").unwrap()).unwrap());
+        assert!(bool::try_from(&**options.get("interactive").unwrap()).unwrap());
+        assert!(!options.contains_key("target"));
+    }
+
+    #[test]
+    fn capability_negotiation_requires_trusted_gnome_for_v2() {
+        assert_eq!(
+            negotiate_capability(2, false, 0, true),
+            Ok(ScreenshotCapability::V2GnomeInteractive)
+        );
+        assert_eq!(
+            negotiate_capability(2, false, 0, false),
+            Err(ProbeStatus::Unsupported)
+        );
+        assert_eq!(
+            negotiate_capability(3, true, 2, false),
+            Ok(ScreenshotCapability::V3Window)
+        );
+        assert_eq!(
+            negotiate_capability(3, false, 2, false),
+            Err(ProbeStatus::Unsupported)
+        );
+        assert_eq!(
+            negotiate_capability(3, true, 1, false),
+            Err(ProbeStatus::Unsupported)
+        );
+    }
+
+    #[test]
+    fn v2_warning_discloses_portal_selected_target_scope() {
+        let warning = warning_text(ScreenshotCapability::V2GnomeInteractive);
+        assert!(warning.contains("screen, window, or area"));
+        assert!(warning.contains("will choose the screenshot target"));
     }
 
     #[test]

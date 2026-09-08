@@ -1,14 +1,15 @@
 # PortalDoctor — Development Roadmap
 
-**Status:** Current implementation roadmap; last verified 2026-09-05
+**Status:** Current implementation roadmap; last verified 2026-09-08
 **Date:** 2026-09-05
 **Strategy:** Narrow vertical slice first, then expand subsystem coverage and desktop compatibility
 
 > **Current handoff:** Read [`PORTALDOCTOR_CURRENT_STATE.md`](PORTALDOCTOR_CURRENT_STATE.md)
 > before starting work. Phases 0–7 and the v0.2.1 passive stabilization gate are
-> complete. The current implementation target is Phase 8 / v0.3.0, beginning
-> with the bounded ASHPD strategy, probe-result contract, FileChooser slice and
-> Screenshot slice tracked in [GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
+> complete. The current implementation target is Phase 8 / v0.3.0. The five
+> internal ScreenCast slices and their aggregate controlled gate are complete;
+> the remaining real-session/release/public-command gate is currently blocked
+> by external provider capability and is tracked in [GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
 
 ---
 
@@ -607,6 +608,39 @@ snapshot/report JSON remains unchanged.
 
 ## Probes
 
+### Phase 8 sequencing policy
+
+The Phase 8 work is split into controlled implementation state and release
+approval state:
+
+- FileChooser controlled and supported-session validation are complete.
+- Screenshot controlled implementation is complete, including the v3
+  Window-only and trusted-GNOME v2 paths, but its real GNOME
+  success/cancellation gate is open because the observed provider hangs and
+  crashes. This continues to block v0.3.0 release approval.
+- The same broken Screenshot provider version must not be retried for another
+  real E2E, and v2 remains unreleased; the v3 Window-only path remains intact.
+- ScreenCast controlled/internal implementation is complete: its internal
+  `CreateSession`, `SelectSources`, `Start`, `StreamsReturned` and
+  `OpenPipeWireRemote` implementations and aggregate cross-stage lifecycle
+  gate pass. Its real success/cancellation gate is **BLOCKED** by the live
+  provider capability absence (`AvailableSourceTypes=0`, Window bit `2`
+  missing). The same provider state must not be retried, and this does not
+  close or weaken the Screenshot release gate.
+- These external blockers do not reopen completed internal implementation or
+  force Phase 8 development to spin forever. Independent bounded work, and a
+  next development phase that does not depend on either real-session gate, may
+  proceed. Public active-probe commands and v0.3.0 release approval remain
+  blocked until their exact real-session gates pass.
+
+The ScreenCast real gate may be re-evaluated only when the public frontend
+reports `AvailableSourceTypes & 2 != 0`, the selected provider/frontend is
+stable and healthy, and a supported disposable Ubuntu/GNOME/Wayland session is
+ready for exactly one real success plus one portal-native cancellation E2E.
+
+The canonical ScreenCast design and acceptance boundary is
+[`PORTALDOCTOR_SCREENCAST_DECISION.md`](PORTALDOCTOR_SCREENCAST_DECISION.md).
+
 ### FileChooser
 
 ```bash
@@ -618,13 +652,13 @@ subscribes to `Request::Response` before `OpenFile`, supplies a unique
 `handle_token`, validates the returned or token-derived request handle, bounds
 request/recovery/response/cleanup separately, and reports standalone
 `ProbeResult` v1 JSON. It never reads, copies, modifies or persists the
-selected file; `ScreenCast` remains the unchecked future slice.
+selected file; ScreenCast is tracked separately by its design checkpoint.
 
 - [x] Validate the cancellation and cleanup path in the supported Ubuntu 26.04
   + GNOME + Wayland + systemd user session.
 - [x] Validate a successful selection path in the same supported session;
-  confirm that the result is `success` with verified cleanup while no URI,
-  filename or file content is emitted.
+  confirm that the result is `success` with a terminal response and no URI,
+  filename or file content emitted.
 - [x] Validate the request/response race boundary with a controlled fake
   portal: success, user cancellation, malformed response, response timeout,
   late method reply,
@@ -655,38 +689,51 @@ explicitly side-effectful at the portal data boundary and is not considered
 read-only merely because PortalDoctor never opens the image.
 
 - [x] Define a PortalDoctor-owned request lifecycle that reuses the audited
-  FileChooser response-race, timeout, cancellation and `Request.Close` rules.
-- [x] Define the v3 `AvailableTargets` preflight and Window-only target policy;
-  no silent Screen/Area/Active-Window fallback.
+  FileChooser response-race, timeout, cancellation and no-response
+  `Request.Close` rules; a terminal `Response` must never be followed by
+  `Request.Close`.
+- [x] Define capability negotiation: v3 `AvailableTargets` preflight and
+  Window-only target policy with no silent Screen/Area/Active-Window fallback,
+  plus a trusted-GNOME v2 interactive path that sends no `target` and makes no
+  Window-only claim.
 - [x] Define the URI/image privacy and artifact-ownership boundary, including
   the fact that Request.Close does not delete a screenshot already created by
   the portal.
 - [x] Define controlled-fake, real-session, package, privacy and release gates.
 - [x] Implement `org.freedesktop.portal.Screenshot.Screenshot` using the
   shared PortalDoctor-owned request/token/response/cleanup mechanics.
-- [x] Validate controlled success, cancellation, request/response timeout,
-  late reply, malformed response, portal/transport failure, unsupported
-  target/version, unavailable service and cleanup failure.
-- [x] Assert ProbeResult v1 semantics, Request.Close observations, exit codes
-  and absence of URI/path/image data from stdout and stderr.
-- [ ] Run the supported real-session validation in a disposable v3-capable
-  Ubuntu 26.04 + GNOME + Wayland context; PortalDoctor must not open or
-  inspect the generated image. The current portal exposes version 2, so its
-  unsupported fail-closed result is recorded but does not satisfy success.
-  The 2026-09-06 audit verified Ubuntu's installed frontend/backend versions
-  (`xdg-desktop-portal 1.21.1`, `xdg-desktop-portal-gnome 50.0`) and confirmed
-  that the current GNOME backend still advertises Screenshot implementation
-  version 2. The gate therefore remains externally blocked; do not substitute
-  a v2 bypass, controlled fake or wlroots backend for the required GNOME
-  success/cancellation evidence.
+- [x] Validate controlled v2/v3 success, cancellation, request/response
+  timeout, late reply, malformed response, portal/transport failure,
+  unsupported target/version, untrusted v2, unavailable service and cleanup
+  failure.
+- [x] Assert exact capability-specific options, ProbeResult v1 semantics,
+  response-terminal no-close and no-response Request.Close observations,
+  open-request state, exit codes and absence of URI/path/image data from stdout
+  and stderr.
+- [ ] Run the supported real-session validation in a disposable Ubuntu 26.04
+  + GNOME + Wayland context using the path actually negotiated; PortalDoctor
+  must not open or inspect the generated image. The current portal exposes v2
+  without `AvailableTargets`, so v2 evidence must include the explicit GNOME
+  route/provider proof and the broader screen/window/area warning. The
+  2026-09-07 success-path attempt hung before selection, returned a bounded
+  `timed_out/response/cleanup.status: completed` result, and was followed by
+  `InteractiveScreenshot didn't return a file` and an
+  `xdg-desktop-portal-gnome` `SIGSEGV`/core-dump. The gate remains externally
+  blocked; do not count this as success/cancellation or retry the same provider
+  state indefinitely.
+  Do not substitute a backend-direct call, controlled fake or wlroots backend
+  for the required GNOME success/cancellation evidence.
 
 ### ScreenCast
 
-```bash
-portaldoctor probe screencast
-```
+There is no public `portaldoctor probe screencast` command yet.
 
-ScreenCast result stages:
+The public ScreenCast command has not started. The design and bounded
+internal `CreateSession`, `SelectSources`, `Start`, `StreamsReturned` and
+`OpenPipeWireRemote`
+checkpoints in
+[`PORTALDOCTOR_SCREENCAST_DECISION.md`](PORTALDOCTOR_SCREENCAST_DECISION.md)
+fix the lifecycle as:
 
 ```text
 CreateSession
@@ -695,6 +742,90 @@ Start
 StreamsReturned
 OpenPipeWireRemote
 ```
+
+The JSON stages remain `create_session`, `select_sources`, `start`,
+`streams_returned` and `open_pipe_wire_remote`, matching the existing v1
+`ProbeResult` model. Request, Session and returned PipeWire remote FD ownership
+are independent: a terminal Request `Response` means no later
+`Request.Close`; no-response cancellation/timeout uses bounded Request cleanup;
+the Session is closed exactly once when acquired; and the returned FD is
+closed before Session cleanup. No media, stream metadata or raw portal values
+may enter output or persistent state.
+
+The internal `CreateSession`, `SelectSources`, `Start`, `StreamsReturned` and
+`OpenPipeWireRemote` slices are complete and are not public commands. They own
+the Request lifecycle, validate the
+returned Session handle, negotiate the advertised Window source bit, send only
+`types=2`, `multiple=false` and a fresh request token without persistence or
+restore options, and close an acquired Session exactly once. Start additionally
+sends the same owned Session handle with explicit `parent_window=""` and drops
+the terminal `streams` map at its Start-only boundary. The subsequent
+`StreamsReturned` boundary accepts only the XDG `a(ua{sv})` container with one
+Window stream, keeps node IDs/properties opaque and rejects malformed or
+policy-inconsistent payloads without logging them. OpenPipeWireRemote sends
+empty options, creates no Request, acquires only a typed owned FD, closes it
+before Session.Close and never connects to PipeWire or reads media. When a terminal
+success response has an unusable or foreign Session handle, CreateSession
+attempts cleanup only on the expected sender-and-token-derived path;
+successful expected cleanup remains `malformed_response`, explicit close
+failure is `failed/session`, and absent or ambiguous ownership is
+`unverified/session`. SelectSources additionally proves terminal-response
+zero Request.Close, bounded no-response cleanup and aggregate Request/Session
+cleanup failures. The controlled fake matrices cover success, portal
+cancellation/rejection, malformed response bodies, response and request
+timeouts, late replies, client cancellation, transport and capability
+boundaries, Request/Session close failures, ambiguous ownership,
+terminal-response zero-close behavior, exact options and privacy/open-resource
+assertions. The Start matrix additionally covers synthetic stream metadata,
+request/session cleanup aggregation and its stage-local success boundary. The
+StreamsReturned matrix covers valid/minimal/opaque-property streams,
+malformed/missing/wrong-type/empty/multiple/policy-inconsistent payloads,
+terminal zero-close and Session cleanup/privacy assertions. The aggregate gate
+also composes all five slices in one controlled state machine and checks
+cross-stage failures, cleanup ordering/aggregation, privacy, open resources and
+the hidden public command. The five internal slices remain outside the public
+command and release approval. The current real-session gate is **BLOCKED**
+before UI execution by the missing Window capability; after the trigger above,
+the next gate is one success plus one portal-native cancellation followed by
+the release/public-command decision.
+
+- [x] Implement and controlled-test the internal `CreateSession` plus Session
+  ownership/cleanup slice. Keep it out of the public CLI and do not count its
+  fake evidence as Screenshot real-session evidence.
+- [x] Implement and controlled-test the bounded `SelectSources` slice with
+  the same Request/Session lifecycle invariants. Keep it out of the public
+  CLI and do not count its fake evidence as Screenshot real-session evidence.
+- [x] Implement and controlled-test the bounded `Start` slice with the same
+  Request/Session lifecycle invariants, exact headless arguments and a dropped
+  stream payload. Keep it out of the public CLI and do not count its fake
+  evidence as Screenshot real-session evidence.
+- [x] Implement and controlled-test the bounded `StreamsReturned` slice with
+  the XDG `a(ua{sv})` boundary, exactly-one Window policy, opaque property
+  handling, fail-closed malformed cases, terminal zero-close and exactly-once
+  Session cleanup. Keep it out of the public CLI and do not count its fake
+  evidence as Screenshot real-session evidence.
+- [x] Implement and controlled-test the bounded `OpenPipeWireRemote` direct-FD
+  slice with empty options, no Request.Close path, typed owned-FD release
+  before exactly-once Session.Close, late-FD recovery, cleanup aggregation and
+privacy. Keep it out of the public CLI and do not claim ScreenCast readiness.
+- [x] Run the aggregate internal lifecycle gate across all five slices. Cover
+  full success, representative CreateSession/SelectSources/Start and
+  StreamsReturned failures, direct-FD timeout/cancellation/late/ambiguous
+  ownership, FD and Session cleanup failures, aggregate cleanup resources,
+  terminal-response zero-close behavior, FD-before-Session ordering, exact
+  call counts, privacy, no open resources and the hidden public command.
+- [ ] Re-evaluate the real-session/release/public-command gate only after the
+  public Window capability bit and provider stability trigger are present. Run
+  exactly one success and one portal-native cancellation, then all
+  release/regression gates. Do not add a public command, PipeWire handshake or
+  media access before that decision.
+
+The full ScreenCast implementation exit gate additionally requires the
+controlled fake matrix, unit/integration lifecycle tests, disposable supported
+Ubuntu/GNOME/Wayland success and user-cancellation E2E, privacy and FD/session
+cleanup checks, passive regression, strict fmt/Clippy/tests, release
+build/package/install smoke, rustdoc, and cargo audit when dependencies
+change. Those gates do not count as Screenshot real-session evidence.
 
 ## UX constraints
 
@@ -706,13 +837,29 @@ OpenPipeWireRemote
 
 ## Exit criteria
 
-PortalDoctor can identify the exact stage at which a ScreenCast lifecycle fails or times out.
+PortalDoctor can identify the exact stage at which a ScreenCast lifecycle fails
+or times out, and can prove Request, Session and PipeWire remote cleanup
+without consuming media. The internal ScreenCast implementation meets this
+controlled criterion, but the ScreenCast real gate is blocked by the absent
+Window capability and the Screenshot real gate is independently blocked by the
+GNOME provider. Both keep v0.3.0 release approval open. This does not prevent
+independent bounded development or a next phase that explicitly does not rely
+on either external real-session gate.
 
 ## Release
 
 **v0.3.0**
 
 ---
+
+## Development sequencing rule after the external gates
+
+Phase 9 development may begin only for independent, bounded compatibility or
+read-only work that does not require ScreenCast/Screenshot real-session proof.
+This is a development sequencing allowance, not a Phase 8 exit, a public
+command approval or a v0.3.0 release decision. Any Phase 9 item requiring an
+active-probe real session remains blocked until the corresponding provider
+trigger and real success/cancellation gate are satisfied.
 
 # Phase 9 — KDE Plasma Compatibility
 
@@ -722,9 +869,44 @@ Validate the architecture beyond GNOME rather than merely allowing it to compile
 
 ## Tasks
 
-- KDE portal config/metadata fixtures,
+- [x] Add deterministic KDE `kde-portals.conf` and `kde.portal` fixtures with
+  parser, metadata, candidate-precedence, default-route and `UseIn` coverage.
+- [x] Audit the portal resolver/rules for GNOME-only assumptions relevant to
+  this slice; no production GNOME-only routing assumption was found. Existing
+  GNOME references remain test fixtures, user-facing examples or the separate
+  trusted-GNOME Screenshot compatibility boundary.
+- [x] Add controlled KDE runtime-correlation coverage for the generic
+  `xdg-desktop-portal-kde.service` mapping, active/failed/not-found systemd
+  states and `org.freedesktop.impl.portal.desktop.kde` D-Bus ownership/finding
+  semantics. This validates deterministic read-only correlation only; it does
+  not claim a live Plasma runtime.
+- [x] Add controlled KDE/Plasma Wayland environment coverage for `KDE`,
+  `KDE:Plasma` and `plasma` session identities, activation-environment
+  mismatch semantics and missing `WAYLAND_DISPLAY`. This is fixture-only and
+  does not claim a live Plasma session.
+- [x] Add one production-pipeline-style KDE passive snapshot aggregate covering
+  healthy routing/runtime and degraded KDE owner/service states. Healthy state
+  is finding-free; degraded state remains the generic `DBUS002` runtime finding
+  without being misclassified as configuration or environment failure.
+- [x] Run the production D-Bus collector against an isolated
+  `dbus-run-session` with the canonical KDE well-known name owned and absent.
+  The gate also proves unsorted duplicate selected names are sorted/deduplicated
+  deterministically. This is controlled D-Bus ownership coverage only, not live
+  Plasma validation or a KDE support claim.
+- [x] Run the production systemd-user collector against a temporary, guarded
+  fake `systemctl` through an explicit ignored CI wrapper. The gate proves the
+  exact `xdg-desktop-portal-kde.service` invocation and active/failed/not-found/
+  timeout mappings, including child reaping, without contacting the real user
+  systemd manager. This remains controlled coverage only and creates no live
+  Plasma validation or KDE support claim.
+- [x] Run the production D-Bus and systemd collectors together under one
+  isolated `dbus-run-session` plus guarded fake-systemctl wrapper and feed their
+  results into the existing KDE routing/rule pipeline. Owned/active is finding-
+  free; absent/not-found and representative absent/failed activation paths emit
+  only `DBUS002`. This is controlled passive aggregation only, not live Plasma
+  validation or a KDE support claim.
 - `xdg-desktop-portal-kde` runtime behavior,
-- Plasma Wayland environment validation,
+- live Plasma Wayland session validation,
 - active probe validation,
 - compatibility documentation.
 
@@ -734,7 +916,9 @@ Audit all existing rules for GNOME assumptions.
 
 ## Exit criteria
 
-KDE/Plasma appears in a documented tested compatibility matrix with known limitations.
+The static KDE fixture and controlled runtime-correlation slices are complete
+without changing the v0.2.1 support matrix. KDE/Plasma runtime behavior, active
+probes and a documented runtime compatibility claim remain later Phase 9 gates.
 
 ## Release
 

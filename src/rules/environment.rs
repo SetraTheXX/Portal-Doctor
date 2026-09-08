@@ -259,6 +259,32 @@ mod tests {
     }
 
     #[test]
+    fn healthy_kde_wayland_yields_no_findings() {
+        let process = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "KDE"),
+            ("XDG_SESSION_TYPE", "wayland"),
+            ("WAYLAND_DISPLAY", "wayland-0"),
+        ];
+        let snapshot = fixture_snapshot(&process, Some(&process));
+
+        assert!(evaluate(&snapshot).is_empty());
+    }
+
+    #[test]
+    fn healthy_kde_plasma_colon_identity_yields_no_findings() {
+        let process = [
+            ("XDG_CURRENT_DESKTOP", "KDE:Plasma"),
+            ("XDG_SESSION_DESKTOP", "plasma"),
+            ("XDG_SESSION_TYPE", "wayland"),
+            ("WAYLAND_DISPLAY", "wayland-0"),
+        ];
+        let snapshot = fixture_snapshot(&process, Some(&process));
+
+        assert!(evaluate(&snapshot).is_empty());
+    }
+
+    #[test]
     fn missing_xdg_current_desktop_fires_env001_only() {
         let process = [
             ("XDG_SESSION_DESKTOP", "gnome"),
@@ -276,6 +302,18 @@ mod tests {
             ("XDG_SESSION_TYPE", "wayland"),
         ];
         let snapshot = fixture_snapshot(&process, Some(&process));
+        assert_eq!(ids(&evaluate(&snapshot)), ["ENV003"]);
+    }
+
+    #[test]
+    fn kde_wayland_without_wayland_display_fires_env003_only() {
+        let process = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "plasma"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let snapshot = fixture_snapshot(&process, Some(&process));
+
         assert_eq!(ids(&evaluate(&snapshot)), ["ENV003"]);
     }
 
@@ -304,6 +342,28 @@ mod tests {
         crate::rules::contract::assert_contract(&findings);
         assert!(findings[0].summary.contains("XDG_CURRENT_DESKTOP"));
         assert!(findings[0].summary.contains("XDG_SESSION_TYPE"));
+    }
+
+    #[test]
+    fn kde_plasma_activation_mismatch_fires_env004_with_details() {
+        let process = [
+            ("XDG_CURRENT_DESKTOP", "KDE:Plasma"),
+            ("XDG_SESSION_DESKTOP", "plasma"),
+            ("XDG_SESSION_TYPE", "wayland"),
+            ("WAYLAND_DISPLAY", "wayland-0"),
+        ];
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "plasma"),
+            ("XDG_SESSION_TYPE", "wayland"),
+            ("WAYLAND_DISPLAY", "wayland-1"),
+        ];
+        let findings = evaluate(&fixture_snapshot(&process, Some(&activation)));
+
+        assert_eq!(ids(&findings), ["ENV004"]);
+        crate::rules::contract::assert_contract(&findings);
+        assert!(findings[0].summary.contains("XDG_CURRENT_DESKTOP"));
+        assert!(findings[0].summary.contains("WAYLAND_DISPLAY"));
     }
 
     #[test]

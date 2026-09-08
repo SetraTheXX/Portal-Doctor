@@ -322,6 +322,7 @@ mod tests {
 
     const FRONTEND: &str = "org.freedesktop.portal.Desktop";
     const BACKEND: &str = "org.freedesktop.impl.portal.desktop.gnome";
+    const KDE_BACKEND: &str = "org.freedesktop.impl.portal.desktop.kde";
 
     fn check(name: &str, outcome: DbusOutcome) -> DbusCheck {
         DbusCheck {
@@ -342,6 +343,28 @@ mod tests {
                 sub_state: None,
                 unit_file_state: Some("static".to_owned()),
             }],
+        })
+    }
+
+    fn services_with_backend(
+        frontend_state: UnitState,
+        backend_state: UnitState,
+    ) -> Section<ServiceInfo> {
+        Section::available(ServiceInfo {
+            units: vec![
+                UnitStatus {
+                    unit: ServiceInfo::frontend_unit().to_owned(),
+                    state: frontend_state,
+                    sub_state: None,
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("kde"),
+                    state: backend_state,
+                    sub_state: None,
+                    unit_file_state: Some("static".to_owned()),
+                },
+            ],
         })
     }
 
@@ -420,6 +443,57 @@ mod tests {
         assert_eq!(ids(&evaluated(Dbus002.evaluate(&s))), ["DBUS002"]);
         // Frontend healthy -> XDP001 silent.
         assert!(evaluated(Xdp001.evaluate(&s)).is_empty());
+    }
+
+    #[test]
+    fn selected_kde_backend_owner_with_active_unit_is_silent() {
+        let s = snapshot(
+            dbus_info(
+                true,
+                vec![
+                    check(FRONTEND, DbusOutcome::HasOwner),
+                    check(KDE_BACKEND, DbusOutcome::HasOwner),
+                ],
+            ),
+            services_with_backend(UnitState::Active, UnitState::Active),
+        );
+
+        assert!(evaluated(Dbus002.evaluate(&s)).is_empty());
+        assert!(evaluated(Xdp002.evaluate(&s)).is_empty());
+    }
+
+    #[test]
+    fn selected_kde_backend_no_owner_with_missing_unit_fires_dbus002() {
+        let s = snapshot(
+            dbus_info(
+                true,
+                vec![
+                    check(FRONTEND, DbusOutcome::HasOwner),
+                    check(KDE_BACKEND, DbusOutcome::NoOwner),
+                ],
+            ),
+            services_with_backend(UnitState::Active, UnitState::NotFound),
+        );
+        let findings = evaluated(Dbus002.evaluate(&s));
+
+        assert_eq!(ids(&findings), ["DBUS002"]);
+        assert!(findings[0].summary.contains(KDE_BACKEND));
+    }
+
+    #[test]
+    fn selected_kde_backend_activation_failure_with_failed_unit_fires_dbus002() {
+        let s = snapshot(
+            dbus_info(
+                true,
+                vec![
+                    check(FRONTEND, DbusOutcome::HasOwner),
+                    check(KDE_BACKEND, DbusOutcome::ActivationFailure),
+                ],
+            ),
+            services_with_backend(UnitState::Active, UnitState::Failed),
+        );
+
+        assert_eq!(ids(&evaluated(Dbus002.evaluate(&s))), ["DBUS002"]);
     }
 
     #[test]

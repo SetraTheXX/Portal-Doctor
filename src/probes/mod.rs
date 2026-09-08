@@ -2,4 +2,5 @@
 
 pub mod filechooser;
 pub(crate) mod portal;
+pub(crate) mod screencast;
 pub mod screenshot;

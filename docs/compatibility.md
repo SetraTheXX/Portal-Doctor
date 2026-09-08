@@ -22,15 +22,31 @@ they are untested in v0.2 and no support is claimed.
 - **Published active probes** — v0.2.1 never calls portal interfaces. The
   development `main` branch has a separate, unreleased FileChooser probe, but
   it does not extend the v0.2.1 support claim or release contract.
-- **Screenshot active lifecycle** — the development `main` branch implements
-  an explicit v3+ Window-target probe with controlled fake coverage. A real
-  success/cancellation claim requires a portal that advertises
-  `AvailableTargets`; the current Ubuntu 26.04 session exposes version 2 and
-  is correctly reported as unsupported. The published v0.2.1 package does not
-  include the probe.
-- **ScreenCast active lifecycle** — not implemented or validated.
+- **Screenshot active lifecycle** — the published v0.2.1 package does not
+  call portal interfaces. Development `main` contains the controlled v3+
+  Window-only path and the trusted-GNOME v2 interactive compatibility path;
+  v2 makes no Window-only claim and neither path is public or release-ready.
+  The real GNOME success/cancellation gate is currently **BLOCKED** by the
+  observed provider hang/crash. The same broken provider state must not be
+  retried; the v3 Window-only path remains intact.
+- **ScreenCast active lifecycle** — the published v0.2.1 package contains no
+  active ScreenCast probe. Development `main` contains the internal
+  `CreateSession -> SelectSources -> Start -> StreamsReturned ->
+  OpenPipeWireRemote` lifecycle and its passing aggregate controlled audit,
+  but no public `probe screencast` command and no real-session validation.
+  The real gate is **BLOCKED** because the frontend reports
+  `AvailableSourceTypes=0` and lacks Window bit `2`; no PipeWire
+  media/handshake/capture is implemented.
 - **KDE / wlroots / Hyprland / Niri** — no support claims; route resolution
-  may work but is unvalidated.
+  may work but is unvalidated. Phase 9 now has static KDE config/metadata and
+  routing fixtures plus controlled KDE runtime-correlation tests for generic
+  service/D-Bus finding semantics and KDE/Plasma Wayland environment/session
+  fixtures, including a healthy/degraded passive snapshot aggregate and an
+  isolated session-bus ownership gate plus a guarded production systemd-user
+  collector gate for the exact KDE unit and bounded state mapping, plus a
+  combined isolated D-Bus/systemd collector run through the existing passive
+  rule pipeline; no Plasma runtime validation or support claim follows from
+  them.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 

@@ -3,11 +3,13 @@
 //! Probe modules own their operation-specific preflight and response mapping.
 //! This module owns only the mechanics that must stay identical across active
 //! probes: response-match registration, request metadata, bounded D-Bus
-//! proxies, response waiting and Request.Close cleanup.
+//! proxies, response waiting and no-response Request.Close cleanup.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use futures_lite::StreamExt;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
@@ -22,6 +24,7 @@ pub(crate) const REQUEST_INTERFACE: &str = "org.freedesktop.portal.Request";
 pub(crate) const INTROSPECTABLE_INTERFACE: &str = "org.freedesktop.DBus.Introspectable";
 pub(crate) const RESPONSE_MEMBER: &str = "Response";
 pub(crate) const REQUEST_PATH_PREFIX: &str = "/org/freedesktop/portal/desktop/request/";
+pub(crate) const SESSION_PATH_PREFIX: &str = "/org/freedesktop/portal/desktop/session/";
 const HANDLE_TOKEN_PREFIX: &str = "portaldoctor";
 const HANDLE_TOKEN_RANDOM_BYTES: usize = 16;
 
@@ -40,6 +43,17 @@ pub(crate) enum ResponseWait {
     TimedOut,
     InfrastructureFailure,
     MalformedResponse,
+}
+
+impl ResponseWait {
+    /// The XDG `Response` signal is terminal for the request object. This is
+    /// true even when the signal body is malformed: a matching signal was
+    /// received, so sending `Request.Close` afterwards would be a protocol
+    /// violation rather than cleanup.
+    #[must_use]
+    pub(crate) const fn ends_request(&self) -> bool {
+        matches!(self, Self::Outcome { .. } | Self::MalformedResponse)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,6 +146,15 @@ pub(crate) fn request_metadata(
     Ok((handle_token, expected_path))
 }
 
+pub(crate) fn session_metadata(
+    connection: &Connection,
+) -> Result<(String, OwnedObjectPath), HandleTokenError> {
+    let session_handle_token = handle_token()?;
+    let expected_path = expected_session_path(connection, &session_handle_token)
+        .ok_or(HandleTokenError::UniqueNameUnavailable)?;
+    Ok((session_handle_token, expected_path))
+}
+
 pub(crate) fn handle_token() -> Result<String, HandleTokenError> {
     handle_token_with_entropy(|random| {
         getrandom::fill(random).map_err(|_| HandleTokenError::EntropyUnavailable)
@@ -166,13 +189,75 @@ pub(crate) fn request_path_for_sender(
     OwnedObjectPath::try_from(path).ok()
 }
 
+pub(crate) fn valid_session_path(path: &str) -> bool {
+    path.starts_with(SESSION_PATH_PREFIX) && path.len() > SESSION_PATH_PREFIX.len()
+}
+
+pub(crate) fn valid_session_path_for_sender(path: &str, expected_path: &OwnedObjectPath) -> bool {
+    if !valid_session_path(path) {
+        return false;
+    }
+    let Some((expected_sender, _)) = expected_path.as_str().rsplit_once('/') else {
+        return false;
+    };
+    let sender_prefix = format!("{expected_sender}/");
+    path.starts_with(&sender_prefix)
+}
+
+fn expected_session_path(
+    connection: &Connection,
+    session_handle_token: &str,
+) -> Option<OwnedObjectPath> {
+    session_path_for_sender(connection.unique_name()?.as_str(), session_handle_token)
+}
+
+pub(crate) fn session_path_for_sender(
+    unique_name: &str,
+    session_handle_token: &str,
+) -> Option<OwnedObjectPath> {
+    let sender = unique_name.strip_prefix(':')?;
+    let sender = sender.replace('.', "_");
+    let path = format!("{SESSION_PATH_PREFIX}{sender}/{session_handle_token}");
+    OwnedObjectPath::try_from(path).ok()
+}
+
 /// Wait for one request response, preserving only the typed D-Bus payload for
 /// the operation-specific decoder. The caller must drop the returned raw map
 /// after checking the required type; this function never renders it.
+///
+/// A matching `Response` signal ends the request lifecycle. Callers must not
+/// issue `Request.Close` for `Outcome` or `MalformedResponse`; cleanup is
+/// represented as `not_required`. `UserCancelled`, `TimedOut` and
+/// `InfrastructureFailure` mean that no matching response was received and
+/// require the bounded close path.
 pub(crate) async fn wait_for_response(
     stream: &mut MessageStream,
     request_path: &str,
 ) -> ResponseWait {
+    wait_for_response_with_cancel(
+        stream,
+        request_path,
+        async {
+            let _ = tokio::signal::ctrl_c().await;
+        },
+        crate::collectors::timeouts::ACTIVE_PROBE_RESPONSE,
+    )
+    .await
+}
+
+/// Testable form of `wait_for_response` with an injected cancellation future and
+/// response budget. Production callers use the central active-probe timeout;
+/// controlled fakes use a shorter budget so every mode remains fast without
+/// changing production policy.
+pub(crate) async fn wait_for_response_with_cancel<C>(
+    stream: &mut MessageStream,
+    request_path: &str,
+    cancellation: C,
+    response_timeout: Duration,
+) -> ResponseWait
+where
+    C: Future<Output = ()>,
+{
     let response = async {
         loop {
             let Some(message) = stream.next().await else {
@@ -197,15 +282,40 @@ pub(crate) async fn wait_for_response(
         }
     };
     tokio::pin!(response);
-    let cancellation = async { tokio::signal::ctrl_c().await.ok() };
     tokio::pin!(cancellation);
     tokio::select! {
         outcome = &mut response => outcome,
-        _ = &mut cancellation => ResponseWait::UserCancelled,
-        () = tokio::time::sleep(crate::collectors::timeouts::ACTIVE_PROBE_RESPONSE) => ResponseWait::TimedOut,
+        () = &mut cancellation => ResponseWait::UserCancelled,
+        () = tokio::time::sleep(response_timeout) => ResponseWait::TimedOut,
     }
 }
 
+/// Apply the shared XDG request lifecycle rule after response waiting.
+///
+/// A request that emitted `Response` is already terminal and must not receive
+/// a later `Request.Close`. If waiting ended without a response, the returned
+/// request path is still the bounded abort target. The path is known here
+/// because this helper is called only after the portal method returned a
+/// validated request object, so an already-gone object is a verified outcome.
+pub(crate) async fn cleanup_after_response_wait(
+    connection: &Connection,
+    request_path: &str,
+    response: &ResponseWait,
+) -> CleanupResult {
+    if response.ends_request() {
+        CleanupResult::not_required()
+    } else {
+        close_request(connection, request_path, true).await
+    }
+}
+
+/// Abort a request that has not produced a matching `Response`.
+///
+/// This is intentionally not a generic post-processing step: XDG Request
+/// objects end with `Response`, so callers must not invoke this function after
+/// `ResponseWait::Outcome` or `ResponseWait::MalformedResponse`. The
+/// `unknown_is_completed` flag is used only for a known returned request whose
+/// object may already have disappeared while the client was cancelling it.
 pub(crate) async fn close_request(
     connection: &Connection,
     request_path: &str,
@@ -226,10 +336,10 @@ pub(crate) async fn close_request(
     };
     match tokio::time::timeout(ACTIVE_PROBE_CLEANUP, proxy.call::<_, _, ()>("Close", &())).await {
         Ok(Ok(())) => CleanupResult::completed(),
-        Ok(Err(error)) if request_already_gone(&error) && unknown_is_completed => {
+        Ok(Err(error)) if object_already_gone(&error) && unknown_is_completed => {
             CleanupResult::completed()
         }
-        Ok(Err(error)) if request_already_gone(&error) => CleanupResult::unverified(),
+        Ok(Err(error)) if object_already_gone(&error) => CleanupResult::unverified(),
         Ok(Err(_)) | Err(_) => failed_request_cleanup(),
     }
 }
@@ -278,7 +388,7 @@ pub(crate) fn classify_error_message(message: &str) -> ProbeStatus {
     }
 }
 
-fn request_already_gone(error: &zbus::Error) -> bool {
+pub(crate) fn object_already_gone(error: &zbus::Error) -> bool {
     let message = error.to_string().to_ascii_lowercase();
     message.contains("unknownobject")
         || message.contains("unknown object")
@@ -288,8 +398,12 @@ fn request_already_gone(error: &zbus::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::{
-        HandleTokenError, handle_token, handle_token_with_entropy, request_path_for_sender,
+        HandleTokenError, ResponseWait, handle_token, handle_token_with_entropy,
+        request_path_for_sender, session_path_for_sender, valid_session_path,
+        valid_session_path_for_sender,
     };
 
     #[test]
@@ -315,5 +429,41 @@ mod tests {
             format!("/org/freedesktop/portal/desktop/request/1_42/{token}")
         );
         assert!(request_path_for_sender("org.freedesktop.portal.Desktop", &token).is_none());
+    }
+
+    #[test]
+    fn session_path_uses_only_a_valid_sender_name() {
+        let token = handle_token().expect("the operating system entropy source is available");
+        let path = session_path_for_sender(":1.42", &token).unwrap();
+        assert!(valid_session_path(path.as_str()));
+        let expected = session_path_for_sender(":1.42", "expected").unwrap();
+        assert!(valid_session_path_for_sender(path.as_str(), &expected));
+        assert!(!valid_session_path_for_sender(
+            "/org/freedesktop/portal/desktop/session/1_43/other",
+            &expected
+        ));
+        assert!(session_path_for_sender("org.freedesktop.portal.Desktop", &token).is_none());
+    }
+
+    #[test]
+    fn response_terminality_is_independent_of_response_status() {
+        assert!(
+            ResponseWait::Outcome {
+                code: 0,
+                results: HashMap::new(),
+            }
+            .ends_request()
+        );
+        assert!(
+            ResponseWait::Outcome {
+                code: 1,
+                results: HashMap::new(),
+            }
+            .ends_request()
+        );
+        assert!(ResponseWait::MalformedResponse.ends_request());
+        assert!(!ResponseWait::UserCancelled.ends_request());
+        assert!(!ResponseWait::TimedOut.ends_request());
+        assert!(!ResponseWait::InfrastructureFailure.ends_request());
     }
 }

@@ -103,4 +103,19 @@ mod tests {
     fn empty_result_is_valid() {
         assert_eq!(parse_show_environment(""), BTreeMap::new());
     }
+
+    #[test]
+    fn parses_kde_plasma_wayland_activation_identity() {
+        let text = "XDG_CURRENT_DESKTOP=KDE:Plasma\nXDG_SESSION_DESKTOP=plasma\nXDG_SESSION_TYPE=wayland\nWAYLAND_DISPLAY=wayland-1\n";
+
+        assert_eq!(
+            parse_show_environment(text),
+            map(&[
+                ("XDG_CURRENT_DESKTOP", "KDE:Plasma"),
+                ("XDG_SESSION_DESKTOP", "plasma"),
+                ("XDG_SESSION_TYPE", "wayland"),
+                ("WAYLAND_DISPLAY", "wayland-1"),
+            ])
+        );
+    }
 }

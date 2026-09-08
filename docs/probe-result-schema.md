@@ -1,14 +1,26 @@
 # Active ProbeResult Schema v1
 
-**Status:** v1 implemented for the Phase 8 FileChooser and Screenshot slices on development `main`
+**Status:** v1 implemented for the Phase 8 FileChooser and Screenshot slices;
+internal ScreenCast `CreateSession`, `SelectSources`, `Start`, `StreamsReturned`
+and `OpenPipeWireRemote` results are validated in controlled tests on development
+`main`, including one aggregate five-stage lifecycle gate
 **Scope:** Standalone active-probe result contract; passive v0.2.1 output remains unchanged
 
 This document defines the machine-readable result that explicit FileChooser,
 Screenshot and ScreenCast probes emit. The development branch currently
 implements `portaldoctor probe filechooser` and
-`portaldoctor probe screenshot`; ScreenCast remains a future slice. It does
+`portaldoctor probe screenshot`; ScreenCast has only internal bounded
+`CreateSession`, `SelectSources`, `Start`, `StreamsReturned` and
+`OpenPipeWireRemote` adapters and no
+public command yet. It does
 not change the published v0.2.1 passive commands or their existing
 `--json` document.
+
+The internal `OpenPipeWireRemote` boundary is implemented and controlled-tested;
+its lifecycle, ownership and acceptance boundary are defined in
+[`PORTALDOCTOR_SCREENCAST_DECISION.md`](PORTALDOCTOR_SCREENCAST_DECISION.md);
+the aggregate gate composes all five internal stages without changing the v1
+schema, and this schema does not imply that a ScreenCast command already exists.
 
 ## Canonical shape
 
@@ -74,7 +86,7 @@ The `stage` value is shared across probe families:
 | `create_session` | ScreenCast session creation. |
 | `select_sources` | ScreenCast source-selection request. |
 | `start` | ScreenCast start request. |
-| `streams_returned` | ScreenCast stream metadata was returned. |
+| `streams_returned` | ScreenCast stream container was structurally validated; node IDs and properties are not exposed. |
 | `open_pipe_wire_remote` | ScreenCast PipeWire remote handoff. |
 | `cleanup` | The terminal result was produced while cleanup was still being resolved. |
 | `complete` | The operation and cleanup reached a terminal completed state. |
@@ -103,6 +115,17 @@ The constructor, `validate()`, serialization and deserialization enforce this
 matrix. This prevents a producer from emitting, or a consumer from accepting,
 an internally well-typed but semantically impossible result.
 
+For ScreenCast, the stage/resource matrix is tied to one lifecycle rather than
+being a bag of optional labels: `create_session` owns the Request and may
+acquire a Session; `select_sources` and `start` each own their current Request;
+`streams_returned` is the typed terminal interpretation of the Start Response;
+and `open_pipe_wire_remote` owns the returned PipeWire remote FD. A matching
+Request `Response` ends that Request and forbids `Request.Close`, while
+no-response cancellation or timeout permits one bounded Request close. Session
+and PipeWire remote cleanup remain independent and are reported through the
+existing `session` and `pipe_wire_remote` resources. The detailed reverse-order
+cleanup and fail-closed rules are design constraints, not additional v1 fields.
+
 ## Cleanup contract
 
 `cleanup` is a second result axis and must never be discarded when interpreting
@@ -110,16 +133,30 @@ an internally well-typed but semantically impossible result.
 
 | `cleanup.status` | Meaning |
 |---|---|
-| `not_required` | No request/session/resource was acquired, so there was nothing to close. |
-| `completed` | Every owned resource was closed and the cleanup outcome was verified. |
+| `not_required` | No cleanup call is required: no request/session/resource was acquired, or a matching portal `Response` ended the current Request lifecycle and no owned Session/remote resource remains. |
+| `completed` | A client-side abort/cleanup call was required, every owned resource was closed and the outcome was verified. |
 | `failed` | Cleanup was attempted but one or more resources could not be closed or verified. `failed_resources` identifies them. |
 | `unverified` | The implementation cannot prove cleanup completed; `failed_resources` may identify known unverified resources, but may also be empty when the scope is unknown. Consumers must not treat the result as a clean success. |
+
+For ScreenCast, a successful `CreateSession` Response ends only the
+CreateSession Request: an acquired Session still requires `Session.Close`, so
+the aggregate result cannot use `not_required` after a Session or remote FD was
+acquired. If a terminal `code=0` response has no trustworthy Session handle,
+the adapter must attempt cleanup only on the expected sender-and-token-derived
+Session path. A successful attempt is `cleanup: completed` while the
+operation remains `malformed_response`; an explicit close error is
+`failed_resources: ["session"]`; and an absent/ambiguous expected object is
+`unverified` with `session`. A malformed Response body follows the same
+fail-closed rule. None of these terminal-response paths may call
+`Request.Close`, and none may silently use `not_required` when possible Session
+ownership remains.
 
 `failed_resources` is an array of `request`, `session` and/or
 `pipe_wire_remote` with no duplicate entries. It must be empty for
 `not_required` and `completed`; `failed` must contain at least one resource.
-It is empty for normal success and cancellation when no resource was acquired.
-A result is a clean success only when `status == "success"` and cleanup is
+For a terminal Response it must exclude the completed Request, but it may
+contain `session` or `pipe_wire_remote` when those resources remain failed or
+unverified. A result is a clean success only when `status == "success"` and cleanup is
 `not_required` or `completed` with no failed resources. A portal success paired
 with cleanup failure remains visibly `success` on the operation axis but is not
 a clean success.
@@ -139,7 +176,7 @@ Each request carries a unique `handle_token`, so the expected Request object
 path can be derived from the caller's D-Bus sender before `OpenFile`; the
 returned path is still checked against that sender to support portals that
 generate a different token. The returned or predicted path is retained only
-for the bounded `Request.Close` cleanup call.
+for the bounded no-response `Request.Close` cleanup call.
 
 If cancellation or the request-stage deadline wins before `OpenFile` replies,
 the method future remains alive for a bounded recovery window. A late valid
@@ -150,7 +187,9 @@ cleanup race. This is a non-clean, machine-readable result rather than an
 implicit fallback. A known returned handle that is already gone is treated as
 verified completion. A response is classified by its status and protocol
 shape, but the `uris` values are not logged, serialized or used for file I/O.
-No selected file is read, copied, modified or persisted.
+The matching `Response` ends the request, so FileChooser does not call
+`Request.Close` after success, cancellation, portal failure or malformed
+response. No selected file is read, copied, modified or persisted.
 
 The request token is internal lifecycle metadata and is never included in the
 result document, terminal rendering or persistent state. It is generated from
@@ -158,7 +197,8 @@ mandatory operating-system entropy; if entropy is unavailable, the probe
 returns `infrastructure_failure` before creating a request instead of using a
 predictable fallback. The controlled lifecycle harness is a permanent CI gate:
 it checks both result shape and the expected `Request.Close` observation for
-each request-created and no-request scenario.
+each request-created and no-request scenario, including a hard failure if a
+terminal `Response` is followed by `Request.Close`.
 
 The active command uses the following shell mapping without changing passive
 exit codes: `0` means `success` plus verified `completed`/`not_required`
@@ -176,6 +216,22 @@ Screenshot may produce a portal-managed image and a sensitive `uri`; neither
 is a `ProbeResult` field. `CleanupResource::Request` describes only the
 Request object lifecycle and never promises deletion of the image artifact.
 The command is unreleased and does not alter the passive v0.2.1 report.
+
+## ScreenCast command boundary
+
+No public ScreenCast command is implemented yet. The internal
+`CreateSession` -> `SelectSources` -> `Start` -> `StreamsReturned` ->
+`OpenPipeWireRemote` slices use only the ScreenCast-specific stage/resource
+matrix and keep Request/Session/FD ownership separate. The direct-FD slice
+sends empty options, creates no Request, closes the typed owned FD before
+Session cleanup and keeps unresolved ownership `unverified`; the internal
+slices remain outside the passive report until their own release gate passes. See
+[`PORTALDOCTOR_SCREENCAST_DECISION.md`](PORTALDOCTOR_SCREENCAST_DECISION.md)
+for the `CreateSession -> SelectSources -> Start -> StreamsReturned ->
+OpenPipeWireRemote` acceptance contract. The internal aggregate gate passes,
+but the public real-session gate is currently blocked by the live frontend's
+`AvailableSourceTypes=0`; this does not change the v1 schema or authorize a
+public command.
 
 ## Versioning and compatibility
 
@@ -212,6 +268,6 @@ cleanup failure, FileChooser and Screenshot protocol fixtures, privacy
 redaction and passive report non-regression are covered by unit tests in
 `src/model/probe.rs`, `src/probes/filechooser.rs`,
 `src/probes/screenshot.rs` and `src/report/mod.rs`. The controlled
-fake-portal matrices are permanent quality gates. A v3-capable real-session
-success/cancellation validation is still required before the v0.3.0 release
-decision.
+fake-portal matrices are permanent quality gates. A real supported-session
+success/cancellation validation of the negotiated v2 or v3 path is still
+required before the v0.3.0 release decision.

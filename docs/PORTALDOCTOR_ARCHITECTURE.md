@@ -736,8 +736,9 @@ a short-lived current-thread Tokio runtime. It introspects the portal frontend,
 registers a `Request::Response` match before calling `FileChooser.OpenFile`,
 sends a unique `handle_token`, derives the expected request path from the
 caller's bus sender, validates the returned request object path, waits for the
-matching response and issues `Request.Close` after response, cancellation or
-timeout. Setup, request, late-reply recovery, response and cleanup use
+matching response and issues `Request.Close` only when cancellation or
+timeout occurs before a response. Setup, request, late-reply recovery,
+response and cleanup use
 separate central bounds. If the method reply is late, the future is retained
 for bounded recovery; if it never arrives, the token-derived path is closed
 once and an unknown-object result is reported as `unverified` rather than
@@ -752,7 +753,19 @@ outcomes remain machine-readable even when the command exits `1`.
 
 ### ScreenCast result
 
-Represent lifecycle stages explicitly through `ProbeStage`:
+The complete public ScreenCast lifecycle remains unreleased; the internal
+`CreateSession`, `SelectSources`, `Start`, `StreamsReturned` and
+`OpenPipeWireRemote` adapters are controlled-tested but not exposed as a
+command. Their aggregate controlled lifecycle gate also passes representative
+cross-stage failures, cleanup ordering/aggregation, privacy and open-resource
+assertions. The real-session gate is currently blocked because the live public
+frontend reports `AvailableSourceTypes=0` and does not advertise Window bit
+`2`; this is an external provider capability blocker, not a failed internal
+implementation. The Start slice is stage-local: it drops the terminal `streams` map,
+while StreamsReturned validates only its typed shape, and neither slice claims
+capture readiness. Its complete lifecycle and acceptance boundary are recorded in
+[`PORTALDOCTOR_SCREENCAST_DECISION.md`](PORTALDOCTOR_SCREENCAST_DECISION.md).
+Represent its stages explicitly through `ProbeStage`:
 
 ```text
 CreateSession        success/user_cancelled/timed_out/...
@@ -762,7 +775,15 @@ StreamsReturned      success/malformed_response/...
 OpenPipeWireRemote   success/timed_out/infrastructure_failure/...
 ```
 
-User cancellation must not be reported as infrastructure failure.
+`StreamsReturned` is the typed interpretation of the `Start` Response, and
+`OpenPipeWireRemote` owns the returned PipeWire remote FD. It sends empty
+options and creates no Request, so no `handle_token`, response subscription or
+`Request.Close` path exists for that method. A direct-method timeout or
+cancellation keeps a bounded recovery window for a late FD. The Session is
+closed exactly once when acquired, and the FD is closed before Session cleanup.
+User cancellation must not be reported as infrastructure failure, unresolved
+FD ownership is `unverified`, and no stream metadata, FD number or media may
+enter output or persistent state.
 
 ### Use ASHPD where appropriate
 

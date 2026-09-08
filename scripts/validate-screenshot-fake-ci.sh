@@ -29,7 +29,19 @@ for mode in \
     transport-failure \
     unsupported-version \
     unsupported-target \
-    unavailable; do
+    unavailable \
+    v2-success \
+    v2-close-failure \
+    v2-cancel \
+    v2-malformed \
+    v2-malformed-type \
+    v2-portal-failure \
+    v2-response-timeout \
+    v2-late-reply \
+    v2-request-timeout \
+    v2-request-cancel \
+    v2-transport-failure \
+    v2-untrusted; do
     echo "Screenshot controlled lifecycle: $mode"
     dbus-run-session -- "$python_bin" "$harness" \
         --mode "$mode" -- "$binary" probe screenshot --json

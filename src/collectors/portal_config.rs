@@ -126,6 +126,25 @@ mod tests {
     }
 
     #[test]
+    fn parses_kde_plasma_portals_conf_fixture() {
+        let (prefs, errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/kde-portals.conf"),
+            "/usr/share/xdg-desktop-portal/kde-portals.conf",
+            0,
+        );
+        assert!(errors.is_empty());
+        assert_eq!(prefs.len(), 2);
+        assert_eq!(
+            prefs[0].interface,
+            crate::resolver::portal_routes::DEFAULT_INTERFACE
+        );
+        assert_eq!(prefs[0].backends, ["kde"]);
+        assert_eq!(prefs[1].interface, "org.freedesktop.impl.portal.Settings");
+        assert_eq!(prefs[1].backends, ["kde", "gtk"]);
+        assert_eq!(prefs[0].source_file, prefs[1].source_file);
+    }
+
+    #[test]
     fn preserves_star_and_none_tokens() {
         let (prefs, _) = parse_config(
             "[preferred]\n\

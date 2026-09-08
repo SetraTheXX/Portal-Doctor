@@ -115,4 +115,39 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn kde_plasma_desktop_candidates_preserve_specific_precedence() {
+        let candidates =
+            portal_config_candidates(&roots(), &["KDE".to_owned(), "Plasma".to_owned()]);
+        let paths: Vec<String> = candidates
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            &paths[..10],
+            [
+                "/home/tester/.config/xdg-desktop-portal/kde-portals.conf",
+                "/cfg/global/xdg-desktop-portal/kde-portals.conf",
+                "/home/tester/.local/share/xdg-desktop-portal/kde-portals.conf",
+                "/usr/local/share/xdg-desktop-portal/kde-portals.conf",
+                "/usr/share/xdg-desktop-portal/kde-portals.conf",
+                "/home/tester/.config/xdg-desktop-portal/plasma-portals.conf",
+                "/cfg/global/xdg-desktop-portal/plasma-portals.conf",
+                "/home/tester/.local/share/xdg-desktop-portal/plasma-portals.conf",
+                "/usr/local/share/xdg-desktop-portal/plasma-portals.conf",
+                "/usr/share/xdg-desktop-portal/plasma-portals.conf",
+            ]
+        );
+        assert_eq!(
+            &paths[10..],
+            [
+                "/home/tester/.config/xdg-desktop-portal/portals.conf",
+                "/cfg/global/xdg-desktop-portal/portals.conf",
+                "/home/tester/.local/share/xdg-desktop-portal/portals.conf",
+                "/usr/local/share/xdg-desktop-portal/portals.conf",
+                "/usr/share/xdg-desktop-portal/portals.conf",
+            ]
+        );
+    }
 }
