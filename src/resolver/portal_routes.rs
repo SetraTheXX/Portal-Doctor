@@ -202,7 +202,7 @@ fn status_for(empty: bool) -> RouteStatus {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_routes;
+    use super::{normalize_desktops, resolve_routes};
     use crate::model::portal::{PortalBackend, PortalConfigInfo, PortalPreference, RouteStatus};
 
     fn backend(id: &str, dbus: &str, interfaces: &[&str], use_in: &[&str]) -> PortalBackend {
@@ -477,5 +477,62 @@ mod tests {
         let cast = route(SCREENCAST, &routes);
         assert_eq!(cast.status, RouteStatus::NoProvider);
         assert!(cast.available_candidates.is_empty());
+    }
+
+    #[test]
+    fn kde_fixture_selects_kde_for_default_portal_interfaces() {
+        use crate::collectors::portal_config::parse_config;
+
+        const SETTINGS: &str = "org.freedesktop.impl.portal.Settings";
+        let (preferences, errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/kde-portals.conf"),
+            "/usr/share/xdg-desktop-portal/kde-portals.conf",
+            0,
+        );
+        assert!(errors.is_empty());
+        let backends = vec![
+            backend(
+                "kde",
+                "org.freedesktop.impl.portal.desktop.kde",
+                &[FILE_CHOOSER, SCREENCAST, SCREENSHOT, SETTINGS],
+                &["KDE"],
+            ),
+            backend(
+                "gtk",
+                "org.freedesktop.impl.portal.desktop.gtk",
+                &[FILE_CHOOSER, SCREENSHOT, SETTINGS],
+                &[],
+            ),
+        ];
+        let routes = resolve_routes(
+            &normalize_desktops("KDE:Plasma"),
+            &config(preferences),
+            &backends,
+        );
+
+        for interface in [FILE_CHOOSER, SCREENCAST, SCREENSHOT, SETTINGS] {
+            let resolved = route(interface, &routes);
+            assert_eq!(resolved.selected_candidates, ["kde"], "{interface}");
+            assert_eq!(resolved.status, RouteStatus::Selected, "{interface}");
+        }
+        assert_eq!(
+            route(SCREENSHOT, &routes).available_candidates,
+            ["kde", "gtk"]
+        );
+    }
+
+    #[test]
+    fn kde_fixture_use_in_is_not_selected_for_gnome() {
+        let backends = vec![backend("kde", "d.kde", &[SCREENSHOT], &["KDE"])];
+        let routes = resolve_routes(&normalize_desktops("GNOME"), &config(Vec::new()), &backends);
+        let screenshot = route(SCREENSHOT, &routes);
+        assert_eq!(screenshot.status, RouteStatus::NoProvider);
+        assert!(screenshot.available_candidates.is_empty());
+        assert!(
+            screenshot
+                .evidence
+                .iter()
+                .any(|e| e.message.contains("UseIn"))
+        );
     }
 }

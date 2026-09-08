@@ -2,8 +2,9 @@
 //!
 //! This module intentionally owns only the first bounded active-probe slice.
 //! It never reads the selected file: the response is validated for protocol
-//! shape and discarded. The request path is retained only long enough to issue
-//! the required `Request.Close` cleanup call.
+//! shape and discarded. A matching `Request.Response` ends the request and is
+//! reported as `cleanup.status: not_required`; `Request.Close` is retained
+//! only for client-side cancellation, timeout or no-response recovery.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -21,8 +22,8 @@ use crate::model::probe::{
 };
 use crate::probes::portal::{
     HandleTokenError, INTROSPECTABLE_INTERFACE, ResponseWait, bounded_proxy, classify_error,
-    close_request, open_session, request_metadata, request_options, response_match_rule,
-    valid_request_path_for_sender, wait_for_response,
+    cleanup_after_response_wait, close_request, open_session, request_metadata, request_options,
+    response_match_rule, valid_request_path_for_sender, wait_for_response,
 };
 
 const FILE_CHOOSER_INTERFACE: &str = "org.freedesktop.portal.FileChooser";
@@ -127,7 +128,7 @@ async fn run_async() -> ProbeResult {
     };
 
     let response = wait_for_response(&mut response_stream, request_path.as_str()).await;
-    let cleanup = close_request(&connection, request_path.as_str(), true).await;
+    let cleanup = cleanup_after_response_wait(&connection, request_path.as_str(), &response).await;
     finalize(response, cleanup)
 }
 

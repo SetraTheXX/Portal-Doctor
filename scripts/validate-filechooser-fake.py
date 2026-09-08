@@ -90,6 +90,9 @@ class FakePortal:
         self.registrations = {}
         self.request_path = None
         self.close_count = 0
+        self.request_active = False
+        self.response_emitted = False
+        self.unexpected_close = False
         self.root_registrations = []
         if mode != "unavailable":
             self._request_name()
@@ -163,9 +166,9 @@ class FakePortal:
             return
         self._register_request()
         invocation.return_value(GLib.Variant("(o)", (self.request_path,)))
-        if self.mode in {"success", "close-failure"}:
+        if self.mode == "success":
             GLib.timeout_add(150, self._emit_response, 0, {"uris": ["file:///tmp/fake-selection"]})
-        elif self.mode == "cancel":
+        elif self.mode in {"cancel", "close-failure"}:
             # The harness sends SIGINT to the probe; no portal response is
             # emitted, so the product must close the request itself.
             pass
@@ -183,6 +186,7 @@ class FakePortal:
     def _register_request(self):
         if self.request_path in self.registrations:
             return
+        self.request_active = True
         self.registrations[self.request_path] = self.connection.register_object(
             self.request_path, self.request_info.interfaces[0], self._request_method_call
         )
@@ -203,6 +207,13 @@ class FakePortal:
             )
             return
         self.close_count += 1
+        if self.response_emitted:
+            self.unexpected_close = True
+            invocation.return_dbus_error(
+                "org.freedesktop.portal.Error.UnexpectedCloseAfterResponse",
+                "Request.Close is invalid after Response",
+            )
+            return
         if self.mode == "close-failure":
             invocation.return_dbus_error(
                 "org.freedesktop.DBus.Error.AccessDenied", "controlled close failure"
@@ -211,11 +222,17 @@ class FakePortal:
         registration = self.registrations.pop(object_path, None)
         if registration is not None:
             self.connection.unregister_object(registration)
+        self.request_active = False
         invocation.return_value(GLib.Variant("()", ()))
 
     def _emit_response(self, status, results):
         if self.request_path not in self.registrations:
             return GLib.SOURCE_REMOVE
+        self.response_emitted = True
+        self.request_active = False
+        # Keep a sentinel registration only so a product-side Close after a
+        # terminal Response is observable and fails the harness. The request
+        # itself is no longer active after this signal.
         encoded = {}
         if "uris" in results:
             encoded["uris"] = GLib.Variant("as", results["uris"])
@@ -284,11 +301,14 @@ def main():
             return GLib.SOURCE_REMOVE
         return GLib.SOURCE_CONTINUE
 
-    if args.mode == "cancel":
+    if args.mode in {"cancel", "close-failure"}:
         GLib.timeout_add(300, cancel_probe)
     GLib.timeout_add(50, poll_process)
     loop.run()
     stdout, stderr = proc.communicate()
+    if fake.unexpected_close:
+        raise AssertionError("Request.Close was called after a terminal Response")
+    open_requests = int(fake.request_active)
     fake.close()
 
     if proc.returncode is None:
@@ -301,33 +321,70 @@ def main():
         raise AssertionError(f"expected JSON output, got {stdout!r}; stderr={stderr!r}") from error
 
     expected = {
-        "success": ("success", "completed", 0),
-        "close-failure": ("success", "failed", 1),
+        "success": ("success", "not_required", 0),
+        "close-failure": ("user_cancelled", "failed", 1),
         "cancel": ("user_cancelled", "completed", 1),
-        "malformed": ("malformed_response", "completed", 1),
+        "malformed": ("malformed_response", "not_required", 1),
         "response-timeout": ("timed_out", "completed", 1),
         "late-reply": ("timed_out", "completed", 1),
         "request-timeout": ("timed_out", "unverified", 1),
         "transport-failure": ("infrastructure_failure", "unverified", 1),
         "unsupported": ("unsupported", "not_required", 1),
     }[args.mode]
-    actual = (result["status"], result["cleanup"]["status"], proc.returncode)
+    expected_open_requests = {
+        "success": 0,
+        "close-failure": 1,
+        "cancel": 0,
+        "malformed": 0,
+        "response-timeout": 0,
+        "late-reply": 0,
+        "request-timeout": 0,
+        "transport-failure": 0,
+        "unsupported": 0,
+    }[args.mode]
+    actual = (
+        result["status"],
+        result["cleanup"]["status"],
+        proc.returncode,
+        fake.close_count,
+        open_requests,
+    )
+    expected_close_calls = {
+        "success": 0,
+        "close-failure": 1,
+        "cancel": 1,
+        "malformed": 0,
+        "response-timeout": 1,
+        "late-reply": 1,
+        "request-timeout": 0,
+        "transport-failure": 0,
+        "unsupported": 0,
+    }[args.mode]
+    expected = (*expected, expected_close_calls, expected_open_requests)
     if actual != expected:
         raise AssertionError(f"{args.mode}: expected {expected}, got {actual}; stderr={stderr!r}")
-    if args.mode in {
-        "success",
-        "close-failure",
-        "cancel",
-        "malformed",
-        "response-timeout",
-        "late-reply",
-    } and fake.close_count != 1:
-        raise AssertionError(f"{args.mode}: Request.Close was not observed")
+    if fake.close_count != expected_close_calls:
+        raise AssertionError(
+            f"{args.mode}: expected {expected_close_calls} Request.Close calls, "
+            f"got {fake.close_count}"
+        )
     if args.mode in {"request-timeout", "transport-failure", "unsupported"} and fake.close_count != 0:
         raise AssertionError(
             f"{args.mode}: Request.Close was observed although no request object was created"
         )
-    print(json.dumps({"mode": args.mode, "result": result, "close_calls": fake.close_count}, indent=2))
+    if args.mode in {"success", "malformed"} and open_requests != 0:
+        raise AssertionError(f"{args.mode}: Response did not end the fake request")
+    print(
+        json.dumps(
+            {
+                "mode": args.mode,
+                "result": result,
+                "close_calls": fake.close_count,
+                "open_requests_after_probe": open_requests,
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

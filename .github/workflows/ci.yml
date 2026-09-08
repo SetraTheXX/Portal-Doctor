@@ -74,4 +74,31 @@ jobs:
           PORTALDOCTOR_BIN=target/release/portaldoctor \
           PORTALDOCTOR_PYTHON=/usr/bin/python3 \
           ./scripts/validate-screenshot-fake-ci.sh
+      - name: ScreenCast CreateSession controlled lifecycle gate
+        run: |
+          ./scripts/validate-screencast-create-session-ci.sh
+      - name: ScreenCast SelectSources controlled lifecycle gate
+        run: |
+          ./scripts/validate-screencast-select-sources-ci.sh
+      - name: ScreenCast Start controlled lifecycle gate
+        run: |
+          ./scripts/validate-screencast-start-ci.sh
+      - name: ScreenCast StreamsReturned controlled lifecycle gate
+        run: |
+          ./scripts/validate-screencast-streams-returned-ci.sh
+      - name: ScreenCast OpenPipeWireRemote controlled lifecycle gate
+        run: |
+          ./scripts/validate-screencast-open-pipe-wire-remote-ci.sh
+      - name: ScreenCast aggregate controlled lifecycle gate
+        run: |
+          ./scripts/validate-screencast-aggregate-ci.sh
+      - name: KDE isolated D-Bus ownership gate
+        run: |
+          ./scripts/validate-dbus-kde-ci.sh
+      - name: KDE isolated systemd collector gate
+        run: |
+          ./scripts/validate-systemd-kde-ci.sh
+      - name: KDE isolated runtime aggregate gate
+        run: |
+          ./scripts/validate-kde-runtime-aggregate-ci.sh
       - run: PORTALDOCTOR_BIN=target/release/portaldoctor python3 scripts/validate-v0.1-faults.py

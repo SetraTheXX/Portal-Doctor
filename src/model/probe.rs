@@ -169,6 +169,12 @@ impl CleanupResult {
         }
     }
 
+    /// Construct a result where ownership of the listed resources is known
+    /// but their cleanup cannot be proven.
+    pub fn unverified_resources(resources: Vec<CleanupResource>) -> Result<Self, ProbeResultError> {
+        Self::try_new(CleanupStatus::Unverified, resources)
+    }
+
     /// Construct and validate an arbitrary cleanup state.
     pub fn try_new(
         status: CleanupStatus,
@@ -736,6 +742,12 @@ mod tests {
         assert!(
             CleanupResult::try_new(CleanupStatus::Unverified, vec![CleanupResource::Request])
                 .is_ok()
+        );
+        assert_eq!(
+            CleanupResult::unverified_resources(vec![CleanupResource::Session])
+                .unwrap()
+                .failed_resources(),
+            &[CleanupResource::Session]
         );
     }
 

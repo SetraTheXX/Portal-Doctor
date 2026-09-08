@@ -2,10 +2,16 @@
 
 **Status:** Accepted for Phase 8 implementation and release gating
 **Decision date:** 2026-09-05
+**Last verified:** 2026-09-08
 **Scope:** active FileChooser, Screenshot and ScreenCast probes
 **Implementation status:** bounded FileChooser and Screenshot lifecycles are
-implemented and audited on development `main`; ScreenCast remains a future
-slice and Screenshot is unreleased pending v3-capable real-session validation
+implemented and audited on development `main`; Screenshot remains unreleased
+pending negotiated-path real-session validation. ScreenCast has complete,
+aggregate-controlled-audited internal `CreateSession`, `SelectSources`,
+`Start`, `StreamsReturned` and `OpenPipeWireRemote` slices, but its real
+success/cancellation gate is currently **BLOCKED** because the live frontend
+reports `AvailableSourceTypes=0` and lacks Window bit `2`; the public command
+and v0.3.0 release approval remain pending
 
 ## Decision
 
@@ -21,7 +27,8 @@ can:
 - provide a unique `handle_token`, derive the expected request path before the
   call and retain/validate the returned request handle,
 - apply a timeout to each lifecycle stage,
-- call `Request.Close` on timeout or explicit cancellation,
+- call `Request.Close` only when timeout or explicit cancellation occurs
+  before a matching `Response`,
 - call `Session.Close` for ScreenCast sessions, and
 - report cleanup failure separately instead of silently treating a cancelled
   task as a completed probe.
@@ -50,6 +57,19 @@ The XDG portal protocol is signal-based: a portal method returns a Request
 object, then the result arrives through `Request::Response`; the caller may
 abort the interaction with `Request.Close`. The caller must also subscribe
 before the method call to avoid a response race.
+
+A matching `Response` signal is terminal for the Request object, regardless of
+whether its status is success, user cancellation, portal failure or its body is
+malformed. After that signal the adapter must not call `Request.Close`; the
+Request portion of cleanup is therefore `not_required`. The aggregate
+`ProbeResult.cleanup` may still report an independently owned ScreenCast
+Session or PipeWire resource. In particular, a `CreateSession` success with a
+missing, wrong-type, malformed or foreign Session handle triggers only
+expected-path Session cleanup and reports `completed`, `failed/session` or
+`unverified/session` rather than silently claiming `not_required`.
+`Request.Close` is reserved for client cancellation, timeout, late/unanswered
+method replies and other paths where no `Response` was received. A failed or
+unverified close remains visible on the independent cleanup axis.
 
 ASHPD's public high-level builders follow the convenient shape
 `builder.send().await?.response()?`. In ASHPD `0.13.13`, the internal request
@@ -187,8 +207,10 @@ The standalone machine-readable `ProbeResult` shape is defined in
   `Request.Close` each have bounded stages;
 - success, cancellation, timeout, unavailable/unsupported, malformed response
   and infrastructure failure map to v1 statuses without raw error/URI output;
-- a returned request path is closed after response, cancellation or timeout;
-  a token-derived path is used when the method reply is late, and ambiguous
+- a returned request path is closed only after cancellation/timeout or another
+  no-response path; a terminal `Response` produces
+  `cleanup.status: not_required` and never triggers `Request.Close`; a
+  token-derived path is used when the method reply is late, and ambiguous
   cleanup remains explicitly `unverified`;
 - `handle_token` generation uses mandatory OS entropy; an entropy failure is a
   pre-request `infrastructure_failure`, never a predictable fallback;
@@ -209,8 +231,10 @@ prove with tests or a controlled fake that:
 1. the request handle is observable before waiting for the response,
 2. the response subscription cannot race the initial method call,
 3. timeout and cancellation call `Request.Close` within the bounded cleanup
-   budget, including a method-reply timeout where the returned handle is not
-   yet available,
+   budget only when no `Response` was received, including a method-reply
+   timeout where the returned handle is not yet available; response success,
+   cancellation, failure and malformed-response paths must assert zero close
+   calls,
 4. ScreenCast sessions and returned file descriptors are always closed, and
 5. dropping the async task does not silently claim cleanup; any unresolved
    transport race is bounded and emitted as `unverified`.
@@ -233,14 +257,109 @@ It reuses the proven FileChooser request, token, timeout and `Request.Close`
 semantics, but it is not equivalent in privacy: a successful Screenshot portal
 call may create an image and expose it through a URI/Documents portal entry.
 PortalDoctor must never read, retain, print, delete or claim cleanup of that
-artifact. The first implementation is limited to the version-3 Window target,
-requires `AvailableTargets` to advertise it, and must not silently downgrade
-to a full-screen or implicit target. Controlled fake success/cancellation,
-timeout, malformed-response, transport, capability and cleanup gates now pass.
+artifact. The implementation now negotiates either the version-3 Window target
+(requiring `AvailableTargets` bit `2`) or a narrowly scoped GNOME version-2
+interactive compatibility path. The v2 path is enabled only after Wayland,
+GNOME route/descriptor and live backend-name evidence agrees; it sends
+`interactive=true` without `target` and makes no Window-only claim. Controlled
+fake success/cancellation, request/response timeout, malformed-response,
+transport, capability and cleanup gates pass for both capability shapes.
 The current Ubuntu 26.04 portal advertises Screenshot version 2 without
-`AvailableTargets`, so it proves the unsupported fail-closed path only; a
-v3-capable real-session success/cancellation run is still required before
-release approval.
+`AvailableTargets`, so real-session proof must validate the negotiated v2 UI
+path. The forced cancellation attempt returned a clean PortalDoctor
+`user_cancelled` result but was followed by a GNOME backend `SIGSEGV`; this is
+recorded as an external provider blocker, not release approval.
+
+This Screenshot release blocker continues to block v0.3.0 release approval,
+but it does not freeze Phase 8 development sequencing. The same broken
+provider version must not be retried for another real Screenshot E2E. The v3
+Window-only implementation remains intact, the v2 compatibility path remains
+unreleased, and a separate bounded ScreenCast design/implementation slice may
+proceed without being counted as Screenshot evidence. Its design boundary is
+[`PORTALDOCTOR_SCREENCAST_DECISION.md`](PORTALDOCTOR_SCREENCAST_DECISION.md).
+
+## ScreenCast design and bounded lifecycle checkpoints
+
+No public ScreenCast command is started by this decision. The
+accepted design boundary is the five-stage lifecycle, and all five internal
+bounded adapters plus the aggregate controlled gate are complete. The real
+success/cancellation gate is currently **BLOCKED** before UI execution because
+the live public frontend reports `AvailableSourceTypes=0`, so Window bit `2`
+is absent:
+
+```text
+CreateSession -> SelectSources -> Start -> StreamsReturned -> OpenPipeWireRemote
+```
+
+The canonical result stages are the existing v1 values
+`create_session`, `select_sources`, `start`, `streams_returned` and
+`open_pipe_wire_remote`. `StreamsReturned` is the typed interpretation of the
+`Start` Response, while `OpenPipeWireRemote` is the subsequent portal method
+that returns a Unix FD. No second result schema or generic `request`/`response`
+stage is introduced.
+
+The PortalDoctor-owned adapter owns three resource classes independently:
+
+- each Request object is closed only on a no-response cancellation, timeout or
+  ambiguous method-reply path; a terminal Response, including cancellation,
+  failure or malformed data, forbids a later `Request.Close`;
+- a successfully returned ScreenCast Session is closed exactly once with
+  `Session.Close`, including later cancellation and failure paths; and
+- a terminal `CreateSession` success whose Session payload is not trustworthy
+  attempts `Session.Close` only on the expected token-derived path; foreign
+  paths are never closed and uncertain ownership is `unverified/session`; and
+- a returned PipeWire remote FD is owned by the probe, closed before Session
+  cleanup and never read, transferred, persisted or used to consume media.
+
+Cleanup is reverse acquisition order (PipeWire remote FD, Session, then any
+still-unanswered Request). Each close has its own bounded budget. An unknown
+or ambiguous owner is reported as `failed` or `unverified` through the
+existing `CleanupResource::{Request,Session,PipeWireRemote}` values; no
+cleanup is silently assumed from dropping a future or closing a different
+resource.
+
+The design is fail-closed against the existing `ProbeResult` v1 contract:
+full lifecycle success requires all five lifecycle boundaries and verified
+cleanup; the internal Start slice may report only a stage-local success and
+must not claim capture readiness;
+user-cancelled is reserved for explicit user/portal cancellation;
+timed-out identifies the winning bounded stage; malformed response is used
+for invalid terminal payloads; unavailable/unsupported stop before an owned
+resource exists; and transport, permission, portal rejection or remote-FD
+failures map to infrastructure failure. A cleanup failure moves the result to
+the existing `cleanup` stage and remains visible on the independent cleanup
+axis. No `provider_crashed` or `externally_blocked` enum is added to v1.
+
+The internal `CreateSession`, `SelectSources`, `Start`, `StreamsReturned` and
+`OpenPipeWireRemote` adapters are not wired to a public command. Their
+per-slice and aggregate controlled matrices cover the verified
+Request/Session ownership and cleanup boundary. Start uses the same owned
+Session, a fresh entropy-backed `handle_token`, exact `parent_window=""` and
+does not decode, validate, serialize or log the `streams` result map. The
+SelectSources slice is bounded to the advertised Window bit (`types=2`),
+`multiple=false`, no persistence/restore options, terminal Response zero
+Request.Close and exactly-once Session.Close. The StreamsReturned adapter
+accepts only one typed XDG Window stream (`a(ua{sv})`), keeps node IDs and
+properties opaque and maps malformed or policy-inconsistent terminal payloads
+to `malformed_response` without a second Request.Close. OpenPipeWireRemote is
+the direct-FD boundary: it sends empty options, creates no Request, owns a
+typed `OwnedFd`, closes it before Session.Close, and reports unresolved late
+FD ownership as `unverified/pipe_wire_remote` without connecting to PipeWire.
+The aggregate gate
+[`validate-screencast-aggregate-ci.sh`](../scripts/validate-screencast-aggregate-ci.sh)
+composes the five stages and verifies representative cross-stage failures,
+cleanup ordering/aggregation, terminal-response zero-close behavior, privacy,
+exact call counts and no-open-resource state. It does not constitute real
+GNOME/Wayland evidence or release approval.
+The complete design, privacy boundary and acceptance matrix are maintained in
+[`PORTALDOCTOR_SCREENCAST_DECISION.md`](PORTALDOCTOR_SCREENCAST_DECISION.md).
+The external capability gate must not be retried in the same provider state.
+Re-evaluate only when `AvailableSourceTypes & 2 != 0`, the selected
+provider/frontend is stable and healthy, and a supported disposable session is
+ready for exactly one real success plus one portal-native cancellation E2E.
+Both real runs and the final release/regression gates must pass before a public
+command or v0.3.0 approval is considered. Until then, this is not a
+ScreenCast success or capture-readiness claim.
 
 If a helper fails any of these checks, the adapter uses direct `zbus` for that
 stage while retaining ASHPD/specification-compatible types and semantics where

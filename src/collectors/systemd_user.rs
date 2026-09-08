@@ -81,3 +81,148 @@ fn unreadable(unit: &str) -> UnitStatus {
         unit_file_state: None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_show_output;
+    use crate::model::service::UnitState;
+
+    const KDE_UNIT: &str = "xdg-desktop-portal-kde.service";
+
+    #[test]
+    fn parses_active_kde_backend_unit() {
+        let status = parse_show_output("active\nrunning\nstatic\n", KDE_UNIT);
+
+        assert_eq!(status.unit, KDE_UNIT);
+        assert_eq!(status.state, UnitState::Active);
+        assert_eq!(status.sub_state.as_deref(), Some("running"));
+        assert_eq!(status.unit_file_state.as_deref(), Some("static"));
+    }
+
+    #[test]
+    fn parses_failed_kde_backend_unit() {
+        let status = parse_show_output("failed\nfailed\nstatic\n", KDE_UNIT);
+
+        assert_eq!(status.unit, KDE_UNIT);
+        assert_eq!(status.state, UnitState::Failed);
+        assert_eq!(status.sub_state.as_deref(), Some("failed"));
+        assert_eq!(status.unit_file_state.as_deref(), Some("static"));
+    }
+
+    #[test]
+    fn maps_unknown_kde_backend_unit_to_not_found() {
+        let status = parse_show_output("unknown\n\n\n", KDE_UNIT);
+
+        assert_eq!(status.unit, KDE_UNIT);
+        assert_eq!(status.state, UnitState::NotFound);
+        assert_eq!(status.sub_state, None);
+        assert_eq!(status.unit_file_state, None);
+    }
+
+    /// Run only from `scripts/validate-systemd-kde-ci.sh`: this test must
+    /// never invoke the real user systemd manager.
+    #[test]
+    #[cfg(unix)]
+    #[ignore = "requires the explicit isolated fake-systemctl gate"]
+    fn isolated_kde_systemd_collector_contract() {
+        use std::fs;
+        use std::path::Path;
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        use crate::model::section::Section;
+        use crate::model::service::{ServiceInfo, UnitStatus};
+        use crate::model::status::CollectorState;
+
+        const EXPECTED_INVOCATION: &str = "--user show xdg-desktop-portal-kde.service -p ActiveState -p SubState -p UnitFileState --value";
+
+        fn set_mode(path: &Path, mode: &str) {
+            fs::write(path, format!("{mode}\n")).expect("write fake systemctl mode");
+        }
+
+        fn collect_kde() -> UnitStatus {
+            let section: Section<ServiceInfo> = super::collect(&[KDE_UNIT.to_owned()]);
+            assert_eq!(section.status, CollectorState::Available);
+            section
+                .value
+                .expect("systemd collector value")
+                .unit(KDE_UNIT)
+                .cloned()
+                .expect("KDE unit status")
+        }
+
+        let fake_dir = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_FAKE_DIR")
+            .expect("explicit fake-systemctl wrapper must provide a fake directory");
+        let path = std::env::var_os("PATH").expect("wrapper must provide PATH");
+        let first_path = std::env::split_paths(&path)
+            .next()
+            .expect("PATH must contain the fake directory");
+        assert_eq!(first_path, Path::new(&fake_dir));
+        assert_eq!(
+            std::env::var("PORTALDOCTOR_SYSTEMCTL_FAKE_GUARD").as_deref(),
+            Ok("isolated-kde-systemd")
+        );
+
+        let mode_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_MODE_FILE")
+            .expect("wrapper must provide a mode file");
+        let log_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_LOG")
+            .expect("wrapper must provide an invocation log");
+        let pid_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_PID_FILE")
+            .expect("wrapper must provide a PID file");
+
+        set_mode(Path::new(&mode_file), "active");
+        let active = collect_kde();
+        assert_eq!(active.unit, KDE_UNIT);
+        assert_eq!(active.state, UnitState::Active);
+        assert_eq!(active.sub_state.as_deref(), Some("running"));
+        assert_eq!(active.unit_file_state.as_deref(), Some("static"));
+
+        set_mode(Path::new(&mode_file), "failed");
+        let failed = collect_kde();
+        assert_eq!(failed.unit, KDE_UNIT);
+        assert_eq!(failed.state, UnitState::Failed);
+        assert_eq!(failed.sub_state.as_deref(), Some("failed"));
+        assert_eq!(failed.unit_file_state.as_deref(), Some("static"));
+
+        set_mode(Path::new(&mode_file), "missing");
+        let missing = collect_kde();
+        assert_eq!(missing.unit, KDE_UNIT);
+        assert_eq!(missing.state, UnitState::NotFound);
+        assert_eq!(missing.sub_state, None);
+        assert_eq!(missing.unit_file_state, None);
+
+        set_mode(Path::new(&mode_file), "timeout");
+        let started = Instant::now();
+        let timed_out = collect_kde();
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "collector exceeded its central bounded timeout"
+        );
+        assert_eq!(timed_out.unit, KDE_UNIT);
+        assert_eq!(timed_out.state, UnitState::Unreadable);
+        assert_eq!(timed_out.sub_state, None);
+        assert_eq!(timed_out.unit_file_state, None);
+
+        let pid: i32 = fs::read_to_string(&pid_file)
+            .expect("timeout fake must record its PID")
+            .trim()
+            .parse()
+            .expect("timeout fake PID");
+        let mut gone = false;
+        for _ in 0..80 {
+            // SAFETY: kill(pid, 0) only probes process existence; the fake
+            // process is created by this test wrapper and is never signalled
+            // here.
+            if unsafe { libc::kill(pid, 0) } != 0 {
+                gone = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        assert!(gone, "timed-out fake systemctl child was not reaped");
+
+        let invocations = fs::read_to_string(&log_file).expect("invocation log");
+        assert_eq!(invocations.lines().count(), 4);
+        assert!(invocations.lines().all(|line| line == EXPECTED_INVOCATION));
+    }
+}

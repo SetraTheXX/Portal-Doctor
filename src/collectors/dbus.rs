@@ -111,8 +111,9 @@ fn classify(err: &zbus::Error) -> DbusOutcome {
 
 #[cfg(test)]
 mod tests {
-    use super::classify;
-    use crate::model::dbus::DbusOutcome;
+    use super::{classify, collect};
+    use crate::model::dbus::{DbusOutcome, PORTAL_FRONTEND_NAME};
+    use crate::model::status::CollectorState;
 
     #[test]
     fn classify_maps_message_fragments_to_taxonomy() {
@@ -139,5 +140,74 @@ mod tests {
             classify(&make("something entirely new")),
             DbusOutcome::Other(_)
         ));
+    }
+
+    /// Run only from `scripts/validate-dbus-kde-ci.sh`: the test must never
+    /// acquire the KDE well-known name on a user's real session bus.
+    #[test]
+    #[ignore = "requires the explicit isolated dbus-run-session gate"]
+    fn isolated_kde_backend_ownership_and_determinism() {
+        const KDE_BACKEND: &str = "org.freedesktop.impl.portal.desktop.kde";
+        const UNRELATED: &str = "org.example.portal.alpha";
+
+        assert_eq!(
+            std::env::var("PORTALDOCTOR_ISOLATED_DBUS").as_deref(),
+            Ok("1"),
+            "this test must run inside the isolated D-Bus wrapper"
+        );
+
+        let owner_connection = zbus::blocking::Connection::session().expect("isolated session bus");
+        owner_connection
+            .request_name(KDE_BACKEND)
+            .expect("acquire KDE backend well-known name");
+
+        let selected = vec![
+            KDE_BACKEND.to_owned(),
+            UNRELATED.to_owned(),
+            KDE_BACKEND.to_owned(),
+            UNRELATED.to_owned(),
+        ];
+        let owned_section = collect(&selected);
+        assert_eq!(owned_section.status, CollectorState::Available);
+        let owned_info = owned_section.value.expect("collector result");
+        let names: Vec<&str> = owned_info
+            .checks
+            .iter()
+            .map(|check| check.name.as_str())
+            .collect();
+        assert_eq!(names, vec![PORTAL_FRONTEND_NAME, UNRELATED, KDE_BACKEND]);
+        assert_eq!(
+            owned_info
+                .checks
+                .iter()
+                .find(|check| check.name == KDE_BACKEND)
+                .expect("KDE check")
+                .outcome,
+            DbusOutcome::HasOwner
+        );
+        assert_eq!(
+            owned_info
+                .checks
+                .iter()
+                .find(|check| check.name == UNRELATED)
+                .expect("unrelated selected check")
+                .outcome,
+            DbusOutcome::NoOwner
+        );
+
+        drop(owner_connection);
+        let absent_names = vec![KDE_BACKEND.to_owned()];
+        let absent = collect(&absent_names);
+        assert_eq!(absent.status, CollectorState::Available);
+        let absent = absent.value.expect("collector result");
+        assert_eq!(
+            absent
+                .checks
+                .iter()
+                .find(|check| check.name == KDE_BACKEND)
+                .expect("KDE check")
+                .outcome,
+            DbusOutcome::NoOwner
+        );
     }
 }

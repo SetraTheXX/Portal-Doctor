@@ -139,6 +139,33 @@ mod tests {
     }
 
     #[test]
+    fn parses_kde_portal_descriptor_fixture() {
+        let backend = parse_portal_file(
+            include_str!("../../tests/fixtures/portal-routing/kde.portal"),
+            "/usr/share/xdg-desktop-portal/portals/kde.portal",
+            "kde".to_owned(),
+        );
+        assert_eq!(backend.id, "kde");
+        assert_eq!(backend.dbus_name, "org.freedesktop.impl.portal.desktop.kde");
+        assert!(
+            backend
+                .interfaces
+                .contains("org.freedesktop.impl.portal.FileChooser")
+        );
+        assert!(
+            backend
+                .interfaces
+                .contains("org.freedesktop.impl.portal.ScreenCast")
+        );
+        assert!(
+            backend
+                .interfaces
+                .contains("org.freedesktop.impl.portal.Screenshot")
+        );
+        assert_eq!(backend.legacy_use_in, ["KDE"]);
+    }
+
+    #[test]
     fn tolerates_missing_keys_and_foreign_sections() {
         let text = "[other]\nkey=value\n[portal]\nDBusName=x\n";
         let backend = parse_portal_file(text, "p.portal", "p".to_owned());

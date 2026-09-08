@@ -705,6 +705,21 @@ mod tests {
     }
 
     #[test]
+    fn cfg001_silent_with_kde_desktop_specific_config() {
+        let s = snapshot(
+            session("KDE:Plasma"),
+            config(
+                Vec::new(),
+                Some("/usr/share/xdg-desktop-portal/kde-portals.conf"),
+                Vec::new(),
+            ),
+            backends(&["kde"]),
+            Section::unsupported("n/a"),
+        );
+        assert!(evaluated(Cfg001.evaluate(&s)).is_empty());
+    }
+
+    #[test]
     fn cfg001_silent_without_desktop_identity() {
         let s = snapshot(
             session(""),

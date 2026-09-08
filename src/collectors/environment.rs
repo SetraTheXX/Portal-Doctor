@@ -202,6 +202,22 @@ mod tests {
     }
 
     #[test]
+    fn session_info_accepts_kde_plasma_wayland_identity() {
+        let v = vars(&[
+            ("XDG_CURRENT_DESKTOP", "KDE:Plasma"),
+            ("XDG_SESSION_DESKTOP", "plasma"),
+            ("XDG_SESSION_TYPE", "wayland"),
+            ("WAYLAND_DISPLAY", "wayland-1"),
+        ]);
+        let info = session_info(&v);
+
+        assert_eq!(info.current_desktop.as_deref(), Some("KDE:Plasma"));
+        assert_eq!(info.session_desktop.as_deref(), Some("plasma"));
+        assert_eq!(info.session_type, Some(SessionType::Wayland));
+        assert_eq!(info.wayland_display.as_deref(), Some("wayland-1"));
+    }
+
+    #[test]
     fn unknown_session_type_keeps_raw_value() {
         let v = vars(&[("XDG_SESSION_TYPE", "mir")]);
         let info = session_info(&v);

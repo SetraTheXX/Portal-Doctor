@@ -123,6 +123,10 @@ mod tests {
             ServiceInfo::backend_unit("gnome"),
             "xdg-desktop-portal-gnome.service"
         );
+        assert_eq!(
+            ServiceInfo::backend_unit("kde"),
+            "xdg-desktop-portal-kde.service"
+        );
         let info = ServiceInfo { units: vec![unit] };
         assert!(info.unit("xdg-desktop-portal.service").is_some());
     }

@@ -1,6 +1,6 @@
 # PortalDoctor — Documentation Index
 
-**Baseline date:** 2026-09-06
+**Baseline date:** 2026-09-08
 
 This folder contains the project-definition and release documentation for
 PortalDoctor.
@@ -106,6 +106,23 @@ compatibility assumptions, timeout cleanup obligations and error/fallback
 taxonomy. It is a decision record, not an implementation guide for the probe
 commands.
 
+### `PORTALDOCTOR_SCREENSHOT_DECISION.md`
+
+Use this for the Screenshot capability policy, privacy boundary, controlled
+implementation status and external real-session release gate. It does not
+approve the v2 compatibility path for release and does not serve as a
+ScreenCast design record.
+
+### `PORTALDOCTOR_SCREENCAST_DECISION.md`
+
+Use this for the ScreenCast lifecycle boundary: the bounded design,
+Request/Session/PipeWire remote ownership, fail-closed `ProbeResult` mapping,
+the verified internal `CreateSession`, `SelectSources`, `Start`,
+`StreamsReturned` and `OpenPipeWireRemote` slices, controlled/real-session
+acceptance criteria, the passing aggregate controlled lifecycle gate and the
+remaining real-session/release gate, currently blocked by the missing public
+Window capability (`AvailableSourceTypes=0`, Window bit `2` absent).
+
 ### `probe-result-schema.md`
 
 Use this for the Phase 8 standalone `ProbeResult` v1 contract: operation
@@ -143,9 +160,21 @@ crates.io. Phases 5–7 (PipeWire/WirePlumber, opt-in bounded journal evidence
 and shareable reports/privacy) shipped in v0.2.0; v0.2.1 was published with
 the stabilization and release gates. The validated support target remains
 Ubuntu 26.04 + GNOME + Wayland + systemd. Phase 8 / v0.3.0 now has bounded
-FileChooser and Screenshot implementations on development `main`; the
-Screenshot release gate remains open until a v3-capable real session proves
-success and cancellation. Both slices are tracked in
+FileChooser and Screenshot implementations on development `main`; Screenshot
+controlled implementation is complete but its real-session release gate
+remains open because of an external provider blocker. ScreenCast has complete
+controlled internal `CreateSession`, `SelectSources`, `Start`,
+`StreamsReturned` and `OpenPipeWireRemote` slices with a passing aggregate
+lifecycle gate, but no public command; its real success/cancellation gate is
+currently **BLOCKED** because the live frontend reports
+`AvailableSourceTypes=0` and lacks Window bit `2`.
+Both real-session gates block v0.3.0 release approval. Independent bounded
+development may proceed, but public active-probe exposure and release approval
+remain gated by the provider triggers. For ScreenCast, re-evaluate only when
+`AvailableSourceTypes & 2 != 0` and the provider/frontend is stable; then run
+exactly one real success and one portal-native cancellation before any public
+command or release decision.
+Both active families are tracked in
 [GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
 
 For a direct handoff, use
