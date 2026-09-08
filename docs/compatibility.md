@@ -46,7 +46,11 @@ they are untested in v0.2 and no support is claimed.
   collector gate for the exact KDE unit and bounded state mapping, plus a
   combined isolated D-Bus/systemd collector run through the existing passive
   rule pipeline; no Plasma runtime validation or support claim follows from
-  them.
+  them. The 2026-09-08 live Plasma preflight on the current host is
+  **BLOCKED / NOT AVAILABLE**: the host is GNOME/Wayland, the KDE backend
+  package and service are absent, and the KDE D-Bus name has no owner. Recheck
+  only in a real Plasma Wayland session with a healthy KDE backend/service and
+  KDE D-Bus ownership; do not repeatedly force the current host.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 

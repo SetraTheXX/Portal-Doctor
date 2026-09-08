@@ -130,6 +130,22 @@ free; absent/not-found and absent/failed states produce only `DBUS002`.
 This remains controlled passive coverage and does not claim a live Plasma
 session or KDE support.
 
+### Phase 9 live Plasma preflight checkpoint — 2026-09-08
+
+The current host is Ubuntu 26.04.1 on Wayland with `XDG_CURRENT_DESKTOP`
+`ubuntu:GNOME`, `XDG_SESSION_DESKTOP` `ubuntu` and `gnome-shell`; it is not a
+Plasma session. The KDE backend package is not installed,
+`xdg-desktop-portal-kde.service` is `not-found`/inactive, the canonical KDE
+D-Bus name has no owner, and the passive route selects GNOME for FileChooser,
+Screenshot and ScreenCast. Live Plasma validation is therefore
+**BLOCKED / NOT AVAILABLE**. The host must not be repeatedly forced into this
+gate, and no active probe or UI validation was attempted.
+
+Re-evaluate this gate only after a real Plasma Wayland session is available,
+the KDE backend/package and `xdg-desktop-portal-kde.service` are installed and
+healthy, and `org.freedesktop.impl.portal.desktop.kde` has a D-Bus owner. This
+checkpoint does not change the Phase 8 Screenshot or ScreenCast release gates.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility
