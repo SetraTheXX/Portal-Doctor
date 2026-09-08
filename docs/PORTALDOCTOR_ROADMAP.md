@@ -905,8 +905,14 @@ Validate the architecture beyond GNOME rather than merely allowing it to compile
   free; absent/not-found and representative absent/failed activation paths emit
   only `DBUS002`. This is controlled passive aggregation only, not live Plasma
   validation or a KDE support claim.
+- [ ] Live Plasma Wayland session validation — the 2026-09-08 preflight on the
+  current Ubuntu 26.04.1 GNOME/Wayland host is **BLOCKED / NOT AVAILABLE**:
+  the KDE backend package and `xdg-desktop-portal-kde.service` are absent, the
+  KDE D-Bus name has no owner, and routes select GNOME. Do not force or repeat
+  this gate on the same host. Recheck only after a real Plasma Wayland session,
+  healthy KDE backend/service, and an owner for
+  `org.freedesktop.impl.portal.desktop.kde` are present.
 - `xdg-desktop-portal-kde` runtime behavior,
-- live Plasma Wayland session validation,
 - active probe validation,
 - compatibility documentation.
 
