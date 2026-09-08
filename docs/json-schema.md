@@ -363,9 +363,9 @@ Each finding follows PRD §8:
 The additive `portal_frontend` section carries software/package evidence for
 `xdg-desktop-portal`; it is not the operating-system `system.version_id` and
 it is not a portal interface `version` property. The current collector first
-uses a bounded `xdg-desktop-portal --version` command when that executable is
-available in `PATH`, then falls back to the supported `dpkg-query` package
-metadata source. Numeric comparison uses `normalized_version`; the raw token
-and source provenance remain visible. Missing commands, nonzero exits,
+uses a bounded `xdg-desktop-portal --version` command from PATH or a standard
+installed executable location, then falls back to the supported `dpkg-query`
+package metadata source. Numeric comparison uses `normalized_version`; the raw
+token and source provenance remain visible. Missing commands, nonzero exits,
 timeouts, oversized output and uncomparable strings omit the value and never
 produce a compatibility finding.

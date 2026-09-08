@@ -10,6 +10,11 @@ use crate::model::status::CollectorState;
 
 /// Keep version evidence small even when a broken wrapper writes endlessly.
 const MAX_VERSION_OUTPUT_BYTES: usize = 4 * 1024;
+const FRONTEND_EXECUTABLE_CANDIDATES: &[&str] = &[
+    "xdg-desktop-portal",
+    "/usr/libexec/xdg-desktop-portal",
+    "/usr/lib/xdg-desktop-portal",
+];
 
 #[derive(Clone, Copy)]
 enum VersionCommand {
@@ -19,16 +24,25 @@ enum VersionCommand {
 
 /// Collect reliable frontend software-version evidence.
 ///
-/// The frontend's bounded `--version` output is preferred when the executable
-/// is available through the process PATH. On Debian/Ubuntu-style systems the
-/// supported `dpkg-query` package metadata is the fallback. No shell or
-/// operating-system release field is used.
+/// The frontend's bounded `--version` output is preferred. The normal PATH is
+/// searched first, followed by standard installed executable locations; on
+/// Debian/Ubuntu-style systems the supported `dpkg-query` package metadata is
+/// the fallback. No shell or operating-system release field is used.
 pub fn collect() -> Section<PortalFrontendInfo> {
-    let frontend = collect_command("xdg-desktop-portal", VersionCommand::FrontendExecutable);
-    if frontend.status != CollectorState::Unsupported {
-        return frontend;
+    collect_with_candidates(FRONTEND_EXECUTABLE_CANDIDATES, "dpkg-query")
+}
+
+fn collect_with_candidates(
+    frontend_programs: &[&str],
+    package_program: &str,
+) -> Section<PortalFrontendInfo> {
+    for program in frontend_programs {
+        let frontend = collect_command(program, VersionCommand::FrontendExecutable);
+        if frontend.status != CollectorState::Unsupported {
+            return frontend;
+        }
     }
-    collect_command("dpkg-query", VersionCommand::DpkgQuery)
+    collect_command(package_program, VersionCommand::DpkgQuery)
 }
 
 fn collect_command(program: &str, kind: VersionCommand) -> Section<PortalFrontendInfo> {
@@ -48,9 +62,7 @@ fn collect_command(program: &str, kind: VersionCommand) -> Section<PortalFronten
         Ok(output) => output,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Section::unsupported(match kind {
-                VersionCommand::FrontendExecutable => {
-                    "frontend version executable is not available in PATH"
-                }
+                VersionCommand::FrontendExecutable => "frontend version executable is unavailable",
                 VersionCommand::DpkgQuery => "supported package metadata command is unavailable",
             });
         }
@@ -80,7 +92,7 @@ fn collect_command(program: &str, kind: VersionCommand) -> Section<PortalFronten
     };
     let source = match kind {
         VersionCommand::FrontendExecutable => VersionEvidenceSource::FrontendExecutable {
-            command: "xdg-desktop-portal".to_owned(),
+            command: program.to_owned(),
         },
         VersionCommand::DpkgQuery => VersionEvidenceSource::DpkgQuery {
             package: PORTAL_FRONTEND_COMPONENT.to_owned(),
@@ -103,7 +115,7 @@ mod tests {
     use crate::model::portal_frontend::{SemanticVersion, VersionEvidenceSource};
     use crate::model::status::CollectorState;
 
-    use super::{VersionCommand, collect, collect_command};
+    use super::{VersionCommand, collect, collect_command, collect_with_candidates};
 
     const GUARD: &str = "isolated-portal-version";
 
@@ -132,7 +144,7 @@ mod tests {
             ("newer", SemanticVersion::new(1, 23, 0)),
         ] {
             write_mode(mode);
-            let section = collect();
+            let section = collect_with_candidates(&["xdg-desktop-portal"], "dpkg-query");
             assert_eq!(section.status, CollectorState::Available, "{mode}");
             let info = section.value.unwrap();
             assert_eq!(info.normalized_version, expected, "{mode}");
@@ -150,7 +162,7 @@ mod tests {
             ("unexpected", CollectorState::ParseError),
         ] {
             write_mode(mode);
-            let section = collect();
+            let section = collect_with_candidates(&["xdg-desktop-portal"], "dpkg-query");
             assert_eq!(section.status, expected_status, "{mode}");
             assert!(section.value.is_none(), "{mode} must fail closed");
         }
