@@ -1,6 +1,6 @@
 # PortalDoctor — Current State and Handoff
 
-**Last verified:** 2026-09-08
+**Last verified:** 2026-09-09
 **Current public release:** `v0.2.1`
 **Current development phase:** Phase 8 / `v0.3.0`
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
@@ -187,6 +187,38 @@ unavailable and timed-out activation collection suppresses mismatch findings
 and preserves the normal environment note/status behavior. The integration
 harness bounds and reaps the fake `systemctl` child and does not validate a
 live Sway session or create a support claim.
+
+### Phase 10 live Sway readiness and active-probe decision checkpoint — 2026-09-09
+
+The read-only preflight found Ubuntu 26.04.1 on Wayland with
+`XDG_CURRENT_DESKTOP=ubuntu:GNOME`, `XDG_SESSION_DESKTOP=ubuntu` and
+`WAYLAND_DISPLAY=wayland-0`; no Sway compositor/session was present. The
+`xdg-desktop-portal-wlr` package/binary and user unit were absent/not-found,
+and `org.freedesktop.impl.portal.desktop.wlr` had no D-Bus owner. Passive
+portal routing selected GNOME for Screenshot and ScreenCast; the portal
+frontend, GNOME/GTK backends, PipeWire and WirePlumber were running. The
+frontend-only read-only capability values were ScreenCast version `5` with
+`AvailableSourceTypes=0` and Screenshot version `2` without `AvailableTargets`,
+matching the existing GNOME capability blockers. No active probe or portal UI
+was opened.
+
+The decision is **LIVE SWAY ENVIRONMENT BLOCKED / NOT AVAILABLE** and
+**ACTIVE PROBE READINESS BLOCKED**. This is an environment/provider absence,
+not a newly observed PortalDoctor production bug. The active-probe audit found
+no GNOME assumption leaking into the WLR route: Screenshot uses the public
+frontend, keeps the v2 compatibility path GNOME-only, and requires the v3
+Window bit; the internal ScreenCast lifecycle also uses the public frontend
+and fails closed when `AvailableSourceTypes` lacks Window bit `2`. There is no
+public ScreenCast command, backend-direct call or WLR support claim.
+
+Re-open live WLR active validation only after a real Sway Wayland session is
+available, the WLR backend/package and `xdg-desktop-portal-wlr.service` are
+installed and healthy, the canonical WLR D-Bus name has an owner, passive
+routing selects `wlr` for Screenshot/ScreenCast, and the frontend advertises
+the required Window capabilities (`AvailableTargets & 2` for Screenshot v3
+and `AvailableSourceTypes & 2` for ScreenCast) with PipeWire/WirePlumber
+ready. Do not repeatedly force the current GNOME host. This checkpoint does
+not change the Phase 8 GNOME Screenshot or ScreenCast blockers.
 
 Implement and release-gate it in this order:
 

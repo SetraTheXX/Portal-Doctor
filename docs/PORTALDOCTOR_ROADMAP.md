@@ -993,6 +993,25 @@ This is controlled production-collector coverage only. It does not validate a
 live Sway session, install/start a provider, run an active probe or create a
 wlroots/Sway support claim.
 
+## Live Sway readiness and active-probe decision checkpoint — 2026-09-09
+
+- [ ] Live Sway preflight is available. The current host is Ubuntu 26.04.1
+  GNOME/Wayland, not Sway; `xdg-desktop-portal-wlr`, its user unit and its
+  canonical D-Bus owner are absent. The frontend routes Screenshot and
+  ScreenCast to GNOME, while PipeWire/WirePlumber are healthy.
+- [ ] Active WLR probe validation is authorized. The current decision is
+  **ACTIVE PROBE READINESS BLOCKED**: controlled generic lifecycle coverage
+  does not substitute for a real WLR provider/session capability check.
+
+The current checkpoint is **LIVE SWAY ENVIRONMENT BLOCKED / NOT AVAILABLE**;
+no active probe or portal UI was opened and no support/release claim follows.
+Re-evaluate only in a real Sway Wayland session with a healthy WLR package and
+`xdg-desktop-portal-wlr.service`, a live
+`org.freedesktop.impl.portal.desktop.wlr` owner, WLR-selected passive routes,
+Screenshot v3 `AvailableTargets & 2`, ScreenCast `AvailableSourceTypes & 2`,
+and ready PipeWire/WirePlumber. This does not reopen or alter the Phase 8
+GNOME provider blockers.
+
 ## Important cases
 
 `xdg-desktop-portal-wlr` implements a limited subset of portals, so mixed backend usage is expected.
