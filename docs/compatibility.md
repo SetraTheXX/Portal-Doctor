@@ -61,7 +61,11 @@ provider states remaining generic `DBUS002` findings; this is not live runtime
 validation or a support claim. An explicit isolated production-collector gate
 also covers the descriptor-derived D-Bus names and exact WLR/GTK systemd units
 for healthy, missing and failed runtime states; it never contacts real user
-systemd or a live portal provider.
+systemd or a live portal provider. The production activation-environment
+collector is also covered in a bounded isolated gate: equal Sway values are
+clean, stale/missing activation values remain generic `ENV004`, and
+unavailable/timeout collection does not invent a mismatch. This is controlled
+coverage only; live Sway validation and support remain open.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 

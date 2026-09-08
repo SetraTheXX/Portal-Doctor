@@ -979,6 +979,20 @@ This is an ignored controlled integration gate only. It does not validate a
 live Sway session, install/start a provider, run an active probe or create a
 wlroots/Sway support claim.
 
+## Controlled activation-environment integration slice
+
+- [x] Feed a Sway Wayland process fixture through production
+  `activation_environment::collect()` under an isolated guarded fake
+  `systemctl`, while preserving the mixed WLR/GTK routing and runtime checks.
+- [x] Cover equal activation values, stale desktop, stale/different or missing
+  activation `WAYLAND_DISPLAY`, and unavailable/timeout collection. Healthy
+  activation is clean; mismatch cases emit only generic `ENV004`; unavailable
+  and timeout cases do not synthesize a mismatch or leak a child process.
+
+This is controlled production-collector coverage only. It does not validate a
+live Sway session, install/start a provider, run an active probe or create a
+wlroots/Sway support claim.
+
 ## Important cases
 
 `xdg-desktop-portal-wlr` implements a limited subset of portals, so mixed backend usage is expected.

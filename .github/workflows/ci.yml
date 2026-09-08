@@ -104,4 +104,7 @@ jobs:
       - name: Sway isolated runtime aggregate gate
         run: |
           ./scripts/validate-sway-runtime-aggregate-ci.sh
+      - name: Sway activation-environment integration gate
+        run: |
+          ./scripts/validate-sway-activation-ci.sh
       - run: PORTALDOCTOR_BIN=target/release/portaldoctor python3 scripts/validate-v0.1-faults.py
