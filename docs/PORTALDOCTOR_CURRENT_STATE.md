@@ -277,10 +277,10 @@ Secret-service-specific runtime or unit contract.
 The passive aggregate is clean with both selected runtime owners healthy,
 emits only `ENV003` when `WAYLAND_DISPLAY` is absent, and emits only generic
 `DBUS002` when the selected GNOME or GTK owner is missing. A separate
-higher-precedence `Settings=gtk` fixture is evaluated together with the lower
-generic `default=gnome;gtk` fixture: Settings resolves to GTK while capture
-remains on GNOME, and intentional multiple installed descriptors do not
-produce `CFG004`.
+higher-precedence `Settings=gtk` file is the effective selected config; the
+lower generic `default=gnome;gtk` file remains only in the candidate list and
+is not merged. Settings resolves to GTK while capture remains on GNOME, and
+intentional multiple installed descriptors do not produce `CFG004`.
 
 The XDG Desktop Portal 1.22.0 / Issue #2033 behavior is represented as a
 controlled regression fixture only. The current snapshot has no reliable

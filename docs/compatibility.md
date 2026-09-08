@@ -113,10 +113,11 @@ generic legacy `UseIn` filter. Healthy passive runtime is clean; missing
 `WAYLAND_DISPLAY` is only `ENV003`; missing selected GNOME or GTK owners are
 only `DBUS002`.
 
-The separate high-priority `Settings=gtk` fixture is kept distinct from the
-canonical config and lower generic `default=gnome;gtk` fixture. PortalDoctor's
-normal resolver selects only GTK for Settings, keeps ScreenCast on GNOME and
-does not treat multiple installed descriptors as a duplicate error. Issue
+The separate high-priority `Settings=gtk` file is the complete effective config;
+the lower generic `default=gnome;gtk` file remains only a candidate and its
+preferences are not merged. PortalDoctor's normal resolver selects only GTK
+for Settings, keeps ScreenCast on GNOME and does not treat multiple installed
+descriptors as a duplicate error. Issue
 #2033's XDG Desktop Portal 1.22.0 behavior is therefore modeled as a
 regression fixture, not diagnosed as a live upstream bug: the current snapshot
 does not expose reliable xdg-desktop-portal package-version evidence, so the

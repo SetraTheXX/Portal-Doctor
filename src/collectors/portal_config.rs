@@ -71,6 +71,8 @@ fn split_tokens(value: &str) -> Vec<String> {
 }
 
 /// Discover and parse the effective `portals.conf` for the current desktop.
+/// Candidate paths are retained for auditability, but only the first existing
+/// file is parsed; lower-precedence files are not merged into its preferences.
 pub fn collect(roots: &SearchRoots, desktops: &[String]) -> Section<PortalConfigInfo> {
     let candidates = search_paths::portal_config_candidates(roots, desktops);
     let candidate_files: Vec<String> = candidates
@@ -103,7 +105,8 @@ pub fn collect(roots: &SearchRoots, desktops: &[String]) -> Section<PortalConfig
 
 #[cfg(test)]
 mod tests {
-    use super::parse_config;
+    use super::{collect, parse_config};
+    use crate::model::environment::SearchRoots;
 
     #[test]
     fn parses_preferred_entries_with_lists() {
@@ -226,12 +229,27 @@ mod tests {
             0,
         );
         assert!(override_errors.is_empty());
-        assert_eq!(override_prefs.len(), 1);
+        assert_eq!(override_prefs.len(), 4);
         assert_eq!(
             override_prefs[0].interface,
+            crate::resolver::portal_routes::DEFAULT_INTERFACE
+        );
+        assert_eq!(override_prefs[0].backends, ["gnome", "gtk"]);
+        assert_eq!(
+            override_prefs[1].interface,
+            "org.freedesktop.impl.portal.Access"
+        );
+        assert_eq!(override_prefs[1].backends, ["gtk"]);
+        assert_eq!(
+            override_prefs[2].interface,
+            "org.freedesktop.impl.portal.Notification"
+        );
+        assert_eq!(override_prefs[2].backends, ["gtk"]);
+        assert_eq!(
+            override_prefs[3].interface,
             "org.freedesktop.impl.portal.Settings"
         );
-        assert_eq!(override_prefs[0].backends, ["gtk"]);
+        assert_eq!(override_prefs[3].backends, ["gtk"]);
 
         let (generic, generic_errors) = parse_config(
             include_str!("../../tests/fixtures/portal-routing/generic-gnome-gtk-portals.conf"),
@@ -240,6 +258,58 @@ mod tests {
         );
         assert!(generic_errors.is_empty());
         assert_eq!(generic[0].backends, ["gnome", "gtk"]);
+    }
+
+    #[test]
+    fn collect_uses_first_existing_niri_config_without_merging_lower_generic() {
+        let root = std::env::temp_dir().join(format!(
+            "portaldoctor-config-selection-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock is after the Unix epoch")
+                .as_nanos()
+        ));
+        let high_dir = root.join("config/xdg-desktop-portal");
+        let low_dir = root.join("data/xdg-desktop-portal");
+        std::fs::create_dir_all(&high_dir).expect("create high-precedence config directory");
+        std::fs::create_dir_all(&low_dir).expect("create lower-precedence config directory");
+        let high = high_dir.join("niri-portals.conf");
+        let low = low_dir.join("portals.conf");
+        std::fs::write(
+            &high,
+            include_str!("../../tests/fixtures/portal-routing/niri-settings-override.conf"),
+        )
+        .expect("write high-precedence Niri config");
+        std::fs::write(
+            &low,
+            include_str!("../../tests/fixtures/portal-routing/generic-gnome-gtk-portals.conf"),
+        )
+        .expect("write lower generic config");
+        let high_path = high.to_string_lossy().into_owned();
+        let low_path = low.to_string_lossy().into_owned();
+
+        let section = collect(
+            &SearchRoots {
+                config_roots: vec![root.join("config").to_string_lossy().into_owned()],
+                data_roots: vec![root.join("data").to_string_lossy().into_owned()],
+            },
+            &["niri".to_owned()],
+        );
+        let config = section
+            .value
+            .expect("controlled config should be available");
+        assert_eq!(config.selected_file.as_deref(), Some(high_path.as_str()));
+        assert!(config.candidate_files.contains(&low_path));
+        assert_eq!(config.preferences.len(), 4);
+        assert!(
+            config
+                .preferences
+                .iter()
+                .all(|preference| preference.source_file == high_path)
+        );
+
+        std::fs::remove_dir_all(root).expect("remove controlled config tree");
     }
 
     #[test]
