@@ -2712,4 +2712,522 @@ mod tests {
             );
         }
     }
+
+    /// Run only from `scripts/validate-niri-runtime-activation-ci.sh`:
+    /// production config, runtime and activation collectors must use the
+    /// isolated Niri fixture and guarded fake systemctl.
+    #[test]
+    #[cfg(unix)]
+    #[ignore = "requires the explicit isolated Niri runtime/activation gate"]
+    #[allow(clippy::too_many_lines)]
+    fn isolated_niri_runtime_and_activation_collectors_feed_passive_rule_pipeline() {
+        use std::fs;
+        use std::path::{Path, PathBuf};
+        use std::thread;
+        use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+        use crate::collectors::portal_config;
+        use crate::model::environment::SearchRoots;
+        use crate::model::status::CollectorState;
+
+        const FRONTEND: &str = PORTAL_FRONTEND_NAME;
+        const GNOME_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gnome";
+        const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
+        const GNOME_UNIT: &str = "xdg-desktop-portal-gnome.service";
+        const GTK_UNIT: &str = "xdg-desktop-portal-gtk.service";
+
+        struct TempTree(PathBuf);
+
+        impl Drop for TempTree {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+
+        fn set_name(owner: &zbus::blocking::Connection, name: &str, wanted: bool, held: &mut bool) {
+            if wanted && !*held {
+                owner
+                    .request_name(name)
+                    .expect("acquire isolated Niri portal name");
+                *held = true;
+            } else if !wanted && *held {
+                owner
+                    .release_name(name)
+                    .expect("release isolated Niri portal name");
+                *held = false;
+            }
+        }
+
+        fn assert_pid_gone(path: &Path) {
+            let pid: i32 = fs::read_to_string(path)
+                .expect("timeout fake must record its PID")
+                .trim()
+                .parse()
+                .expect("timeout fake PID");
+            let deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                // SAFETY: kill(pid, 0) only probes the fake process created by
+                // this isolated test wrapper.
+                if unsafe { libc::kill(pid, 0) } != 0 {
+                    return;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "timed-out activation systemctl child was not reaped"
+                );
+                thread::sleep(Duration::from_millis(25));
+            }
+        }
+
+        let mode_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_MODE_FILE")
+            .expect("explicit Niri wrapper must provide a mode file");
+        let log_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_LOG")
+            .expect("explicit Niri wrapper must provide an invocation log");
+        let pid_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_PID_FILE")
+            .expect("explicit Niri wrapper must provide a PID file");
+        let fake_dir = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_FAKE_DIR")
+            .expect("explicit Niri wrapper must provide a fake directory");
+        let path = std::env::var_os("PATH").expect("Niri wrapper must provide PATH");
+        assert_eq!(
+            std::env::split_paths(&path).next(),
+            Some(Path::new(&fake_dir).to_path_buf())
+        );
+        assert_eq!(
+            std::env::var("PORTALDOCTOR_SYSTEMCTL_FAKE_GUARD").as_deref(),
+            Ok("isolated-niri-runtime-activation")
+        );
+        assert_eq!(
+            std::env::var("PORTALDOCTOR_ISOLATED_DBUS").as_deref(),
+            Ok("1")
+        );
+
+        let root = std::env::temp_dir().join(format!(
+            "portaldoctor-niri-runtime-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock is after the Unix epoch")
+                .as_nanos()
+        ));
+        let _temp_tree = TempTree(root.clone());
+        let high_dir = root.join("config/xdg-desktop-portal");
+        let low_dir = root.join("data/xdg-desktop-portal");
+        fs::create_dir_all(&high_dir).expect("create high-precedence config directory");
+        fs::create_dir_all(&low_dir).expect("create lower-precedence config directory");
+        let high_path = high_dir.join("niri-portals.conf");
+        let low_path = low_dir.join("portals.conf");
+        fs::write(
+            &low_path,
+            include_str!("../tests/fixtures/portal-routing/generic-gnome-gtk-portals.conf"),
+        )
+        .expect("write lower generic portal config");
+        let roots = SearchRoots {
+            config_roots: vec![root.join("config").to_string_lossy().into_owned()],
+            data_roots: vec![root.join("data").to_string_lossy().into_owned()],
+        };
+
+        let build_snapshot = |effective_config: &str| {
+            fs::write(&high_path, effective_config).expect("write selected Niri portal config");
+            let config = portal_config::collect(&roots, &["niri".to_owned()]);
+            let config_info = config.value.as_ref().expect("Niri config result");
+            let high = high_path.to_string_lossy().into_owned();
+            let low = low_path.to_string_lossy().into_owned();
+            assert_eq!(config_info.selected_file.as_deref(), Some(high.as_str()));
+            assert!(config_info.candidate_files.iter().any(|path| path == &low));
+            assert!(
+                config_info
+                    .preferences
+                    .iter()
+                    .all(|preference| preference.source_file == high)
+            );
+
+            let process = niri_fixture_vars();
+            let session = crate::collectors::environment::session_info(&process);
+            let environment = crate::collectors::environment::environment_info(
+                process.clone(),
+                None,
+                Some(&process),
+            );
+            let backends = vec![
+                crate::collectors::portal_files::parse_portal_file(
+                    include_str!("../tests/fixtures/portal-routing/gnome.portal"),
+                    "/fixture/gnome.portal",
+                    "gnome".to_owned(),
+                ),
+                crate::collectors::portal_files::parse_portal_file(
+                    include_str!("../tests/fixtures/portal-routing/niri-gtk.portal"),
+                    "/fixture/gtk.portal",
+                    "gtk".to_owned(),
+                ),
+            ];
+            let desktops = crate::resolver::portal_routes::normalize_desktops(
+                process
+                    .get("XDG_CURRENT_DESKTOP")
+                    .expect("Niri fixture desktop identity"),
+            );
+            let routes =
+                crate::resolver::portal_routes::resolve_routes(&desktops, config_info, &backends);
+
+            let mut snapshot = niri_snapshot(
+                DbusOutcome::HasOwner,
+                DbusOutcome::HasOwner,
+                UnitState::Active,
+                UnitState::Active,
+                true,
+                false,
+            );
+            snapshot.session = Section::available(session);
+            snapshot.environment = Section::available(environment);
+            snapshot.portal_config = config;
+            snapshot.portal_backends = Section::available(backends);
+            snapshot.portal_routes = Section::available(routes);
+            snapshot
+        };
+
+        let canonical_config = include_str!("../tests/fixtures/portal-routing/niri-portals.conf");
+        let base = build_snapshot(canonical_config);
+        assert_niri_mixed_routes(&base);
+        let selected_backend_names =
+            selected_backend_dbus_names(&base.portal_routes, &base.portal_backends);
+        assert_eq!(
+            selected_backend_names,
+            vec![GNOME_BACKEND.to_owned(), GTK_BACKEND.to_owned()]
+        );
+        let selected_units = vec![
+            ServiceInfo::frontend_unit().to_owned(),
+            ServiceInfo::backend_unit("gnome"),
+            ServiceInfo::backend_unit("gtk"),
+        ];
+        assert_eq!(
+            selected_units,
+            [
+                ServiceInfo::frontend_unit().to_owned(),
+                GNOME_UNIT.to_owned(),
+                GTK_UNIT.to_owned(),
+            ]
+        );
+
+        let process = niri_fixture_vars();
+        let environment_for = |activation: &Section<BTreeMap<String, String>>| {
+            let mut environment =
+                Section::available(crate::collectors::environment::environment_info(
+                    process.clone(),
+                    None,
+                    activation.value.as_ref(),
+                ));
+            if activation.status != CollectorState::Available {
+                let reason = super::activation_note_reason(activation);
+                if reason.is_empty() {
+                    environment.push_note(format!(
+                        "systemd user activation environment: {}",
+                        activation.status
+                    ));
+                } else {
+                    environment.push_note(format!(
+                        "systemd user activation environment {}: {}",
+                        activation.status, reason
+                    ));
+                }
+            }
+            environment
+        };
+        let set_mode = |mode: &str| {
+            fs::write(&mode_file, format!("{mode}\n"))
+                .expect("write Niri runtime/activation fake mode");
+        };
+        let collect_runtime = || {
+            let dbus = crate::collectors::dbus::collect(&selected_backend_names);
+            let services = crate::collectors::systemd_user::collect(&selected_units);
+            (dbus, services)
+        };
+
+        let owner = zbus::blocking::Connection::session().expect("isolated session bus");
+        owner
+            .request_name(FRONTEND)
+            .expect("acquire isolated portal frontend name");
+        let mut gnome_owned = false;
+        let mut gtk_owned = false;
+
+        let mut run_scenario =
+            |mode: &str,
+             want_gnome: bool,
+             want_gtk: bool,
+             expected_gnome: DbusOutcome,
+             expected_gtk: DbusOutcome,
+             expected_gnome_state: UnitState,
+             expected_gtk_state: UnitState,
+             expected_activation_state: CollectorState,
+             expected_key: Option<&str>,
+             expected_findings: &[&str]| {
+                set_name(&owner, GNOME_BACKEND, want_gnome, &mut gnome_owned);
+                set_name(&owner, GTK_BACKEND, want_gtk, &mut gtk_owned);
+                set_mode(mode);
+
+                let activation = crate::collectors::activation_environment::collect();
+                assert_eq!(activation.status, expected_activation_state);
+                if mode == "timeout" {
+                    assert_pid_gone(Path::new(&pid_file));
+                }
+                let (dbus, services) = collect_runtime();
+                let dbus_info = dbus.value.as_ref().expect("Niri D-Bus result");
+                assert!(dbus_info.connected);
+                assert_eq!(
+                    dbus_info
+                        .checks
+                        .iter()
+                        .map(|check| check.name.as_str())
+                        .collect::<Vec<_>>(),
+                    vec![FRONTEND, GNOME_BACKEND, GTK_BACKEND]
+                );
+                assert_eq!(
+                    dbus_info
+                        .checks
+                        .iter()
+                        .find(|check| check.name == GNOME_BACKEND)
+                        .expect("GNOME D-Bus check")
+                        .outcome,
+                    expected_gnome
+                );
+                assert_eq!(
+                    dbus_info
+                        .checks
+                        .iter()
+                        .find(|check| check.name == GTK_BACKEND)
+                        .expect("GTK D-Bus check")
+                        .outcome,
+                    expected_gtk
+                );
+                let service_info = services.value.as_ref().expect("Niri service result");
+                assert_eq!(
+                    service_info
+                        .unit(ServiceInfo::frontend_unit())
+                        .expect("portal frontend unit")
+                        .state,
+                    UnitState::Active
+                );
+                assert_eq!(
+                    service_info.unit(GNOME_UNIT).expect("GNOME unit").state,
+                    expected_gnome_state
+                );
+                assert_eq!(
+                    service_info.unit(GTK_UNIT).expect("GTK unit").state,
+                    expected_gtk_state
+                );
+
+                let mut snapshot = base.clone();
+                snapshot.environment = environment_for(&activation);
+                snapshot.dbus = dbus;
+                snapshot.services = services;
+                assert_niri_mixed_routes(&snapshot);
+                let environment = snapshot
+                    .environment
+                    .value
+                    .as_ref()
+                    .expect("environment section");
+                assert_eq!(
+                    environment.activation_comparison.performed,
+                    expected_activation_state == CollectorState::Available
+                );
+                if expected_activation_state != CollectorState::Available {
+                    assert_eq!(snapshot.environment.status, CollectorState::Available);
+                    assert!(
+                        snapshot.environment.errors.iter().any(|note| note
+                            .message
+                            .contains("systemd user activation environment"))
+                    );
+                }
+
+                let findings = evaluate(&snapshot);
+                crate::rules::contract::assert_contract(&findings);
+                assert_eq!(finding_ids(&findings), expected_findings);
+                if let Some(key) = expected_key {
+                    assert!(findings.iter().any(|finding| {
+                        finding.summary.contains(key) || finding.explanation.contains(key)
+                    }));
+                }
+                assert_eq!(
+                    RunOutcome::from_report(&Report::new(snapshot, findings, "0.2.1")),
+                    RunOutcome::Clean
+                );
+            };
+
+        run_scenario(
+            "healthy",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::Available,
+            None,
+            &[],
+        );
+        run_scenario(
+            "gnome-missing",
+            false,
+            true,
+            DbusOutcome::NoOwner,
+            DbusOutcome::HasOwner,
+            UnitState::NotFound,
+            UnitState::Active,
+            CollectorState::Available,
+            Some(GNOME_BACKEND),
+            &["DBUS002"],
+        );
+        run_scenario(
+            "gnome-failed",
+            false,
+            true,
+            DbusOutcome::NoOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Failed,
+            UnitState::Active,
+            CollectorState::Available,
+            Some(GNOME_BACKEND),
+            &["DBUS002"],
+        );
+        run_scenario(
+            "gtk-missing",
+            true,
+            false,
+            DbusOutcome::HasOwner,
+            DbusOutcome::NoOwner,
+            UnitState::Active,
+            UnitState::NotFound,
+            CollectorState::Available,
+            Some(GTK_BACKEND),
+            &["DBUS002"],
+        );
+        run_scenario(
+            "stale-desktop",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::Available,
+            Some("XDG_CURRENT_DESKTOP"),
+            &["ENV004"],
+        );
+        run_scenario(
+            "stale-wayland",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::Available,
+            Some("WAYLAND_DISPLAY"),
+            &["ENV004"],
+        );
+        run_scenario(
+            "missing-wayland",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::Available,
+            Some("WAYLAND_DISPLAY"),
+            &["ENV004"],
+        );
+        run_scenario(
+            "unavailable",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::Unavailable,
+            None,
+            &[],
+        );
+        run_scenario(
+            "timeout",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::TimedOut,
+            None,
+            &[],
+        );
+
+        let settings_override =
+            include_str!("../tests/fixtures/portal-routing/niri-settings-override.conf");
+        set_mode("healthy");
+        let activation = crate::collectors::activation_environment::collect();
+        assert_eq!(activation.status, CollectorState::Available);
+        let (dbus, services) = collect_runtime();
+        let mut override_snapshot = build_snapshot(settings_override);
+        override_snapshot.environment = environment_for(&activation);
+        override_snapshot.dbus = dbus;
+        override_snapshot.services = services;
+        let override_routes = override_snapshot
+            .portal_routes
+            .value
+            .as_ref()
+            .expect("Niri settings override routes");
+        for (interface, backend) in [
+            ("org.freedesktop.impl.portal.Screenshot", "gnome"),
+            ("org.freedesktop.impl.portal.ScreenCast", "gnome"),
+            ("org.freedesktop.impl.portal.FileChooser", "gnome"),
+            ("org.freedesktop.impl.portal.Settings", "gtk"),
+            ("org.freedesktop.impl.portal.Access", "gtk"),
+            ("org.freedesktop.impl.portal.Notification", "gtk"),
+        ] {
+            let route = override_routes
+                .iter()
+                .find(|route| route.interface == interface)
+                .unwrap_or_else(|| panic!("missing Niri override route for {interface}"));
+            assert_eq!(route.status, RouteStatus::Selected, "{interface}");
+            assert_eq!(route.selected_candidates, [backend], "{interface}");
+        }
+        assert_eq!(
+            selected_backend_dbus_names(
+                &override_snapshot.portal_routes,
+                &override_snapshot.portal_backends,
+            ),
+            selected_backend_names
+        );
+        let findings = evaluate(&override_snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert!(findings.is_empty());
+        assert!(!findings.iter().any(|finding| finding.id == "CFG004"));
+
+        set_name(&owner, GNOME_BACKEND, false, &mut gnome_owned);
+        set_name(&owner, GTK_BACKEND, false, &mut gtk_owned);
+        owner
+            .release_name(FRONTEND)
+            .expect("release isolated portal frontend name");
+
+        let invocations = fs::read_to_string(log_file).expect("Niri invocation log");
+        let expected_unit_invocations = [
+            "--user show xdg-desktop-portal.service -p ActiveState -p SubState -p UnitFileState --value",
+            "--user show xdg-desktop-portal-gnome.service -p ActiveState -p SubState -p UnitFileState --value",
+            "--user show xdg-desktop-portal-gtk.service -p ActiveState -p SubState -p UnitFileState --value",
+        ];
+        assert_eq!(invocations.lines().count(), 40);
+        assert_eq!(
+            invocations
+                .lines()
+                .filter(|line| *line == "--user show-environment")
+                .count(),
+            10
+        );
+        for expected in expected_unit_invocations {
+            assert_eq!(
+                invocations.lines().filter(|line| *line == expected).count(),
+                10,
+                "unexpected Niri systemd invocation distribution"
+            );
+        }
+    }
 }

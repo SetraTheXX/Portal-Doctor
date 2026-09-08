@@ -1,15 +1,16 @@
 # PortalDoctor — Development Roadmap
 
-**Status:** Current implementation roadmap; last verified 2026-09-08
+**Status:** Current implementation roadmap; last verified 2026-09-09
 **Date:** 2026-09-05
 **Strategy:** Narrow vertical slice first, then expand subsystem coverage and desktop compatibility
 
 > **Current handoff:** Read [`PORTALDOCTOR_CURRENT_STATE.md`](PORTALDOCTOR_CURRENT_STATE.md)
 > before starting work. Phases 0–7 and the v0.2.1 passive stabilization gate are
-> complete. The current implementation target is Phase 8 / v0.3.0. The five
-> internal ScreenCast slices and their aggregate controlled gate are complete;
-> the remaining real-session/release/public-command gate is currently blocked
-> by external provider capability and is tracked in [GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
+> complete. Phase 8 remains the blocked v0.3.0 release/public-command gate;
+> its five internal ScreenCast slices and aggregate controlled gate are
+> complete. Independent Phase 9–11 compatibility development is allowed to
+> proceed through bounded controlled slices, while the remaining real-session
+> gates stay tracked in [GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
 
 ---
 
@@ -1109,6 +1110,35 @@ the Phase 8, KDE or Sway blocker state.
 This is controlled static/passive compatibility coverage only. It does not
 validate a live Niri session, install providers, run active probes, create a
 Niri support claim or change the Phase 8, KDE or Sway blocker state.
+
+## Controlled Niri production runtime + activation integration gate — 2026-09-09
+
+- [x] Run the canonical pure-`niri` environment, selected effective
+  `niri-portals.conf`, parsed GNOME/GTK descriptors and generic route resolver
+  through `selected_backend_dbus_names()`.
+- [x] Feed those descriptor-derived names and the exact frontend/GNOME/GTK
+  units through production `dbus::collect()` and `systemd_user::collect()` in
+  a private `dbus-run-session` with a temporary guarded fake `systemctl`.
+- [x] Feed the same process fixture through production
+  `activation_environment::collect()`, generic environment comparison and the
+  existing passive rule engine.
+- [x] Cover healthy GNOME+GTK ownership/active units; GNOME missing/not-found;
+  GNOME failed; GTK missing/not-found; stale activation desktop; stale or
+  missing activation `WAYLAND_DISPLAY`; and unavailable/timed-out activation.
+  Results remain clean, generic `DBUS002`, generic `ENV004`, or no synthetic
+  mismatch according to the existing contract.
+- [x] Re-run the higher-precedence Settings regression at this integration
+  level. The selected Niri file alone is effective, lower generic preferences
+  are not merged, Settings selects GTK, capture interfaces select GNOME, the
+  runtime set remains GNOME+GTK, and no `CFG004` is emitted.
+- [x] Keep the harness fail-closed and bounded: only the exact allowed
+  `systemctl --user show`/`show-environment` argv is accepted, no real user
+  systemd is reachable, the outer wrapper is time-bounded, and timeout
+  children are reaped.
+
+This is controlled production-collector integration coverage, not live Niri
+validation, active Screenshot/ScreenCast validation, a Niri support claim or
+release approval. It does not change the Phase 8, KDE or Sway blocker state.
 
 ## Tasks
 
