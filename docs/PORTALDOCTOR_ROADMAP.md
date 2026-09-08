@@ -1105,9 +1105,10 @@ the Phase 8, KDE or Sway blocker state.
   emits no `CFG004`.
 - [x] Add a typed `portal_frontend` version-evidence section separate from the
   OS `SystemInfo.version_id`. Prefer a bounded frontend `--version` command
-  when it is available in PATH, otherwise use the source-qualified supported
-  `dpkg-query` package metadata path; keep raw token, numeric version and
-  provenance together and fail closed for malformed/uncomparable output.
+  from PATH or a standard installed executable location, otherwise use the
+  source-qualified supported `dpkg-query` package metadata path; keep raw
+  token, numeric version and provenance together and fail closed for
+  malformed/uncomparable output.
 - [x] Add the permanent controlled parser/collector matrix for exact `1.22.0`,
   distro revisions, newer versions, malformed/nonzero/missing/timeout and
   oversized output, including child reaping and exact fake-tool argv guards.
@@ -1151,8 +1152,9 @@ release approval. It does not change the Phase 8, KDE or Sway blocker state.
   `collect_snapshot()` and shareable JSON/Markdown report paths without
   reusing the OS version or portal interface version.
 - [x] Use a numeric `SemanticVersion` comparison and preserve source
-  provenance; the current Ubuntu host reports `1.21.1+ds-1ubuntu3` through
-  `dpkg-query`, so it is not an affected exact-version match.
+  provenance; the current Ubuntu host reports `1.21.1` from the installed
+  frontend executable, so it is not an affected exact-version match. The
+  `dpkg-query` fallback preserves distro revisions in its raw evidence.
 - [x] Add `XDP006` only for exact normalized `1.22.0` plus pure Niri, effective
   selected `Settings=gtk`, and both GNOME/GTK Settings-capable descriptors.
   The finding says known compatibility risk and never claims an observed

@@ -288,10 +288,13 @@ controlled regression fixture. The new additive `portal_frontend` snapshot
 section keeps `xdg-desktop-portal` software evidence separate from the OS
 `system.version_id`: it carries a raw version token, numeric
 `normalized_version`, and source provenance. The collector prefers a bounded
-frontend `--version` command available in `PATH` and falls back to supported
-`dpkg-query` metadata without using a shell. The current host's selected
-fallback evidence is `1.21.1+ds-1ubuntu3`, so the exact `1.22.0` compatibility
-rule does not fire here. No wider version range is inferred.
+frontend `--version` command from PATH or a standard installed executable
+location, then falls back to supported `dpkg-query` metadata without using a
+shell. The current host's selected frontend executable evidence is `1.21.1`
+from `/usr/libexec/xdg-desktop-portal`; the package fallback also retains
+distro revisions such as `1.21.1+ds-1ubuntu3` in controlled tests. The exact
+`1.22.0` compatibility rule does not fire here. No wider version range is
+inferred.
 
 ### Phase 11 controlled Niri production runtime + activation integration gate — 2026-09-09
 
@@ -320,9 +323,9 @@ blockers are unchanged.
 ### Phase 11 xdg-desktop-portal version evidence + XDP #2033 gate — 2026-09-09
 
 The version foundation is now implemented and bounded. Frontend executable
-output is preferred when `xdg-desktop-portal --version` is discoverable through
-the process PATH; on this Ubuntu host that command is not in PATH, so the
-supported `dpkg-query` package source is used. Exact three-component numeric
+output is preferred from PATH or a standard installed location; on this Ubuntu
+host `/usr/libexec/xdg-desktop-portal --version` provides `1.21.1`. The
+supported `dpkg-query` source remains the bounded fallback. Exact three-component numeric
 versions and conservative distro revisions such as `+ds-1ubuntu3` are
 comparable; pre-release, git/date, malformed, oversized, nonzero and timed-out
 outputs remain unavailable/uncomparable and never create a compatibility

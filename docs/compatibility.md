@@ -123,9 +123,11 @@ regression fixture and can now be diagnosed only when the exact version
 evidence is present. The additive `portal_frontend` section never reuses the
 OS release field or a portal interface `version` property: it carries the raw
 token, numeric version and source provenance. The collector prefers bounded
-`xdg-desktop-portal --version` from PATH and otherwise uses supported
-`dpkg-query` metadata. On the current Ubuntu host the selected package
-evidence is `1.21.1+ds-1ubuntu3`, so no compatibility warning fires.
+`xdg-desktop-portal --version` from PATH or a standard installed executable
+location and otherwise uses supported `dpkg-query` metadata. On the current
+Ubuntu host the selected frontend executable evidence is `1.21.1`, so no
+compatibility warning fires; the package fallback preserves raw revisions such
+as `1.21.1+ds-1ubuntu3`.
 
 `XDP006` requires exact normalized `1.22.0`, pure Niri identity, effective
 selected `Settings=gtk` from the selected file, and both GNOME/GTK descriptors
