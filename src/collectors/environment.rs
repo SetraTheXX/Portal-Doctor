@@ -237,6 +237,18 @@ mod tests {
     }
 
     #[test]
+    fn session_info_parses_hyprland_wayland_fixture() {
+        let info = session_info(&fixture_vars(include_str!(
+            "../../tests/fixtures/environment/hyprland-wayland.env"
+        )));
+
+        assert_eq!(info.current_desktop.as_deref(), Some("Hyprland"));
+        assert_eq!(info.session_desktop.as_deref(), Some("hyprland"));
+        assert_eq!(info.session_type, Some(SessionType::Wayland));
+        assert_eq!(info.wayland_display.as_deref(), Some("wayland-1"));
+    }
+
+    #[test]
     fn unknown_session_type_keeps_raw_value() {
         let v = vars(&[("XDG_SESSION_TYPE", "mir")]);
         let info = session_info(&v);

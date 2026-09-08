@@ -1037,6 +1037,27 @@ PortalDoctor does not falsely flag intentional mixed-backend configurations as b
 
 Handle modern compositor setups where portal integration often combines multiple implementations.
 
+## First bounded Hyprland static/passive slice — 2026-09-09
+
+- [x] Add controlled Hyprland Wayland environment, desktop-specific
+  `hyprland-portals.conf`, `hyprland.portal` and GTK fallback fixtures.
+- [x] Verify the generic resolver selects Hyprland for Screenshot/ScreenCast
+  and GTK for FileChooser/Settings, applies desktop-specific configuration
+  before generic fallback and excludes the Hyprland descriptor through
+  `UseIn` on another desktop.
+- [x] Aggregate the fixture through the existing passive rule pipeline:
+  healthy mixed routing is clean, missing `WAYLAND_DISPLAY` emits only
+  `ENV003`, and missing Hyprland or GTK owner/unit state emits only the
+  corresponding generic `DBUS002` while routes remain unchanged.
+- [x] Assert descriptor-derived Hyprland D-Bus ownership naming and the
+  generic `ServiceInfo::backend_unit("hyprland")` mapping; intentional
+  Hyprland+GTK installation does not create duplicate/config findings.
+
+This slice is controlled static/passive coverage only. It does not validate a
+live Hyprland session, install or start providers, run active Screenshot or
+ScreenCast probes, create a Hyprland support claim, or change the Phase 8,
+KDE or Sway blocker state.
+
 ## Tasks
 
 - Hyprland backend model/fixtures,
