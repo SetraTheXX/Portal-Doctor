@@ -124,6 +124,20 @@ does not expose reliable xdg-desktop-portal package-version evidence, so the
 version-aware warning remains blocked. The Secret/gnome-keyring entry is not
 claimed because the current model lacks its service-specific runtime contract.
 No live Niri validation or Niri support claim follows from this coverage.
+The same canonical Niri fixture is also exercised through the production
+runtime collectors in a private, guarded integration gate. Descriptor-derived
+GNOME and GTK names feed `dbus::collect()`, the exact frontend/GNOME/GTK units
+feed `systemd_user::collect()`, and activation values feed
+`activation_environment::collect()` plus the existing comparison/rule engine.
+Healthy ownership/units are clean; missing or failed GNOME/GTK runtime stays
+generic `DBUS002`; stale activation desktop/display values stay generic
+`ENV004`; unavailable or timed-out activation does not invent a mismatch and
+is bounded with child reaping. The higher-precedence `Settings=gtk` file is
+tested as the complete effective config, without merging the lower generic
+candidate: Settings selects GTK, capture routes remain on GNOME, both runtime
+backends remain selected, and no `CFG004` is produced. This is controlled
+production-collector coverage only, not live Niri validation, active-probe
+validation, a support claim or release approval.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 

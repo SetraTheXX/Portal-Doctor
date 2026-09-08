@@ -2,7 +2,8 @@
 
 **Last verified:** 2026-09-09
 **Current public release:** `v0.2.1`
-**Current development phase:** Phase 8 / `v0.3.0`
+**Current development phase:** Phase 11 controlled compatibility expansion
+**Release gate under review:** Phase 8 / `v0.3.0` remains blocked
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
 
 This is the canonical handoff document for a new maintainer or coding agent.
@@ -80,7 +81,7 @@ The docs.rs build warning is expected for this binary-only package; local binary
 documentation generation succeeds and PortalDoctor does not promise a library
 API.
 
-## Current next step: Phase 8 / v0.3.0
+## Phase 8 / v0.3.0 release gate and independent development sequencing
 
 The detailed executable checklist is [GitHub Issue #3](https://github.com/SetraTheXX/Portal-Doctor/issues/3).
 The ASHPD decision checkpoint is recorded in
@@ -289,6 +290,30 @@ evidence), so no version-aware compatibility warning is emitted and no wider
 version range is inferred. This remains controlled compatibility coverage, not
 live Niri validation, a Niri support claim or release approval; Phase 8, KDE
 and Sway blockers are unchanged.
+
+### Phase 11 controlled Niri production runtime + activation integration gate — 2026-09-09
+
+The canonical pure-`niri` fixture now runs through the production collector
+chain under a private `dbus-run-session` and a temporary, guarded fake
+`systemctl`: selected effective config, parsed GNOME/GTK descriptors, generic
+route resolution, `selected_backend_dbus_names()`, `dbus::collect()`,
+`systemd_user::collect()`, `activation_environment::collect()`, environment
+comparison and the passive rule engine. The fake accepts only the exact
+frontend/GNOME/GTK `--user show` calls and `--user show-environment`; it cannot
+fall through to the real user systemd manager.
+
+The healthy canonical Niri stack is finding-free. Missing or failed GNOME
+runtime yields only generic `DBUS002` with the canonical GNOME D-Bus name;
+missing GTK fallback likewise remains only `DBUS002` and does not change the
+routes. Stale activation desktop or `WAYLAND_DISPLAY` yields only generic
+`ENV004`, while unavailable or timed-out activation produces no synthetic
+mismatch and the timed-out child is reaped. The higher-precedence
+`Settings=gtk` file is exercised as the complete effective config: Settings
+selects GTK, capture interfaces remain on GNOME, the selected runtime set is
+still GNOME+GTK, and no `CFG004` is emitted. This is controlled
+production-collector coverage only; live Niri validation, active probes,
+support claims and release approval remain open, and Phase 8/KDE/Sway
+blockers are unchanged.
 
 Implement and release-gate it in this order:
 

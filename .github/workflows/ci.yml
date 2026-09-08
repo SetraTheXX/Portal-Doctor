@@ -110,4 +110,7 @@ jobs:
       - name: Hyprland isolated runtime and activation gate
         run: |
           ./scripts/validate-hyprland-runtime-activation-ci.sh
+      - name: Niri isolated runtime and activation gate
+        run: |
+          ./scripts/validate-niri-runtime-activation-ci.sh
       - run: PORTALDOCTOR_BIN=target/release/portaldoctor python3 scripts/validate-v0.1-faults.py
