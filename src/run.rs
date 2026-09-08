@@ -271,6 +271,7 @@ fn collect_snapshot(include_journal: bool) -> Collected {
         ),
         _ => Section::<Vec<PortalRoute>>::unsupported("portal collection incomplete"),
     };
+    let portal_frontend = collectors::portal_frontend::collect();
 
     // Phase 3: runtime verification targets the frontend and every selected
     // backend bus name.
@@ -299,6 +300,7 @@ fn collect_snapshot(include_journal: bool) -> Collected {
     snapshot.portal_config = portal_config;
     snapshot.portal_backends = portal_backends;
     snapshot.portal_routes = portal_routes;
+    snapshot.portal_frontend = portal_frontend;
     snapshot.dbus = dbus;
     snapshot.services = services;
     snapshot.pipewire = pipewire;
@@ -405,6 +407,9 @@ mod tests {
     use crate::model::finding::{Confidence, Finding, Severity};
     use crate::model::pipewire::{PipeWireInfo, WirePlumberInfo};
     use crate::model::portal::{PortalBackend, PortalConfigInfo, PortalRoute, RouteStatus};
+    use crate::model::portal_frontend::{
+        PORTAL_FRONTEND_COMPONENT, PortalFrontendInfo, SemanticVersion, VersionEvidenceSource,
+    };
     use crate::model::section::Section;
     use crate::model::service::{ServiceInfo, UnitState, UnitStatus};
     use crate::model::snapshot::Snapshot;
@@ -1527,6 +1532,31 @@ mod tests {
         crate::rules::contract::assert_contract(&findings);
         assert!(findings.is_empty());
         assert!(!findings.iter().any(|finding| finding.id == "CFG004"));
+    }
+
+    #[test]
+    fn niri_exact_xdp_2033_version_emits_only_bounded_compatibility_risk() {
+        let mut snapshot = niri_snapshot(
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            true,
+            true,
+        );
+        snapshot.portal_frontend = Section::available(PortalFrontendInfo::new(
+            "1.22.0",
+            SemanticVersion::new(1, 22, 0),
+            VersionEvidenceSource::DpkgQuery {
+                package: PORTAL_FRONTEND_COMPONENT.to_owned(),
+            },
+        ));
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["XDP006"]);
+        assert!(findings[0].summary.contains("1.22.0"));
+        assert!(!findings[0].summary.contains("duplicate"));
     }
 
     #[test]

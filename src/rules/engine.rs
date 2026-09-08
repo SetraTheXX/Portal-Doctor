@@ -25,6 +25,7 @@ fn registered() -> Vec<Box<dyn DiagnosticRule>> {
         Box::new(super::portal::Xdp003),
         Box::new(super::portal::Xdp004),
         Box::new(super::portal::Xdp005),
+        Box::new(super::compatibility::Xdp006),
         Box::new(super::pipewire::Pw001),
         Box::new(super::pipewire::Pw002),
         Box::new(super::pipewire::Pw003),
@@ -72,7 +73,7 @@ mod tests {
             "ENV001", "ENV002", "ENV003", "ENV004", //
             "PW001", "PW002", "PW003", //
             "SC001", "SC002", //
-            "XDP001", "XDP002", "XDP003", "XDP004", "XDP005",
+            "XDP001", "XDP002", "XDP003", "XDP004", "XDP005", "XDP006",
         ];
         assert_eq!(rule_ids(), expected);
     }

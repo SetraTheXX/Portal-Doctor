@@ -1103,9 +1103,14 @@ the Phase 8, KDE or Sway blocker state.
   selects the first existing file without merging preferences; the resolver
   therefore selects only GTK for Settings, leaves ScreenCast on GNOME and
   emits no `CFG004`.
-- [x] Keep the Issue #2033 compatibility warning blocked: the snapshot has no
-  bounded xdg-desktop-portal package-version evidence, so no synthetic version
-  field, guessed range or version-aware production rule was added.
+- [x] Add a typed `portal_frontend` version-evidence section separate from the
+  OS `SystemInfo.version_id`. Prefer a bounded frontend `--version` command
+  when it is available in PATH, otherwise use the source-qualified supported
+  `dpkg-query` package metadata path; keep raw token, numeric version and
+  provenance together and fail closed for malformed/uncomparable output.
+- [x] Add the permanent controlled parser/collector matrix for exact `1.22.0`,
+  distro revisions, newer versions, malformed/nonzero/missing/timeout and
+  oversized output, including child reaping and exact fake-tool argv guards.
 
 This is controlled static/passive compatibility coverage only. It does not
 validate a live Niri session, install providers, run active probes, create a
@@ -1139,6 +1144,28 @@ Niri support claim or change the Phase 8, KDE or Sway blocker state.
 This is controlled production-collector integration coverage, not live Niri
 validation, active Screenshot/ScreenCast validation, a Niri support claim or
 release approval. It does not change the Phase 8, KDE or Sway blocker state.
+
+## Controlled Niri/XDP #2033 version-evidence gate — 2026-09-09
+
+- [x] Integrate the additive `portal_frontend` section into the production
+  `collect_snapshot()` and shareable JSON/Markdown report paths without
+  reusing the OS version or portal interface version.
+- [x] Use a numeric `SemanticVersion` comparison and preserve source
+  provenance; the current Ubuntu host reports `1.21.1+ds-1ubuntu3` through
+  `dpkg-query`, so it is not an affected exact-version match.
+- [x] Add `XDP006` only for exact normalized `1.22.0` plus pure Niri, effective
+  selected `Settings=gtk`, and both GNOME/GTK Settings-capable descriptors.
+  The finding says known compatibility risk and never claims an observed
+  duplicate SettingsChanged conflict.
+- [x] Cover silent negative cases for missing/uncomparable/non-affected
+  versions, other desktops, canonical default routing, single descriptors and
+  GNOME+GTK installation without the explicit effective override. Existing
+  `CFG004` semantics remain unchanged.
+
+This is controlled version-evidence and compatibility diagnosis only. It does
+not validate a live Niri session, observe a real SettingsChanged conflict,
+install/update packages, run active probes, create a support claim or approve
+a release. Phase 8, KDE and Sway blocker state is unchanged.
 
 ## Tasks
 

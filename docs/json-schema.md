@@ -176,6 +176,19 @@ Every section is an object with:
     ],
     "errors": []
   },
+  "portal_frontend": {
+    "status": "available",
+    "value": {
+      "component": "xdg-desktop-portal",
+      "raw_version": "1.21.1+ds-1ubuntu3",
+      "normalized_version": { "major": 1, "minor": 21, "patch": 1 },
+      "source": {
+        "kind": "dpkg_query",
+        "package": "xdg-desktop-portal"
+      }
+    },
+    "errors": []
+  },
   "dbus": {
     "status": "available",
     "value": {
@@ -335,7 +348,8 @@ Each finding follows PRD §8:
 - `confidence`: `low` | `medium` | `high`
 - `evidence`: one or more of `environment_mismatch`, `config_selection`,
   `missing_provider`, `dbus_timeout`, `service_state`, `pipewire_state`,
-  `wireplumber_state`, `screencast_route`, `journal_excerpt`
+  `wireplumber_state`, `screencast_route`, `journal_excerpt`,
+  `portal_frontend_version`
 - `impact` may be `null` when severity already conveys the consequence.
 - `recommendation` is ordered; the first entry is the primary next step.
 
@@ -345,3 +359,13 @@ Each finding follows PRD §8:
   consumers must ignore unknown keys.
 - Breaking changes bump `schema_version` and are documented here before any
   tagged release.
+
+The additive `portal_frontend` section carries software/package evidence for
+`xdg-desktop-portal`; it is not the operating-system `system.version_id` and
+it is not a portal interface `version` property. The current collector first
+uses a bounded `xdg-desktop-portal --version` command when that executable is
+available in `PATH`, then falls back to the supported `dpkg-query` package
+metadata source. Numeric comparison uses `normalized_version`; the raw token
+and source provenance remain visible. Missing commands, nonzero exits,
+timeouts, oversized output and uncomparable strings omit the value and never
+produce a compatibility finding.

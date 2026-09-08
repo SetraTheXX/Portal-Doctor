@@ -119,11 +119,23 @@ preferences are not merged. PortalDoctor's normal resolver selects only GTK
 for Settings, keeps ScreenCast on GNOME and does not treat multiple installed
 descriptors as a duplicate error. Issue
 #2033's XDG Desktop Portal 1.22.0 behavior is therefore modeled as a
-regression fixture, not diagnosed as a live upstream bug: the current snapshot
-does not expose reliable xdg-desktop-portal package-version evidence, so the
-version-aware warning remains blocked. The Secret/gnome-keyring entry is not
-claimed because the current model lacks its service-specific runtime contract.
-No live Niri validation or Niri support claim follows from this coverage.
+regression fixture and can now be diagnosed only when the exact version
+evidence is present. The additive `portal_frontend` section never reuses the
+OS release field or a portal interface `version` property: it carries the raw
+token, numeric version and source provenance. The collector prefers bounded
+`xdg-desktop-portal --version` from PATH and otherwise uses supported
+`dpkg-query` metadata. On the current Ubuntu host the selected package
+evidence is `1.21.1+ds-1ubuntu3`, so no compatibility warning fires.
+
+`XDP006` requires exact normalized `1.22.0`, pure Niri identity, effective
+selected `Settings=gtk` from the selected file, and both GNOME/GTK descriptors
+advertising Settings. It reports a known upstream compatibility risk only; it
+does not claim an observed duplicate SettingsChanged conflict. Unknown or
+uncomparable versions, other desktops, canonical `default=gnome;gtk`, a
+single capable descriptor, and mere GNOME+GTK installation are silent. The
+Secret/gnome-keyring entry is not claimed because the current model lacks its
+service-specific runtime contract. No live Niri validation or Niri support
+claim follows from this coverage.
 The same canonical Niri fixture is also exercised through the production
 runtime collectors in a private, guarded integration gate. Descriptor-derived
 GNOME and GTK names feed `dbus::collect()`, the exact frontend/GNOME/GTK units

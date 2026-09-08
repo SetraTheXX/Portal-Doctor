@@ -2,6 +2,7 @@ use std::fmt::Write as _;
 
 use crate::model::dbus::{DbusOutcome, PORTAL_FRONTEND_NAME};
 use crate::model::environment::EnvironmentRelation;
+use crate::model::portal_frontend::VersionEvidenceSource;
 use crate::model::section::Section;
 use crate::model::snapshot::Snapshot;
 use crate::report::ShareableReport;
@@ -235,6 +236,26 @@ fn write_portal(out: &mut String, snapshot: &Snapshot, verbose: bool) {
                 .expect("String writes cannot fail");
             }
         }
+    }
+
+    row(
+        out,
+        "Frontend version evidence",
+        &section_status(&snapshot.portal_frontend),
+    );
+    if let Some(frontend) = &snapshot.portal_frontend.value {
+        row(out, "Frontend component", &frontend.component);
+        row(out, "Frontend version", &frontend.raw_version);
+        row(
+            out,
+            "Comparable version",
+            &frontend.normalized_version.to_string(),
+        );
+        row(
+            out,
+            "Version source",
+            &version_source_label(&frontend.source),
+        );
     }
 
     row(out, "Backends", &section_status(&snapshot.portal_backends));
@@ -499,6 +520,7 @@ fn write_collection_notes(out: &mut String, snapshot: &Snapshot) {
         ("portal_config", &snapshot.portal_config.errors),
         ("portal_backends", &snapshot.portal_backends.errors),
         ("portal_routes", &snapshot.portal_routes.errors),
+        ("portal_frontend", &snapshot.portal_frontend.errors),
         ("dbus", &snapshot.dbus.errors),
         ("services", &snapshot.services.errors),
         ("pipewire", &snapshot.pipewire.errors),
@@ -517,6 +539,17 @@ fn write_collection_notes(out: &mut String, snapshot: &Snapshot) {
         writeln!(out, "- `{section}`: {}", escape(message)).expect("String writes cannot fail");
     }
     out.push('\n');
+}
+
+fn version_source_label(source: &VersionEvidenceSource) -> String {
+    match source {
+        VersionEvidenceSource::FrontendExecutable { command } => {
+            format!("frontend executable `{command} --version`")
+        }
+        VersionEvidenceSource::DpkgQuery { package } => {
+            format!("dpkg-query package `{package}`")
+        }
+    }
 }
 
 fn write_privacy(out: &mut String, report: &ShareableReport) {
