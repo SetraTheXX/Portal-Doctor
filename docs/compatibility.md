@@ -90,6 +90,17 @@ Hyprland for another desktop. Healthy mixed routing is clean; missing
 `WAYLAND_DISPLAY` remains only `ENV003`, and missing Hyprland or GTK runtime
 state remains only generic `DBUS002`. This does not validate a live Hyprland
 session or create a support claim.
+
+The same mixed-routing fixture is also covered by an isolated production
+collector aggregate: descriptor-derived Hyprland/GTK D-Bus names and the
+frontend/Hyprland/GTK systemd units flow through the real generic collectors,
+while activation values flow through `activation_environment::collect()` and
+the existing comparison/rule engine. Healthy ownership/units are clean;
+missing or failed runtime remains generic `DBUS002`, and stale activation
+desktop/display values remain generic `ENV004` without a synthetic `ENV003`.
+Unavailable or timed-out activation is bounded and does not invent a
+mismatch. This is controlled coverage only; it is not live Hyprland
+validation, an active-probe gate or a support claim.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 

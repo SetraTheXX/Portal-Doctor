@@ -2040,4 +2040,384 @@ mod tests {
             );
         }
     }
+
+    /// Run only from `scripts/validate-hyprland-runtime-activation-ci.sh`:
+    /// production runtime and activation collectors must use the isolated
+    /// Hyprland fixture and fake systemctl.
+    #[test]
+    #[cfg(unix)]
+    #[ignore = "requires the explicit isolated Hyprland runtime/activation gate"]
+    #[allow(clippy::too_many_lines)]
+    fn isolated_hyprland_runtime_and_activation_collectors_feed_passive_rule_pipeline() {
+        use std::fs;
+        use std::path::Path;
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        use crate::model::status::CollectorState;
+
+        const FRONTEND: &str = PORTAL_FRONTEND_NAME;
+        const HYPRLAND_BACKEND: &str = "org.freedesktop.impl.portal.desktop.hyprland";
+        const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
+        const HYPRLAND_UNIT: &str = "xdg-desktop-portal-hyprland.service";
+        const GTK_UNIT: &str = "xdg-desktop-portal-gtk.service";
+
+        fn set_name(owner: &zbus::blocking::Connection, name: &str, wanted: bool, held: &mut bool) {
+            if wanted && !*held {
+                owner
+                    .request_name(name)
+                    .expect("acquire isolated Hyprland portal name");
+                *held = true;
+            } else if !wanted && *held {
+                owner
+                    .release_name(name)
+                    .expect("release isolated Hyprland portal name");
+                *held = false;
+            }
+        }
+
+        fn assert_pid_gone(path: &Path) {
+            let pid: i32 = fs::read_to_string(path)
+                .expect("timeout fake must record its PID")
+                .trim()
+                .parse()
+                .expect("timeout fake PID");
+            let deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                // SAFETY: kill(pid, 0) only probes the fake process created by
+                // this isolated test wrapper.
+                if unsafe { libc::kill(pid, 0) } != 0 {
+                    return;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "timed-out activation systemctl child was not reaped"
+                );
+                thread::sleep(Duration::from_millis(25));
+            }
+        }
+
+        let mode_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_MODE_FILE")
+            .expect("explicit Hyprland wrapper must provide a mode file");
+        let log_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_LOG")
+            .expect("explicit Hyprland wrapper must provide an invocation log");
+        let pid_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_PID_FILE")
+            .expect("explicit Hyprland wrapper must provide a PID file");
+        let fake_dir = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_FAKE_DIR")
+            .expect("explicit Hyprland wrapper must provide a fake directory");
+        let path = std::env::var_os("PATH").expect("Hyprland wrapper must provide PATH");
+        assert_eq!(
+            std::env::split_paths(&path).next(),
+            Some(Path::new(&fake_dir).to_path_buf())
+        );
+        assert_eq!(
+            std::env::var("PORTALDOCTOR_SYSTEMCTL_FAKE_GUARD").as_deref(),
+            Ok("isolated-hyprland-runtime-activation")
+        );
+
+        let base = hyprland_passive_snapshot(true);
+        assert_hyprland_mixed_routes(&base);
+        assert_hyprland_runtime_bindings(&base);
+        let selected_backend_names =
+            selected_backend_dbus_names(&base.portal_routes, &base.portal_backends);
+        assert_eq!(
+            selected_backend_names,
+            vec![GTK_BACKEND.to_owned(), HYPRLAND_BACKEND.to_owned()]
+        );
+        let selected_units = vec![
+            ServiceInfo::frontend_unit().to_owned(),
+            ServiceInfo::backend_unit("hyprland"),
+            ServiceInfo::backend_unit("gtk"),
+        ];
+        assert_eq!(
+            selected_units,
+            [
+                ServiceInfo::frontend_unit().to_owned(),
+                HYPRLAND_UNIT.to_owned(),
+                GTK_UNIT.to_owned(),
+            ]
+        );
+
+        let process = hyprland_fixture_vars();
+        let environment_for = |activation: &Section<BTreeMap<String, String>>| {
+            let mut environment =
+                Section::available(crate::collectors::environment::environment_info(
+                    process.clone(),
+                    None,
+                    activation.value.as_ref(),
+                ));
+            if activation.status != CollectorState::Available {
+                let reason = super::activation_note_reason(activation);
+                if reason.is_empty() {
+                    environment.push_note(format!(
+                        "systemd user activation environment: {}",
+                        activation.status
+                    ));
+                } else {
+                    environment.push_note(format!(
+                        "systemd user activation environment {}: {}",
+                        activation.status, reason
+                    ));
+                }
+            }
+            environment
+        };
+        let set_mode = |mode: &str| {
+            fs::write(&mode_file, format!("{mode}\n"))
+                .expect("write Hyprland runtime/activation fake mode");
+        };
+        let collect_runtime = || {
+            let dbus = crate::collectors::dbus::collect(&selected_backend_names);
+            let services = crate::collectors::systemd_user::collect(&selected_units);
+            (dbus, services)
+        };
+
+        let owner = zbus::blocking::Connection::session().expect("isolated session bus");
+        owner
+            .request_name(FRONTEND)
+            .expect("acquire isolated portal frontend name");
+        let mut hyprland_owned = false;
+        let mut gtk_owned = false;
+
+        let mut run_scenario =
+            |mode: &str,
+             want_hyprland: bool,
+             want_gtk: bool,
+             expected_hyprland: DbusOutcome,
+             expected_gtk: DbusOutcome,
+             expected_hyprland_state: UnitState,
+             expected_gtk_state: UnitState,
+             expected_activation_state: CollectorState,
+             expected_key: Option<&str>,
+             expected_findings: &[&str]| {
+                set_name(&owner, HYPRLAND_BACKEND, want_hyprland, &mut hyprland_owned);
+                set_name(&owner, GTK_BACKEND, want_gtk, &mut gtk_owned);
+                set_mode(mode);
+
+                let activation = crate::collectors::activation_environment::collect();
+                assert_eq!(activation.status, expected_activation_state);
+                if mode == "timeout" {
+                    assert_pid_gone(Path::new(&pid_file));
+                }
+                let (dbus, services) = collect_runtime();
+                let dbus_info = dbus.value.as_ref().expect("Hyprland D-Bus result");
+                assert!(dbus_info.connected);
+                assert_eq!(
+                    dbus_info
+                        .checks
+                        .iter()
+                        .map(|check| check.name.as_str())
+                        .collect::<Vec<_>>(),
+                    vec![FRONTEND, GTK_BACKEND, HYPRLAND_BACKEND]
+                );
+                assert_eq!(
+                    dbus_info
+                        .checks
+                        .iter()
+                        .find(|check| check.name == HYPRLAND_BACKEND)
+                        .expect("Hyprland D-Bus check")
+                        .outcome,
+                    expected_hyprland
+                );
+                assert_eq!(
+                    dbus_info
+                        .checks
+                        .iter()
+                        .find(|check| check.name == GTK_BACKEND)
+                        .expect("GTK D-Bus check")
+                        .outcome,
+                    expected_gtk
+                );
+                let service_info = services.value.as_ref().expect("Hyprland services");
+                assert_eq!(
+                    service_info
+                        .unit(ServiceInfo::frontend_unit())
+                        .expect("portal frontend unit")
+                        .state,
+                    UnitState::Active
+                );
+                assert_eq!(
+                    service_info
+                        .unit(HYPRLAND_UNIT)
+                        .expect("Hyprland unit")
+                        .state,
+                    expected_hyprland_state
+                );
+                assert_eq!(
+                    service_info.unit(GTK_UNIT).expect("GTK unit").state,
+                    expected_gtk_state
+                );
+
+                let mut snapshot = base.clone();
+                snapshot.environment = environment_for(&activation);
+                snapshot.dbus = dbus;
+                snapshot.services = services;
+                assert_hyprland_mixed_routes(&snapshot);
+                let environment = snapshot
+                    .environment
+                    .value
+                    .as_ref()
+                    .expect("environment section");
+                assert_eq!(
+                    environment.activation_comparison.performed,
+                    expected_activation_state == CollectorState::Available
+                );
+                if expected_activation_state != CollectorState::Available {
+                    assert_eq!(snapshot.environment.status, CollectorState::Available);
+                    assert!(
+                        snapshot.environment.errors.iter().any(|note| note
+                            .message
+                            .contains("systemd user activation environment"))
+                    );
+                }
+
+                let findings = evaluate(&snapshot);
+                crate::rules::contract::assert_contract(&findings);
+                assert_eq!(finding_ids(&findings), expected_findings);
+                if let Some(key) = expected_key {
+                    assert!(findings.iter().any(|finding| finding.summary.contains(key)));
+                }
+                assert_eq!(
+                    RunOutcome::from_report(&Report::new(snapshot, findings, "0.2.1")),
+                    RunOutcome::Clean
+                );
+            };
+
+        run_scenario(
+            "healthy",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::Available,
+            None,
+            &[],
+        );
+        run_scenario(
+            "missing-hyprland",
+            false,
+            true,
+            DbusOutcome::NoOwner,
+            DbusOutcome::HasOwner,
+            UnitState::NotFound,
+            UnitState::Active,
+            CollectorState::Available,
+            Some(HYPRLAND_BACKEND),
+            &["DBUS002"],
+        );
+        run_scenario(
+            "missing-gtk",
+            true,
+            false,
+            DbusOutcome::HasOwner,
+            DbusOutcome::NoOwner,
+            UnitState::Active,
+            UnitState::NotFound,
+            CollectorState::Available,
+            Some(GTK_BACKEND),
+            &["DBUS002"],
+        );
+        run_scenario(
+            "failed-hyprland",
+            false,
+            true,
+            DbusOutcome::NoOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Failed,
+            UnitState::Active,
+            CollectorState::Available,
+            Some(HYPRLAND_BACKEND),
+            &["DBUS002"],
+        );
+        run_scenario(
+            "stale-desktop",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::Available,
+            Some("XDG_CURRENT_DESKTOP"),
+            &["ENV004"],
+        );
+        run_scenario(
+            "stale-wayland",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::Available,
+            Some("WAYLAND_DISPLAY"),
+            &["ENV004"],
+        );
+        run_scenario(
+            "missing-wayland",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::Available,
+            Some("WAYLAND_DISPLAY"),
+            &["ENV004"],
+        );
+        run_scenario(
+            "unavailable",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::Unavailable,
+            None,
+            &[],
+        );
+        run_scenario(
+            "timeout",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            CollectorState::TimedOut,
+            None,
+            &[],
+        );
+
+        set_name(&owner, GTK_BACKEND, false, &mut gtk_owned);
+        set_name(&owner, HYPRLAND_BACKEND, false, &mut hyprland_owned);
+        owner
+            .release_name(FRONTEND)
+            .expect("release isolated portal frontend name");
+
+        let invocations = fs::read_to_string(log_file).expect("Hyprland invocation log");
+        let expected_unit_invocations = [
+            "--user show xdg-desktop-portal.service -p ActiveState -p SubState -p UnitFileState --value",
+            "--user show xdg-desktop-portal-hyprland.service -p ActiveState -p SubState -p UnitFileState --value",
+            "--user show xdg-desktop-portal-gtk.service -p ActiveState -p SubState -p UnitFileState --value",
+        ];
+        assert_eq!(invocations.lines().count(), 36);
+        assert_eq!(
+            invocations
+                .lines()
+                .filter(|line| *line == "--user show-environment")
+                .count(),
+            9
+        );
+        for expected in expected_unit_invocations {
+            assert_eq!(
+                invocations.lines().filter(|line| *line == expected).count(),
+                9,
+                "unexpected Hyprland systemd invocation distribution"
+            );
+        }
+    }
 }

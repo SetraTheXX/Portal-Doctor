@@ -107,4 +107,7 @@ jobs:
       - name: Sway activation-environment integration gate
         run: |
           ./scripts/validate-sway-activation-ci.sh
+      - name: Hyprland isolated runtime and activation gate
+        run: |
+          ./scripts/validate-hyprland-runtime-activation-ci.sh
       - run: PORTALDOCTOR_BIN=target/release/portaldoctor python3 scripts/validate-v0.1-faults.py
