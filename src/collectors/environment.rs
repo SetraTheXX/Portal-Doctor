@@ -354,4 +354,27 @@ mod tests {
         assert_eq!(SessionType::from_raw("x11"), Some(SessionType::X11));
         assert_eq!(SessionType::from_raw("tty"), None);
     }
+
+    #[test]
+    fn niri_wayland_fixture_preserves_composite_desktop_identity() {
+        let vars: BTreeMap<String, String> =
+            include_str!("../../tests/fixtures/environment/niri-wayland.env")
+                .lines()
+                .filter_map(|line| line.split_once('='))
+                .map(|(key, value)| (key.to_owned(), value.to_owned()))
+                .collect();
+        let session = session_info(&vars);
+        assert_eq!(session.current_desktop.as_deref(), Some("niri:GNOME"));
+        assert_eq!(session.session_desktop.as_deref(), Some("niri"));
+        assert_eq!(session.session_type, Some(SessionType::Wayland));
+        assert_eq!(session.wayland_display.as_deref(), Some("wayland-1"));
+        let comparison = compare_environments(&vars, Some(&vars));
+        assert!(comparison.performed);
+        assert!(
+            comparison
+                .entries
+                .iter()
+                .all(|entry| entry.relation == EnvironmentRelation::Equal)
+        );
+    }
 }

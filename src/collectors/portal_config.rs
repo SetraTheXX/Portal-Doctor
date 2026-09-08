@@ -199,6 +199,50 @@ mod tests {
     }
 
     #[test]
+    fn parses_canonical_niri_and_settings_override_fixtures_separately() {
+        let (niri, niri_errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/niri-portals.conf"),
+            "/usr/share/xdg-desktop-portal/niri-portals.conf",
+            0,
+        );
+        assert!(niri_errors.is_empty());
+        assert_eq!(niri.len(), 3);
+        assert_eq!(
+            niri[0].interface,
+            crate::resolver::portal_routes::DEFAULT_INTERFACE
+        );
+        assert_eq!(niri[0].backends, ["gnome", "gtk"]);
+        assert_eq!(niri[1].interface, "org.freedesktop.impl.portal.Access");
+        assert_eq!(niri[1].backends, ["gtk"]);
+        assert_eq!(
+            niri[2].interface,
+            "org.freedesktop.impl.portal.Notification"
+        );
+        assert_eq!(niri[2].backends, ["gtk"]);
+
+        let (override_prefs, override_errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/niri-settings-override.conf"),
+            "/home/tester/.config/xdg-desktop-portal/niri-portals.conf",
+            0,
+        );
+        assert!(override_errors.is_empty());
+        assert_eq!(override_prefs.len(), 1);
+        assert_eq!(
+            override_prefs[0].interface,
+            "org.freedesktop.impl.portal.Settings"
+        );
+        assert_eq!(override_prefs[0].backends, ["gtk"]);
+
+        let (generic, generic_errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/generic-gnome-gtk-portals.conf"),
+            "/usr/share/xdg-desktop-portal/portals.conf",
+            1,
+        );
+        assert!(generic_errors.is_empty());
+        assert_eq!(generic[0].backends, ["gnome", "gtk"]);
+    }
+
+    #[test]
     fn preserves_star_and_none_tokens() {
         let (prefs, _) = parse_config(
             "[preferred]\n\

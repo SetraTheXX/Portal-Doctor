@@ -530,6 +530,184 @@ mod tests {
             .collect()
     }
 
+    fn niri_fixture_vars() -> BTreeMap<String, String> {
+        include_str!("../tests/fixtures/environment/niri-wayland.env")
+            .lines()
+            .filter_map(|line| line.split_once('='))
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect()
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn niri_snapshot(
+        gnome_outcome: DbusOutcome,
+        gtk_outcome: DbusOutcome,
+        gnome_unit_state: UnitState,
+        gtk_unit_state: UnitState,
+        with_wayland_display: bool,
+        settings_override: bool,
+    ) -> Snapshot {
+        const GNOME_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gnome";
+        const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
+
+        let mut process = niri_fixture_vars();
+        if !with_wayland_display {
+            process.remove("WAYLAND_DISPLAY");
+        }
+        let session = crate::collectors::environment::session_info(&process);
+        let environment =
+            crate::collectors::environment::environment_info(process.clone(), None, Some(&process));
+
+        let (preferences, parse_errors, candidate_files, selected_file) = if settings_override {
+            let (generic, generic_errors) = crate::collectors::portal_config::parse_config(
+                include_str!("../tests/fixtures/portal-routing/generic-gnome-gtk-portals.conf"),
+                "/usr/share/xdg-desktop-portal/portals.conf",
+                1,
+            );
+            let (override_preferences, override_errors) =
+                crate::collectors::portal_config::parse_config(
+                    include_str!("../tests/fixtures/portal-routing/niri-settings-override.conf"),
+                    "/home/tester/.config/xdg-desktop-portal/niri-portals.conf",
+                    0,
+                );
+            let mut preferences = generic;
+            preferences.extend(override_preferences);
+            let mut parse_errors = generic_errors;
+            parse_errors.extend(override_errors);
+            (
+                preferences,
+                parse_errors,
+                vec![
+                    "/home/tester/.config/xdg-desktop-portal/niri-portals.conf".to_owned(),
+                    "/usr/share/xdg-desktop-portal/portals.conf".to_owned(),
+                ],
+                Some("/home/tester/.config/xdg-desktop-portal/niri-portals.conf".to_owned()),
+            )
+        } else {
+            let (preferences, parse_errors) = crate::collectors::portal_config::parse_config(
+                include_str!("../tests/fixtures/portal-routing/niri-portals.conf"),
+                "/usr/share/xdg-desktop-portal/niri-portals.conf",
+                0,
+            );
+            (
+                preferences,
+                parse_errors,
+                vec!["/usr/share/xdg-desktop-portal/niri-portals.conf".to_owned()],
+                Some("/usr/share/xdg-desktop-portal/niri-portals.conf".to_owned()),
+            )
+        };
+        let config = PortalConfigInfo {
+            candidate_files,
+            selected_file,
+            preferences,
+            parse_errors,
+        };
+        let backends = vec![
+            crate::collectors::portal_files::parse_portal_file(
+                include_str!("../tests/fixtures/portal-routing/gnome.portal"),
+                "/fixture/gnome.portal",
+                "gnome".to_owned(),
+            ),
+            crate::collectors::portal_files::parse_portal_file(
+                include_str!("../tests/fixtures/portal-routing/niri-gtk.portal"),
+                "/fixture/gtk.portal",
+                "gtk".to_owned(),
+            ),
+        ];
+        let desktops = crate::resolver::portal_routes::normalize_desktops(
+            process
+                .get("XDG_CURRENT_DESKTOP")
+                .expect("Niri fixture desktop identity"),
+        );
+        let routes = crate::resolver::portal_routes::resolve_routes(&desktops, &config, &backends);
+
+        let mut snapshot = Snapshot::new(0);
+        snapshot.session = Section::available(session);
+        snapshot.environment = Section::available(environment);
+        snapshot.portal_config = Section::available(config);
+        snapshot.portal_backends = Section::available(backends);
+        snapshot.portal_routes = Section::available(routes);
+        snapshot.dbus = Section::available(DbusInfo {
+            connected: true,
+            checks: vec![
+                DbusCheck {
+                    name: PORTAL_FRONTEND_NAME.to_owned(),
+                    outcome: DbusOutcome::HasOwner,
+                },
+                DbusCheck {
+                    name: GNOME_BACKEND.to_owned(),
+                    outcome: gnome_outcome,
+                },
+                DbusCheck {
+                    name: GTK_BACKEND.to_owned(),
+                    outcome: gtk_outcome,
+                },
+            ],
+        });
+        snapshot.services = Section::available(ServiceInfo {
+            units: vec![
+                UnitStatus {
+                    unit: ServiceInfo::frontend_unit().to_owned(),
+                    state: UnitState::Active,
+                    sub_state: Some("running".to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("gnome"),
+                    state: gnome_unit_state,
+                    sub_state: Some(gnome_unit_state.as_str().to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("gtk"),
+                    state: gtk_unit_state,
+                    sub_state: Some(gtk_unit_state.as_str().to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+            ],
+        });
+        snapshot.pipewire = Section::available(PipeWireInfo {
+            model_version: 1,
+            version: Some("fixture".to_owned()),
+            object_count: 1,
+            node_count: 0,
+            link_count: 0,
+            portal_client_count: 0,
+            screen_cast_source_count: 1,
+            nodes: Vec::new(),
+            links: Vec::new(),
+        });
+        snapshot.wireplumber = Section::available(WirePlumberInfo {
+            model_version: 1,
+            pipewire_version: Some("fixture".to_owned()),
+            wireplumber_client_count: 1,
+        });
+        snapshot
+    }
+
+    fn assert_niri_mixed_routes(snapshot: &Snapshot) {
+        let routes = snapshot
+            .portal_routes
+            .value
+            .as_ref()
+            .expect("Niri route table");
+        for (interface, backend) in [
+            ("org.freedesktop.impl.portal.Screenshot", "gnome"),
+            ("org.freedesktop.impl.portal.ScreenCast", "gnome"),
+            ("org.freedesktop.impl.portal.FileChooser", "gnome"),
+            ("org.freedesktop.impl.portal.Settings", "gnome"),
+            ("org.freedesktop.impl.portal.Access", "gtk"),
+            ("org.freedesktop.impl.portal.Notification", "gtk"),
+        ] {
+            let route = routes
+                .iter()
+                .find(|route| route.interface == interface)
+                .unwrap_or_else(|| panic!("missing Niri route for {interface}"));
+            assert_eq!(route.status, RouteStatus::Selected, "{interface}");
+            assert_eq!(route.selected_candidates, [backend], "{interface}");
+        }
+    }
+
     fn kde_passive_snapshot(kde_outcome: DbusOutcome, kde_unit_state: UnitState) -> Snapshot {
         const KDE_BACKEND: &str = "org.freedesktop.impl.portal.desktop.kde";
         const SETTINGS: &str = "org.freedesktop.impl.portal.Settings";
@@ -1235,6 +1413,130 @@ mod tests {
                 .summary
                 .contains("org.freedesktop.impl.portal.desktop.gtk")
         );
+    }
+
+    #[test]
+    fn aggregate_niri_wayland_mixed_gnome_gtk_stack_is_clean() {
+        let snapshot = niri_snapshot(
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            true,
+            false,
+        );
+        assert_niri_mixed_routes(&snapshot);
+        assert_eq!(
+            selected_backend_dbus_names(&snapshot.portal_routes, &snapshot.portal_backends),
+            vec![
+                "org.freedesktop.impl.portal.desktop.gnome".to_owned(),
+                "org.freedesktop.impl.portal.desktop.gtk".to_owned(),
+            ]
+        );
+        let settings = snapshot
+            .portal_routes
+            .value
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|route| route.interface == "org.freedesktop.impl.portal.Settings")
+            .unwrap();
+        assert_eq!(settings.available_candidates, ["gnome", "gtk"]);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn aggregate_niri_without_wayland_display_emits_env003_only() {
+        let snapshot = niri_snapshot(
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            false,
+            false,
+        );
+        assert_niri_mixed_routes(&snapshot);
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["ENV003"]);
+    }
+
+    #[test]
+    fn aggregate_niri_gnome_runtime_missing_is_only_generic_dbus002() {
+        let snapshot = niri_snapshot(
+            DbusOutcome::NoOwner,
+            DbusOutcome::HasOwner,
+            UnitState::NotFound,
+            UnitState::Active,
+            true,
+            false,
+        );
+        assert_niri_mixed_routes(&snapshot);
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["DBUS002"]);
+        assert!(
+            findings[0]
+                .summary
+                .contains("org.freedesktop.impl.portal.desktop.gnome")
+        );
+    }
+
+    #[test]
+    fn aggregate_niri_gtk_runtime_missing_is_only_generic_dbus002() {
+        let snapshot = niri_snapshot(
+            DbusOutcome::HasOwner,
+            DbusOutcome::NoOwner,
+            UnitState::Active,
+            UnitState::NotFound,
+            true,
+            false,
+        );
+        assert_niri_mixed_routes(&snapshot);
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["DBUS002"]);
+        assert!(
+            findings[0]
+                .summary
+                .contains("org.freedesktop.impl.portal.desktop.gtk")
+        );
+    }
+
+    #[test]
+    fn niri_settings_override_selects_gtk_without_duplicate_warning() {
+        let snapshot = niri_snapshot(
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            true,
+            true,
+        );
+        let routes = snapshot.portal_routes.value.as_ref().unwrap();
+        let settings = routes
+            .iter()
+            .find(|route| route.interface == "org.freedesktop.impl.portal.Settings")
+            .unwrap();
+        assert_eq!(settings.requested_candidates, ["gtk"]);
+        assert_eq!(settings.available_candidates, ["gnome", "gtk"]);
+        assert_eq!(settings.selected_candidates, ["gtk"]);
+        assert_eq!(
+            routes
+                .iter()
+                .find(|route| route.interface == "org.freedesktop.impl.portal.ScreenCast")
+                .unwrap()
+                .selected_candidates,
+            ["gnome"]
+        );
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert!(findings.is_empty());
+        assert!(!findings.iter().any(|finding| finding.id == "CFG004"));
     }
 
     #[test]

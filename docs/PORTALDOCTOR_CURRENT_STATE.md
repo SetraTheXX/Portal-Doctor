@@ -260,6 +260,34 @@ controlled production-collector coverage, not live Hyprland validation, an
 active probe, a support claim or release approval. Phase 8, KDE and Sway
 blockers are unchanged.
 
+### Phase 11 controlled Niri mixed-backend + Settings slice — 2026-09-09
+
+Controlled Niri fixtures now cover a Wayland `niri:GNOME` identity, the
+upstream-shaped `default=gnome;gtk` ordering, explicit GTK handling for
+Access/Notification, and GNOME/GTK descriptors. The generic resolver selects
+GNOME for ScreenCast, Screenshot, FileChooser and Settings, and GTK for the
+explicit fallback interfaces. The pure `niri` identity still respects the
+GNOME descriptor's legacy `UseIn=gnome` restriction; this is generic resolver
+behavior, not a Niri-specific branch. The current model intentionally omits
+Niri's Secret/gnome-keyring entry because it has no Secret-service-specific
+runtime or unit contract.
+
+The passive aggregate is clean with both selected runtime owners healthy,
+emits only `ENV003` when `WAYLAND_DISPLAY` is absent, and emits only generic
+`DBUS002` when the selected GNOME or GTK owner is missing. A separate
+higher-precedence `Settings=gtk` fixture is evaluated together with the lower
+generic `default=gnome;gtk` fixture: Settings resolves to GTK while capture
+remains on GNOME, and intentional multiple installed descriptors do not
+produce `CFG004`.
+
+The XDG Desktop Portal 1.22.0 / Issue #2033 behavior is represented as a
+controlled regression fixture only. The current snapshot has no reliable
+xdg-desktop-portal package-version evidence (its version field is OS release
+evidence), so no version-aware compatibility warning is emitted and no wider
+version range is inferred. This remains controlled compatibility coverage, not
+live Niri validation, a Niri support claim or release approval; Phase 8, KDE
+and Sway blockers are unchanged.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility
