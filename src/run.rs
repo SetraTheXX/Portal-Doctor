@@ -1205,4 +1205,229 @@ mod tests {
             )
         }));
     }
+
+    /// Run only from `scripts/validate-sway-runtime-aggregate-ci.sh`: both
+    /// runtime collectors must use the isolated D-Bus/fake-systemctl setup.
+    #[test]
+    #[cfg(unix)]
+    #[ignore = "requires the explicit isolated Sway runtime aggregate gate"]
+    #[allow(clippy::too_many_lines)]
+    fn isolated_sway_runtime_collectors_feed_the_passive_rule_pipeline() {
+        use std::fs;
+        use std::path::Path;
+
+        const FRONTEND: &str = PORTAL_FRONTEND_NAME;
+        const WLR_BACKEND: &str = "org.freedesktop.impl.portal.desktop.wlr";
+        const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
+        const WLR_UNIT: &str = "xdg-desktop-portal-wlr.service";
+        const GTK_UNIT: &str = "xdg-desktop-portal-gtk.service";
+
+        fn set_name(owner: &zbus::blocking::Connection, name: &str, wanted: bool, held: &mut bool) {
+            if wanted && !*held {
+                owner
+                    .request_name(name)
+                    .expect("acquire isolated Sway portal name");
+                *held = true;
+            } else if !wanted && *held {
+                owner
+                    .release_name(name)
+                    .expect("release isolated Sway portal name");
+                *held = false;
+            }
+        }
+
+        let mode_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_MODE_FILE")
+            .expect("explicit Sway aggregate wrapper must provide a mode file");
+        let log_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_LOG")
+            .expect("explicit Sway aggregate wrapper must provide an invocation log");
+        let fake_dir = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_FAKE_DIR")
+            .expect("explicit Sway aggregate wrapper must provide a fake directory");
+        let path = std::env::var_os("PATH").expect("Sway aggregate wrapper must provide PATH");
+        assert_eq!(
+            std::env::split_paths(&path).next(),
+            Some(Path::new(&fake_dir).to_path_buf())
+        );
+        assert_eq!(
+            std::env::var("PORTALDOCTOR_SYSTEMCTL_FAKE_GUARD").as_deref(),
+            Ok("isolated-sway-runtime-aggregate")
+        );
+
+        let base = sway_passive_snapshot(true);
+        assert_sway_mixed_routes(&base);
+        assert_sway_runtime_bindings(&base);
+        // The production D-Bus collector receives names derived from the
+        // parsed descriptors and resolved routes, not a parallel test map.
+        let selected_backend_names =
+            selected_backend_dbus_names(&base.portal_routes, &base.portal_backends);
+        assert_eq!(
+            selected_backend_names,
+            vec![GTK_BACKEND.to_owned(), WLR_BACKEND.to_owned()]
+        );
+        let selected_units = vec![
+            ServiceInfo::frontend_unit().to_owned(),
+            ServiceInfo::backend_unit("wlr"),
+            ServiceInfo::backend_unit("gtk"),
+        ];
+        assert_eq!(
+            selected_units,
+            [
+                ServiceInfo::frontend_unit().to_owned(),
+                WLR_UNIT.to_owned(),
+                GTK_UNIT.to_owned(),
+            ]
+        );
+
+        let set_mode = |mode: &str| {
+            fs::write(&mode_file, format!("{mode}\n")).expect("write Sway aggregate fake mode");
+        };
+        let collect_runtime = || {
+            let dbus = crate::collectors::dbus::collect(&selected_backend_names);
+            let services = crate::collectors::systemd_user::collect(&selected_units);
+            (dbus, services)
+        };
+        let owner = zbus::blocking::Connection::session().expect("isolated session bus");
+        owner
+            .request_name(FRONTEND)
+            .expect("acquire isolated portal frontend name");
+        let mut wlr_owned = false;
+        let mut gtk_owned = false;
+
+        let mut run_scenario = |mode: &str,
+                                want_wlr: bool,
+                                want_gtk: bool,
+                                expected_wlr: DbusOutcome,
+                                expected_gtk: DbusOutcome,
+                                expected_wlr_state: UnitState,
+                                expected_gtk_state: UnitState,
+                                expected_summary: Option<&str>,
+                                expected_findings: &[&str]| {
+            set_name(&owner, WLR_BACKEND, want_wlr, &mut wlr_owned);
+            set_name(&owner, GTK_BACKEND, want_gtk, &mut gtk_owned);
+            set_mode(mode);
+            let (dbus, services) = collect_runtime();
+            let dbus_info = dbus.value.as_ref().expect("Sway D-Bus result");
+            assert!(dbus_info.connected);
+            let names: Vec<&str> = dbus_info
+                .checks
+                .iter()
+                .map(|check| check.name.as_str())
+                .collect();
+            assert_eq!(names, vec![FRONTEND, GTK_BACKEND, WLR_BACKEND]);
+            assert_eq!(
+                &dbus_info
+                    .checks
+                    .iter()
+                    .find(|check| check.name == WLR_BACKEND)
+                    .expect("WLR D-Bus check")
+                    .outcome,
+                &expected_wlr
+            );
+            assert_eq!(
+                &dbus_info
+                    .checks
+                    .iter()
+                    .find(|check| check.name == GTK_BACKEND)
+                    .expect("GTK D-Bus check")
+                    .outcome,
+                &expected_gtk
+            );
+            let service_info = services.value.as_ref().expect("Sway service result");
+            assert_eq!(
+                service_info
+                    .unit(ServiceInfo::frontend_unit())
+                    .expect("portal frontend unit")
+                    .state,
+                UnitState::Active
+            );
+            assert_eq!(
+                service_info.unit(WLR_UNIT).expect("WLR unit").state,
+                expected_wlr_state
+            );
+            assert_eq!(
+                service_info.unit(GTK_UNIT).expect("GTK unit").state,
+                expected_gtk_state
+            );
+
+            let mut snapshot = base.clone();
+            snapshot.dbus = dbus;
+            snapshot.services = services;
+            assert_sway_mixed_routes(&snapshot);
+            let findings = evaluate(&snapshot);
+            crate::rules::contract::assert_contract(&findings);
+            assert_eq!(finding_ids(&findings), expected_findings);
+            if let Some(summary) = expected_summary {
+                assert!(findings[0].summary.contains(summary));
+            }
+            assert_eq!(
+                RunOutcome::from_report(&Report::new(snapshot, findings, "0.2.1")),
+                RunOutcome::Clean
+            );
+        };
+
+        run_scenario(
+            "healthy",
+            true,
+            true,
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+            None,
+            &[],
+        );
+        run_scenario(
+            "wlr-missing",
+            false,
+            true,
+            DbusOutcome::NoOwner,
+            DbusOutcome::HasOwner,
+            UnitState::NotFound,
+            UnitState::Active,
+            Some(WLR_BACKEND),
+            &["DBUS002"],
+        );
+        run_scenario(
+            "gtk-missing",
+            true,
+            false,
+            DbusOutcome::HasOwner,
+            DbusOutcome::NoOwner,
+            UnitState::Active,
+            UnitState::NotFound,
+            Some(GTK_BACKEND),
+            &["DBUS002"],
+        );
+        run_scenario(
+            "wlr-failed",
+            false,
+            true,
+            DbusOutcome::NoOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Failed,
+            UnitState::Active,
+            Some(WLR_BACKEND),
+            &["DBUS002"],
+        );
+
+        set_name(&owner, WLR_BACKEND, false, &mut wlr_owned);
+        set_name(&owner, GTK_BACKEND, false, &mut gtk_owned);
+        owner
+            .release_name(FRONTEND)
+            .expect("release isolated portal frontend name");
+
+        let invocations = fs::read_to_string(log_file).expect("Sway aggregate invocation log");
+        let expected_invocations = [
+            "--user show xdg-desktop-portal.service -p ActiveState -p SubState -p UnitFileState --value",
+            "--user show xdg-desktop-portal-wlr.service -p ActiveState -p SubState -p UnitFileState --value",
+            "--user show xdg-desktop-portal-gtk.service -p ActiveState -p SubState -p UnitFileState --value",
+        ];
+        assert_eq!(invocations.lines().count(), 12);
+        for expected in expected_invocations {
+            assert_eq!(
+                invocations.lines().filter(|line| *line == expected).count(),
+                4,
+                "unexpected systemd invocation distribution"
+            );
+        }
+    }
 }

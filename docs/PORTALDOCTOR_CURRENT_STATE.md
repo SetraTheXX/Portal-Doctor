@@ -171,6 +171,14 @@ missing or failed `wlr`, and missing GTK fallback runtime, produce only the
 existing generic `DBUS002` finding. This is controlled snapshot/rule coverage,
 not a live Sway runtime, provider or active-probe validation.
 
+The production collectors are also covered together by an explicit ignored
+`dbus-run-session` plus guarded fake-`systemctl` aggregate gate. It feeds the
+descriptor-derived WLR/GTK D-Bus names and the three exact portal unit names
+through `dbus::collect()` and `systemd_user::collect()` before evaluating the
+existing passive rule pipeline. Healthy, WLR-missing, GTK-fallback-missing and
+WLR-failed states are covered; no real user systemd manager, portal provider or
+active probe is contacted.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility

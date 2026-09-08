@@ -966,6 +966,19 @@ does not create a live Sway support claim.
 This remains controlled snapshot/rule coverage. It does not validate a live
 Sway/Wayland session, install or start providers, or run an active probe.
 
+## Controlled production-collector runtime aggregate
+
+- [x] Run the existing Sway mixed-routing snapshot through the production
+  `dbus::collect()` and `systemd_user::collect()` paths inside an isolated
+  `dbus-run-session` and guarded fake-`systemctl` wrapper.
+- [x] Cover healthy WLR/GTK ownership, missing WLR, missing GTK fallback and
+  failed WLR; assert exact D-Bus names, exact unit allowlist and generic
+  `DBUS002` semantics without contacting real user systemd.
+
+This is an ignored controlled integration gate only. It does not validate a
+live Sway session, install/start a provider, run an active probe or create a
+wlroots/Sway support claim.
+
 ## Important cases
 
 `xdg-desktop-portal-wlr` implements a limited subset of portals, so mixed backend usage is expected.

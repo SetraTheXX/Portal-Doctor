@@ -101,4 +101,7 @@ jobs:
       - name: KDE isolated runtime aggregate gate
         run: |
           ./scripts/validate-kde-runtime-aggregate-ci.sh
+      - name: Sway isolated runtime aggregate gate
+        run: |
+          ./scripts/validate-sway-runtime-aggregate-ci.sh
       - run: PORTALDOCTOR_BIN=target/release/portaldoctor python3 scripts/validate-v0.1-faults.py

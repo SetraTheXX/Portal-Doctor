@@ -58,7 +58,10 @@ and a missing `WAYLAND_DISPLAY` yields only `ENV003`; there is still no live
 Sway validation or wlroots support claim. Controlled runtime-correlation tests
 also cover the generic `wlr`/GTK D-Bus and systemd mappings, with degraded
 provider states remaining generic `DBUS002` findings; this is not live runtime
-validation or a support claim.
+validation or a support claim. An explicit isolated production-collector gate
+also covers the descriptor-derived D-Bus names and exact WLR/GTK systemd units
+for healthy, missing and failed runtime states; it never contacts real user
+systemd or a live portal provider.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 
