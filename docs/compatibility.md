@@ -85,8 +85,9 @@ repeatedly forced into this gate.
 
 Phase 11 now adds controlled Hyprland static/passive coverage: a generic
 desktop-specific configuration routes Screenshot/ScreenCast to the canonical
-Hyprland descriptor and FileChooser/Settings to GTK, while `UseIn` excludes
-Hyprland for another desktop. Healthy mixed routing is clean; missing
+Hyprland descriptor and FileChooser/Settings to GTK. Configured preferences
+remain authoritative across desktop identities; only no-preference fallback
+uses legacy `UseIn` filtering. Healthy mixed routing is clean; missing
 `WAYLAND_DISPLAY` remains only `ENV003`, and missing Hyprland or GTK runtime
 state remains only generic `DBUS002`. This does not validate a live Hyprland
 session or create a support claim.
@@ -103,13 +104,14 @@ mismatch. This is controlled coverage only; it is not live Hyprland
 validation, an active-probe gate or a support claim.
 
 Phase 11 also has controlled Niri mixed-backend coverage. The canonical
-fixture uses a `niri:GNOME` Wayland identity so the GNOME descriptor's legacy
-`UseIn=gnome` remains eligible: the upstream-shaped `default=gnome;gtk`
-ordering resolves ScreenCast, Screenshot, FileChooser and Settings to GNOME,
-while explicit Access/Notification entries resolve to GTK. A pure `niri`
-identity continues to respect the generic `UseIn` exclusion. Healthy passive
-runtime is clean; missing `WAYLAND_DISPLAY` is only `ENV003`; missing selected
-GNOME or GTK owners are only `DBUS002`.
+fixture uses the upstream `niri` Wayland identity and an upstream-shaped
+`default=gnome;gtk` ordering. Modern config-driven selection makes GNOME
+eligible for ScreenCast, Screenshot, FileChooser and Settings despite the
+descriptor's legacy `UseIn=gnome`; explicit Access/Notification entries
+resolve to GTK. A route with no interface/default preference still uses the
+generic legacy `UseIn` filter. Healthy passive runtime is clean; missing
+`WAYLAND_DISPLAY` is only `ENV003`; missing selected GNOME or GTK owners are
+only `DBUS002`.
 
 The separate high-priority `Settings=gtk` fixture is kept distinct from the
 canonical config and lower generic `default=gnome;gtk` fixture. PortalDoctor's

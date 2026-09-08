@@ -52,15 +52,20 @@ pub fn resolve_routes(
             .map(|p| p.interface.clone()),
     );
 
-    let preferences: BTreeMap<&str, &PortalPreference> = config
-        .preferences
-        .iter()
-        .map(|p| (p.interface.as_str(), p))
-        .collect();
-    let default_preference = config
-        .preferences
-        .iter()
-        .find(|p| p.interface == DEFAULT_INTERFACE);
+    // A controlled snapshot may contain preferences from more than one
+    // precedence layer (for example a desktop-specific Settings override and
+    // a lower-priority generic default). Lower source priorities are higher
+    // precedence; equal priorities retain the parser's last-value behavior.
+    let mut preferences: BTreeMap<&str, &PortalPreference> = BTreeMap::new();
+    for preference in &config.preferences {
+        let replace = preferences
+            .get(preference.interface.as_str())
+            .is_none_or(|current| preference.source_priority <= current.source_priority);
+        if replace {
+            preferences.insert(preference.interface.as_str(), preference);
+        }
+    }
+    let default_preference = preferences.get(DEFAULT_INTERFACE).copied();
 
     interfaces
         .into_iter()
@@ -86,15 +91,24 @@ fn resolve_interface(
     let explicit = preferences.get(interface).copied();
     let preference = explicit.or(default_preference);
 
-    let available: Vec<&PortalBackend> = backends
+    let discovered: Vec<&PortalBackend> = backends
         .iter()
         .filter(|b| b.interfaces.contains(interface))
         .collect();
-    let usable: Vec<&PortalBackend> = available
-        .iter()
-        .copied()
-        .filter(|b| use_in_matches(b, desktops))
-        .collect();
+    // A resolved interface/default preference is the modern selection
+    // contract: the configured backend order is authoritative, so a legacy
+    // UseIn restriction must not reject a backend that the config names.  If
+    // there is no preference for this interface, retain the legacy fallback
+    // and use only descriptors applicable to the current desktop.
+    let usable: Vec<&PortalBackend> = if preference.is_some() {
+        discovered.clone()
+    } else {
+        discovered
+            .iter()
+            .copied()
+            .filter(|b| use_in_matches(b, desktops))
+            .collect()
+    };
 
     let mut evidence = Vec::new();
     match (explicit, default_preference) {
@@ -126,15 +140,30 @@ fn resolve_interface(
             ),
         });
     }
-    for backend in &available {
-        if !use_in_matches(backend, desktops) {
-            evidence.push(RouteEvidence {
-                message: format!(
-                    "backend {} excluded by UseIn (allowed: {})",
-                    backend.id,
-                    backend.legacy_use_in.join(", ")
-                ),
-            });
+    if preference.is_some() {
+        for backend in &usable {
+            if !use_in_matches(backend, desktops) && !backend.legacy_use_in.is_empty() {
+                evidence.push(RouteEvidence {
+                    message: format!(
+                        "backend {} retained by config preference; legacy UseIn is not a \
+                         rejection (allowed: {})",
+                        backend.id,
+                        backend.legacy_use_in.join(", ")
+                    ),
+                });
+            }
+        }
+    } else {
+        for backend in &discovered {
+            if !use_in_matches(backend, desktops) {
+                evidence.push(RouteEvidence {
+                    message: format!(
+                        "backend {} excluded by UseIn (allowed: {})",
+                        backend.id,
+                        backend.legacy_use_in.join(", ")
+                    ),
+                });
+            }
         }
     }
 
@@ -281,6 +310,17 @@ mod tests {
         let config = config(vec![preference(FILE_CHOOSER, &["gtk"])]);
         let routes = resolve_routes(&["GNOME".to_owned()], &config, &backends);
         assert_eq!(route(FILE_CHOOSER, &routes).selected_candidates, ["gtk"]);
+    }
+
+    #[test]
+    fn explicit_preference_overrides_legacy_use_in_restriction() {
+        let backends = vec![backend("gnome", "d.gnome", &[SCREENSHOT], &["gnome"])];
+        let config = config(vec![preference(SCREENSHOT, &["gnome"])]);
+        let routes = resolve_routes(&normalize_desktops("niri"), &config, &backends);
+        let screenshot = route(SCREENSHOT, &routes);
+        assert_eq!(screenshot.available_candidates, ["gnome"]);
+        assert_eq!(screenshot.selected_candidates, ["gnome"]);
+        assert_eq!(screenshot.status, RouteStatus::Selected);
     }
 
     #[test]
@@ -618,11 +658,7 @@ mod tests {
                 "gtk".to_owned(),
             ),
         ];
-        let routes = resolve_routes(
-            &normalize_desktops("Niri:GNOME"),
-            &config(preferences),
-            &backends,
-        );
+        let routes = resolve_routes(&normalize_desktops("niri"), &config(preferences), &backends);
 
         for interface in [FILE_CHOOSER, SCREENCAST, SCREENSHOT, SETTINGS] {
             let resolved = route(interface, &routes);
@@ -645,7 +681,7 @@ mod tests {
     }
 
     #[test]
-    fn niri_use_in_excludes_gnome_from_pure_niri_identity() {
+    fn config_preference_allows_gnome_for_pure_niri_identity() {
         use crate::collectors::portal_config::parse_config;
         use crate::collectors::portal_files::parse_portal_file;
 
@@ -669,17 +705,37 @@ mod tests {
         ];
         let routes = resolve_routes(&normalize_desktops("niri"), &config(preferences), &backends);
         let screencast = route(SCREENCAST, &routes);
-        assert_eq!(screencast.status, RouteStatus::NoProvider);
-        assert!(screencast.available_candidates.is_empty());
+        assert_eq!(screencast.status, RouteStatus::Selected);
+        assert_eq!(screencast.available_candidates, ["gnome"]);
+        assert_eq!(screencast.selected_candidates, ["gnome"]);
         assert!(
             screencast
                 .evidence
                 .iter()
-                .any(|evidence| evidence.message.contains("UseIn"))
+                .any(|evidence| evidence.message.contains("retained by config preference"))
         );
         assert_eq!(
             route("org.freedesktop.impl.portal.Access", &routes).selected_candidates,
             ["gtk"]
+        );
+    }
+
+    #[test]
+    fn no_config_keeps_legacy_use_in_filtering() {
+        let backends = vec![
+            backend("gnome", "d.gnome", &[SCREENSHOT], &["gnome"]),
+            backend("gtk", "d.gtk", &[SCREENSHOT], &[]),
+        ];
+        let routes = resolve_routes(&normalize_desktops("niri"), &config(Vec::new()), &backends);
+        let screenshot = route(SCREENSHOT, &routes);
+        assert_eq!(screenshot.available_candidates, ["gtk"]);
+        assert_eq!(screenshot.selected_candidates, ["gtk"]);
+        assert_eq!(screenshot.status, RouteStatus::Selected);
+        assert!(
+            screenshot
+                .evidence
+                .iter()
+                .any(|evidence| evidence.message.contains("excluded by UseIn"))
         );
     }
 
@@ -701,6 +757,10 @@ mod tests {
         );
         assert!(errors.is_empty());
         assert_eq!(generic_prefs[0].backends, ["gnome", "gtk"]);
+        // Deliberately keep the higher-precedence entry first: resolution must
+        // use source_priority, not the incidental vector order.
+        let mut merged_preferences = override_prefs;
+        merged_preferences.extend(generic_prefs);
 
         let config = PortalConfigInfo {
             candidate_files: vec![
@@ -710,7 +770,7 @@ mod tests {
             selected_file: Some(
                 "/home/tester/.config/xdg-desktop-portal/niri-portals.conf".to_owned(),
             ),
-            preferences: override_prefs,
+            preferences: merged_preferences,
             parse_errors: Vec::new(),
         };
         let backends = vec![
@@ -725,7 +785,7 @@ mod tests {
                 "gtk".to_owned(),
             ),
         ];
-        let routes = resolve_routes(&normalize_desktops("niri:GNOME"), &config, &backends);
+        let routes = resolve_routes(&normalize_desktops("niri"), &config, &backends);
         let settings = route(SETTINGS, &routes);
         assert_eq!(settings.requested_candidates, ["gtk"]);
         assert_eq!(settings.available_candidates, ["gnome", "gtk"]);

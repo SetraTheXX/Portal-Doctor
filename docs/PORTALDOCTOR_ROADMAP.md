@@ -944,9 +944,10 @@ Validate mixed-backend routing and activation-environment diagnosis.
   fixtures with desktop-specific precedence coverage.
 - [x] Verify `Screenshot` and `ScreenCast` select `wlr`, while `FileChooser`
   and `Settings` select the appropriate GTK fallback.
-- [x] Verify the resolver honors `UseIn` and the portal rules do not emit false
-  missing-provider or duplicate/multi-provider findings for the pinned mixed
-  configuration.
+- [x] Verify the resolver keeps legacy `UseIn` filtering for no-preference
+  routes while configured preferences remain authoritative, and that the
+  portal rules do not emit false missing-provider or duplicate/multi-provider
+  findings for the pinned mixed configuration.
 - [x] Add a controlled Sway Wayland environment fixture and aggregate passive
   snapshot: the healthy mixed route is clean, and a missing `WAYLAND_DISPLAY`
   produces only the existing `ENV003` finding.
@@ -1043,8 +1044,9 @@ Handle modern compositor setups where portal integration often combines multiple
   `hyprland-portals.conf`, `hyprland.portal` and GTK fallback fixtures.
 - [x] Verify the generic resolver selects Hyprland for Screenshot/ScreenCast
   and GTK for FileChooser/Settings, applies desktop-specific configuration
-  before generic fallback and excludes the Hyprland descriptor through
-  `UseIn` on another desktop.
+  before generic fallback, and keeps configured preferences authoritative even
+  when a legacy `UseIn` value names another desktop. No-preference routes keep
+  the legacy `UseIn` fallback.
 - [x] Aggregate the fixture through the existing passive rule pipeline:
   healthy mixed routing is clean, missing `WAYLAND_DISPLAY` emits only
   `ENV003`, and missing Hyprland or GTK owner/unit state emits only the
@@ -1081,15 +1083,16 @@ the Phase 8, KDE or Sway blocker state.
 
 ## Controlled Niri mixed-backend + duplicate-Settings slice — 2026-09-09
 
-- [x] Add an upstream-shaped Niri Wayland fixture with `niri:GNOME` session
+- [x] Add an upstream-shaped Niri Wayland fixture with the pure `niri` session
   identity, desktop-specific `niri-portals.conf`, `default=gnome;gtk`, and
   GNOME/GTK descriptor fixtures. The Secret/gnome-keyring entry remains out of
   scope because the current model does not have a Secret-service-specific
   runtime/unit contract.
 - [x] Verify the generic resolver's actual capability result: GNOME serves
   ScreenCast, Screenshot, FileChooser and Settings, while explicit
-  Access/Notification fallback entries select GTK. A pure `niri` identity
-  continues to exclude GNOME through the generic `UseIn` rule.
+  Access/Notification fallback entries select GTK. A modern configured
+  interface/default preference takes precedence over legacy `UseIn`; a
+  no-preference route still uses the generic `UseIn` fallback.
 - [x] Add passive healthy, missing-Wayland, selected-GNOME-missing and
   selected-GTK-missing aggregates. They remain respectively clean, only
   `ENV003`, or only generic `DBUS002`; mixed installation alone is not a

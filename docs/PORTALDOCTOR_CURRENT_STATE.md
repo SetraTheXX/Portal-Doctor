@@ -103,8 +103,8 @@ for the re-evaluation trigger.
 
 The first independent Phase 9 development slice now has deterministic KDE
 Plasma `kde-portals.conf` and `kde.portal` fixtures covering desktop-specific
-candidate precedence, metadata parsing, default route selection, `UseIn`
-exclusion and the desktop-specific configuration rule. This is static parser
+candidate precedence, metadata parsing, default route selection, and legacy
+no-preference `UseIn` behavior. This is static parser
 and resolver coverage plus controlled runtime-correlation tests for the
 generic backend-unit mapping, systemd state parsing and D-Bus ownership/finding
 semantics for `org.freedesktop.impl.portal.desktop.kde`. It does not add a KDE
@@ -226,8 +226,9 @@ Controlled Hyprland fixtures now cover a desktop-specific
 `hyprland-portals.conf`, the canonical
 `org.freedesktop.impl.portal.desktop.hyprland` descriptor, GTK fallback and a
 Hyprland Wayland environment. The existing generic resolver selects Hyprland
-for Screenshot/ScreenCast and GTK for FileChooser/Settings; `UseIn` excludes
-Hyprland on a different desktop. The passive aggregate is finding-free when
+for Screenshot/ScreenCast and GTK for FileChooser/Settings; configured
+preferences remain authoritative across desktop identities, while no-preference
+fallbacks still apply legacy `UseIn`. The passive aggregate is finding-free when
 both backends are healthy, emits only `ENV003` without `WAYLAND_DISPLAY`, and
 keeps the routes unchanged while a missing Hyprland or GTK runtime emits only
 the corresponding generic `DBUS002`.
@@ -262,15 +263,16 @@ blockers are unchanged.
 
 ### Phase 11 controlled Niri mixed-backend + Settings slice — 2026-09-09
 
-Controlled Niri fixtures now cover a Wayland `niri:GNOME` identity, the
+Controlled Niri fixtures now cover the upstream Wayland `niri` identity, the
 upstream-shaped `default=gnome;gtk` ordering, explicit GTK handling for
-Access/Notification, and GNOME/GTK descriptors. The generic resolver selects
-GNOME for ScreenCast, Screenshot, FileChooser and Settings, and GTK for the
-explicit fallback interfaces. The pure `niri` identity still respects the
-GNOME descriptor's legacy `UseIn=gnome` restriction; this is generic resolver
-behavior, not a Niri-specific branch. The current model intentionally omits
-Niri's Secret/gnome-keyring entry because it has no Secret-service-specific
-runtime or unit contract.
+Access/Notification, and GNOME/GTK descriptors. The generic resolver treats
+the configured default as authoritative: GNOME is selectable for ScreenCast,
+Screenshot, FileChooser and Settings even though its legacy `UseIn=gnome` does
+not list Niri, while GTK serves the explicit fallback interfaces. With no
+interface/default preference, the resolver retains the legacy `UseIn` filter;
+this is generic resolver behavior, not a Niri-specific branch. The current
+model intentionally omits Niri's Secret/gnome-keyring entry because it has no
+Secret-service-specific runtime or unit contract.
 
 The passive aggregate is clean with both selected runtime owners healthy,
 emits only `ENV003` when `WAYLAND_DISPLAY` is absent, and emits only generic
