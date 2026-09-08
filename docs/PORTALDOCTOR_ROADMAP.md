@@ -1079,6 +1079,32 @@ validate a live Hyprland session, install or start providers, run active
 Screenshot or ScreenCast probes, create a Hyprland support claim, or change
 the Phase 8, KDE or Sway blocker state.
 
+## Controlled Niri mixed-backend + duplicate-Settings slice — 2026-09-09
+
+- [x] Add an upstream-shaped Niri Wayland fixture with `niri:GNOME` session
+  identity, desktop-specific `niri-portals.conf`, `default=gnome;gtk`, and
+  GNOME/GTK descriptor fixtures. The Secret/gnome-keyring entry remains out of
+  scope because the current model does not have a Secret-service-specific
+  runtime/unit contract.
+- [x] Verify the generic resolver's actual capability result: GNOME serves
+  ScreenCast, Screenshot, FileChooser and Settings, while explicit
+  Access/Notification fallback entries select GTK. A pure `niri` identity
+  continues to exclude GNOME through the generic `UseIn` rule.
+- [x] Add passive healthy, missing-Wayland, selected-GNOME-missing and
+  selected-GTK-missing aggregates. They remain respectively clean, only
+  `ENV003`, or only generic `DBUS002`; mixed installation alone is not a
+  duplicate/config finding.
+- [x] Add separate higher-precedence `Settings=gtk` and lower-precedence
+  generic `default=gnome;gtk` fixtures. The normal resolver selects only GTK
+  for Settings, leaves ScreenCast on GNOME and emits no `CFG004`.
+- [x] Keep the Issue #2033 compatibility warning blocked: the snapshot has no
+  bounded xdg-desktop-portal package-version evidence, so no synthetic version
+  field, guessed range or version-aware production rule was added.
+
+This is controlled static/passive compatibility coverage only. It does not
+validate a live Niri session, install providers, run active probes, create a
+Niri support claim or change the Phase 8, KDE or Sway blocker state.
+
 ## Tasks
 
 - Hyprland backend model/fixtures,

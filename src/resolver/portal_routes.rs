@@ -244,6 +244,7 @@ mod tests {
     const FILE_CHOOSER: &str = "org.freedesktop.impl.portal.FileChooser";
     const SCREENCAST: &str = "org.freedesktop.impl.portal.ScreenCast";
     const SCREENSHOT: &str = "org.freedesktop.impl.portal.Screenshot";
+    const SETTINGS: &str = "org.freedesktop.impl.portal.Settings";
 
     #[test]
     fn gnome_default_routing_selects_preferred_backend() {
@@ -592,5 +593,144 @@ mod tests {
                 .iter()
                 .any(|e| e.message.contains("UseIn"))
         );
+    }
+
+    #[test]
+    fn niri_fixture_resolves_gnome_capture_and_gtk_explicit_fallbacks() {
+        use crate::collectors::portal_config::parse_config;
+        use crate::collectors::portal_files::parse_portal_file;
+
+        let (preferences, errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/niri-portals.conf"),
+            "/usr/share/xdg-desktop-portal/niri-portals.conf",
+            0,
+        );
+        assert!(errors.is_empty());
+        let backends = vec![
+            parse_portal_file(
+                include_str!("../../tests/fixtures/portal-routing/gnome.portal"),
+                "/usr/share/xdg-desktop-portal/portals/gnome.portal",
+                "gnome".to_owned(),
+            ),
+            parse_portal_file(
+                include_str!("../../tests/fixtures/portal-routing/niri-gtk.portal"),
+                "/usr/share/xdg-desktop-portal/portals/gtk.portal",
+                "gtk".to_owned(),
+            ),
+        ];
+        let routes = resolve_routes(
+            &normalize_desktops("Niri:GNOME"),
+            &config(preferences),
+            &backends,
+        );
+
+        for interface in [FILE_CHOOSER, SCREENCAST, SCREENSHOT, SETTINGS] {
+            let resolved = route(interface, &routes);
+            assert_eq!(resolved.status, RouteStatus::Selected, "{interface}");
+            assert_eq!(resolved.selected_candidates, ["gnome"], "{interface}");
+        }
+        for interface in [
+            "org.freedesktop.impl.portal.Access",
+            "org.freedesktop.impl.portal.Notification",
+        ] {
+            let resolved = route(interface, &routes);
+            assert_eq!(resolved.status, RouteStatus::Selected, "{interface}");
+            assert_eq!(resolved.selected_candidates, ["gtk"], "{interface}");
+        }
+        assert_eq!(route(SCREENCAST, &routes).available_candidates, ["gnome"]);
+        assert_eq!(
+            route(SETTINGS, &routes).available_candidates,
+            ["gnome", "gtk"]
+        );
+    }
+
+    #[test]
+    fn niri_use_in_excludes_gnome_from_pure_niri_identity() {
+        use crate::collectors::portal_config::parse_config;
+        use crate::collectors::portal_files::parse_portal_file;
+
+        let (preferences, errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/niri-portals.conf"),
+            "/usr/share/xdg-desktop-portal/niri-portals.conf",
+            0,
+        );
+        assert!(errors.is_empty());
+        let backends = vec![
+            parse_portal_file(
+                include_str!("../../tests/fixtures/portal-routing/gnome.portal"),
+                "/usr/share/xdg-desktop-portal/portals/gnome.portal",
+                "gnome".to_owned(),
+            ),
+            parse_portal_file(
+                include_str!("../../tests/fixtures/portal-routing/niri-gtk.portal"),
+                "/usr/share/xdg-desktop-portal/portals/gtk.portal",
+                "gtk".to_owned(),
+            ),
+        ];
+        let routes = resolve_routes(&normalize_desktops("niri"), &config(preferences), &backends);
+        let screencast = route(SCREENCAST, &routes);
+        assert_eq!(screencast.status, RouteStatus::NoProvider);
+        assert!(screencast.available_candidates.is_empty());
+        assert!(
+            screencast
+                .evidence
+                .iter()
+                .any(|evidence| evidence.message.contains("UseIn"))
+        );
+        assert_eq!(
+            route("org.freedesktop.impl.portal.Access", &routes).selected_candidates,
+            ["gtk"]
+        );
+    }
+
+    #[test]
+    fn higher_precedence_niri_settings_override_selects_only_gtk() {
+        use crate::collectors::portal_config::parse_config;
+        use crate::collectors::portal_files::parse_portal_file;
+
+        let (override_prefs, errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/niri-settings-override.conf"),
+            "/home/tester/.config/xdg-desktop-portal/niri-portals.conf",
+            0,
+        );
+        assert!(errors.is_empty());
+        let (generic_prefs, errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/generic-gnome-gtk-portals.conf"),
+            "/usr/share/xdg-desktop-portal/portals.conf",
+            1,
+        );
+        assert!(errors.is_empty());
+        assert_eq!(generic_prefs[0].backends, ["gnome", "gtk"]);
+
+        let config = PortalConfigInfo {
+            candidate_files: vec![
+                "/home/tester/.config/xdg-desktop-portal/niri-portals.conf".to_owned(),
+                "/usr/share/xdg-desktop-portal/portals.conf".to_owned(),
+            ],
+            selected_file: Some(
+                "/home/tester/.config/xdg-desktop-portal/niri-portals.conf".to_owned(),
+            ),
+            preferences: override_prefs,
+            parse_errors: Vec::new(),
+        };
+        let backends = vec![
+            parse_portal_file(
+                include_str!("../../tests/fixtures/portal-routing/gnome.portal"),
+                "/usr/share/xdg-desktop-portal/portals/gnome.portal",
+                "gnome".to_owned(),
+            ),
+            parse_portal_file(
+                include_str!("../../tests/fixtures/portal-routing/niri-gtk.portal"),
+                "/usr/share/xdg-desktop-portal/portals/gtk.portal",
+                "gtk".to_owned(),
+            ),
+        ];
+        let routes = resolve_routes(&normalize_desktops("niri:GNOME"), &config, &backends);
+        let settings = route(SETTINGS, &routes);
+        assert_eq!(settings.requested_candidates, ["gtk"]);
+        assert_eq!(settings.available_candidates, ["gnome", "gtk"]);
+        assert_eq!(settings.selected_candidates, ["gtk"]);
+        assert_eq!(settings.status, RouteStatus::Selected);
+        assert_eq!(route(SCREENCAST, &routes).selected_candidates, ["gnome"]);
     }
 }

@@ -230,6 +230,43 @@ mod tests {
     }
 
     #[test]
+    fn parses_niri_gnome_and_gtk_descriptor_fixtures() {
+        let gnome = parse_portal_file(
+            include_str!("../../tests/fixtures/portal-routing/gnome.portal"),
+            "/usr/share/xdg-desktop-portal/portals/gnome.portal",
+            "gnome".to_owned(),
+        );
+        assert_eq!(gnome.dbus_name, "org.freedesktop.impl.portal.desktop.gnome");
+        assert!(
+            gnome
+                .interfaces
+                .contains("org.freedesktop.impl.portal.ScreenCast")
+        );
+        assert!(
+            gnome
+                .interfaces
+                .contains("org.freedesktop.impl.portal.Settings")
+        );
+        assert_eq!(gnome.legacy_use_in, ["gnome"]);
+
+        let gtk = parse_portal_file(
+            include_str!("../../tests/fixtures/portal-routing/niri-gtk.portal"),
+            "/usr/share/xdg-desktop-portal/portals/gtk.portal",
+            "gtk".to_owned(),
+        );
+        assert_eq!(gtk.dbus_name, "org.freedesktop.impl.portal.desktop.gtk");
+        assert!(
+            gtk.interfaces
+                .contains("org.freedesktop.impl.portal.Notification")
+        );
+        assert!(
+            gtk.interfaces
+                .contains("org.freedesktop.impl.portal.Settings")
+        );
+        assert!(gtk.legacy_use_in.is_empty());
+    }
+
+    #[test]
     fn tolerates_missing_keys_and_foreign_sections() {
         let text = "[other]\nkey=value\n[portal]\nDBusName=x\n";
         let backend = parse_portal_file(text, "p.portal", "p".to_owned());

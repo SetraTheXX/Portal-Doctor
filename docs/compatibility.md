@@ -101,6 +101,26 @@ desktop/display values remain generic `ENV004` without a synthetic `ENV003`.
 Unavailable or timed-out activation is bounded and does not invent a
 mismatch. This is controlled coverage only; it is not live Hyprland
 validation, an active-probe gate or a support claim.
+
+Phase 11 also has controlled Niri mixed-backend coverage. The canonical
+fixture uses a `niri:GNOME` Wayland identity so the GNOME descriptor's legacy
+`UseIn=gnome` remains eligible: the upstream-shaped `default=gnome;gtk`
+ordering resolves ScreenCast, Screenshot, FileChooser and Settings to GNOME,
+while explicit Access/Notification entries resolve to GTK. A pure `niri`
+identity continues to respect the generic `UseIn` exclusion. Healthy passive
+runtime is clean; missing `WAYLAND_DISPLAY` is only `ENV003`; missing selected
+GNOME or GTK owners are only `DBUS002`.
+
+The separate high-priority `Settings=gtk` fixture is kept distinct from the
+canonical config and lower generic `default=gnome;gtk` fixture. PortalDoctor's
+normal resolver selects only GTK for Settings, keeps ScreenCast on GNOME and
+does not treat multiple installed descriptors as a duplicate error. Issue
+#2033's XDG Desktop Portal 1.22.0 behavior is therefore modeled as a
+regression fixture, not diagnosed as a live upstream bug: the current snapshot
+does not expose reliable xdg-desktop-portal package-version evidence, so the
+version-aware warning remains blocked. The Secret/gnome-keyring entry is not
+claimed because the current model lacks its service-specific runtime contract.
+No live Niri validation or Niri support claim follows from this coverage.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 
