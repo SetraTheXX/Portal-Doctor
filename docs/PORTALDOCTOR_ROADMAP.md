@@ -956,6 +956,16 @@ Sway session, install a provider, run an active probe or create a wlroots/Sway
 support claim. The aggregate environment coverage is likewise fixture-only and
 does not create a live Sway support claim.
 
+## Controlled runtime-correlation slice
+
+- [x] Exercise the generic runtime correlation model for `wlr` and `gtk`:
+  descriptor D-Bus names and conventional systemd unit mappings are asserted.
+- [x] Verify healthy owner/unit state is silent, while missing or failed `wlr`
+  and missing GTK fallback runtime emit only the generic `DBUS002` finding.
+
+This remains controlled snapshot/rule coverage. It does not validate a live
+Sway/Wayland session, install or start providers, or run an active probe.
+
 ## Important cases
 
 `xdg-desktop-portal-wlr` implements a limited subset of portals, so mixed backend usage is expected.

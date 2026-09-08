@@ -766,6 +766,79 @@ mod tests {
         }
     }
 
+    fn sway_runtime_snapshot(
+        wlr_outcome: DbusOutcome,
+        gtk_outcome: DbusOutcome,
+        wlr_unit_state: UnitState,
+        gtk_unit_state: UnitState,
+    ) -> Snapshot {
+        const WLR_BACKEND: &str = "org.freedesktop.impl.portal.desktop.wlr";
+        const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
+
+        let mut snapshot = sway_passive_snapshot(true);
+        snapshot.dbus = Section::available(DbusInfo {
+            connected: true,
+            checks: vec![
+                DbusCheck {
+                    name: PORTAL_FRONTEND_NAME.to_owned(),
+                    outcome: DbusOutcome::HasOwner,
+                },
+                DbusCheck {
+                    name: WLR_BACKEND.to_owned(),
+                    outcome: wlr_outcome,
+                },
+                DbusCheck {
+                    name: GTK_BACKEND.to_owned(),
+                    outcome: gtk_outcome,
+                },
+            ],
+        });
+        snapshot.services = Section::available(ServiceInfo {
+            units: vec![
+                UnitStatus {
+                    unit: ServiceInfo::frontend_unit().to_owned(),
+                    state: UnitState::Active,
+                    sub_state: Some("running".to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("wlr"),
+                    state: wlr_unit_state,
+                    sub_state: Some(wlr_unit_state.as_str().to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("gtk"),
+                    state: gtk_unit_state,
+                    sub_state: Some(gtk_unit_state.as_str().to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+            ],
+        });
+        snapshot
+    }
+
+    fn assert_sway_runtime_bindings(snapshot: &Snapshot) {
+        assert_eq!(
+            selected_backend_dbus_names(&snapshot.portal_routes, &snapshot.portal_backends),
+            vec![
+                "org.freedesktop.impl.portal.desktop.gtk".to_owned(),
+                "org.freedesktop.impl.portal.desktop.wlr".to_owned(),
+            ]
+        );
+        let services = snapshot.services.value.as_ref().expect("Sway services");
+        assert_eq!(
+            ServiceInfo::backend_unit("wlr"),
+            "xdg-desktop-portal-wlr.service"
+        );
+        assert_eq!(
+            ServiceInfo::backend_unit("gtk"),
+            "xdg-desktop-portal-gtk.service"
+        );
+        assert!(services.unit("xdg-desktop-portal-wlr.service").is_some());
+        assert!(services.unit("xdg-desktop-portal-gtk.service").is_some());
+    }
+
     fn assert_kde_routes_and_backend(snapshot: &Snapshot) {
         const KDE_BACKEND: &str = "org.freedesktop.impl.portal.desktop.kde";
         for interface in [
@@ -831,6 +904,85 @@ mod tests {
         assert_eq!(
             RunOutcome::from_report(&Report::new(snapshot, findings, "0.2.1")),
             RunOutcome::RuntimeContextUnavailable
+        );
+    }
+
+    #[test]
+    fn aggregate_sway_runtime_healthy_wlr_and_gtk_are_silent() {
+        let snapshot = sway_runtime_snapshot(
+            DbusOutcome::HasOwner,
+            DbusOutcome::HasOwner,
+            UnitState::Active,
+            UnitState::Active,
+        );
+        assert_sway_mixed_routes(&snapshot);
+        assert_sway_runtime_bindings(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn aggregate_sway_wlr_missing_is_only_generic_dbus002() {
+        let snapshot = sway_runtime_snapshot(
+            DbusOutcome::NoOwner,
+            DbusOutcome::HasOwner,
+            UnitState::NotFound,
+            UnitState::Active,
+        );
+        assert_sway_mixed_routes(&snapshot);
+        assert_sway_runtime_bindings(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["DBUS002"]);
+        assert!(
+            findings[0]
+                .summary
+                .contains("org.freedesktop.impl.portal.desktop.wlr")
+        );
+    }
+
+    #[test]
+    fn aggregate_sway_wlr_activation_failure_is_only_generic_dbus002() {
+        let snapshot = sway_runtime_snapshot(
+            DbusOutcome::ActivationFailure,
+            DbusOutcome::HasOwner,
+            UnitState::Failed,
+            UnitState::Active,
+        );
+        assert_sway_mixed_routes(&snapshot);
+        assert_sway_runtime_bindings(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["DBUS002"]);
+        assert!(
+            findings[0]
+                .summary
+                .contains("org.freedesktop.impl.portal.desktop.wlr")
+        );
+    }
+
+    #[test]
+    fn aggregate_sway_gtk_fallback_missing_is_only_generic_dbus002() {
+        let snapshot = sway_runtime_snapshot(
+            DbusOutcome::HasOwner,
+            DbusOutcome::NoOwner,
+            UnitState::Active,
+            UnitState::NotFound,
+        );
+        assert_sway_mixed_routes(&snapshot);
+        assert_sway_runtime_bindings(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["DBUS002"]);
+        assert!(
+            findings[0]
+                .summary
+                .contains("org.freedesktop.impl.portal.desktop.gtk")
         );
     }
 
