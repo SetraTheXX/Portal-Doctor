@@ -205,6 +205,31 @@ mod tests {
     }
 
     #[test]
+    fn parses_hyprland_portal_descriptor_fixture() {
+        let backend = parse_portal_file(
+            include_str!("../../tests/fixtures/portal-routing/hyprland.portal"),
+            "/usr/share/xdg-desktop-portal/portals/hyprland.portal",
+            "hyprland".to_owned(),
+        );
+        assert_eq!(backend.id, "hyprland");
+        assert_eq!(
+            backend.dbus_name,
+            "org.freedesktop.impl.portal.desktop.hyprland"
+        );
+        assert!(
+            backend
+                .interfaces
+                .contains("org.freedesktop.impl.portal.Screenshot")
+        );
+        assert!(
+            backend
+                .interfaces
+                .contains("org.freedesktop.impl.portal.ScreenCast")
+        );
+        assert_eq!(backend.legacy_use_in, ["Hyprland"]);
+    }
+
+    #[test]
     fn tolerates_missing_keys_and_foreign_sections() {
         let text = "[other]\nkey=value\n[portal]\nDBusName=x\n";
         let backend = parse_portal_file(text, "p.portal", "p".to_owned());

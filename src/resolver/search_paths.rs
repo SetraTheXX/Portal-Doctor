@@ -175,4 +175,29 @@ mod tests {
                 .all(|path| !path.ends_with("sway-portals.conf"))
         );
     }
+
+    #[test]
+    fn hyprland_desktop_config_precedes_generic_fallback() {
+        let candidates = portal_config_candidates(&roots(), &["Hyprland".to_owned()]);
+        let paths: Vec<String> = candidates
+            .iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            &paths[..5],
+            [
+                "/home/tester/.config/xdg-desktop-portal/hyprland-portals.conf",
+                "/cfg/global/xdg-desktop-portal/hyprland-portals.conf",
+                "/home/tester/.local/share/xdg-desktop-portal/hyprland-portals.conf",
+                "/usr/local/share/xdg-desktop-portal/hyprland-portals.conf",
+                "/usr/share/xdg-desktop-portal/hyprland-portals.conf",
+            ]
+        );
+        assert!(paths[5..].iter().all(|path| path.ends_with("portals.conf")));
+        assert!(
+            paths[5..]
+                .iter()
+                .all(|path| !path.ends_with("hyprland-portals.conf"))
+        );
+    }
 }

@@ -639,6 +639,120 @@ mod tests {
             .collect()
     }
 
+    fn hyprland_fixture_vars() -> BTreeMap<String, String> {
+        include_str!("../tests/fixtures/environment/hyprland-wayland.env")
+            .lines()
+            .filter_map(|line| line.split_once('='))
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect()
+    }
+
+    fn hyprland_passive_snapshot(with_wayland_display: bool) -> Snapshot {
+        const HYPRLAND_BACKEND: &str = "org.freedesktop.impl.portal.desktop.hyprland";
+        const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
+
+        let mut process = hyprland_fixture_vars();
+        if !with_wayland_display {
+            process.remove("WAYLAND_DISPLAY");
+        }
+        let session = crate::collectors::environment::session_info(&process);
+        let environment =
+            crate::collectors::environment::environment_info(process.clone(), None, Some(&process));
+
+        let (preferences, parse_errors) = crate::collectors::portal_config::parse_config(
+            include_str!("../tests/fixtures/portal-routing/hyprland-portals.conf"),
+            "/fixture/hyprland-portals.conf",
+            0,
+        );
+        let config = PortalConfigInfo {
+            candidate_files: vec!["/fixture/hyprland-portals.conf".to_owned()],
+            selected_file: Some("/fixture/hyprland-portals.conf".to_owned()),
+            preferences,
+            parse_errors,
+        };
+        let backends = vec![
+            crate::collectors::portal_files::parse_portal_file(
+                include_str!("../tests/fixtures/portal-routing/hyprland.portal"),
+                "/fixture/hyprland.portal",
+                "hyprland".to_owned(),
+            ),
+            crate::collectors::portal_files::parse_portal_file(
+                include_str!("../tests/fixtures/portal-routing/gtk.portal"),
+                "/fixture/gtk.portal",
+                "gtk".to_owned(),
+            ),
+        ];
+        let desktops = crate::resolver::portal_routes::normalize_desktops(
+            process
+                .get("XDG_CURRENT_DESKTOP")
+                .expect("Hyprland fixture desktop identity"),
+        );
+        let routes = crate::resolver::portal_routes::resolve_routes(&desktops, &config, &backends);
+
+        let mut snapshot = Snapshot::new(0);
+        snapshot.session = Section::available(session);
+        snapshot.environment = Section::available(environment);
+        snapshot.portal_config = Section::available(config);
+        snapshot.portal_backends = Section::available(backends);
+        snapshot.portal_routes = Section::available(routes);
+        snapshot.dbus = Section::available(DbusInfo {
+            connected: true,
+            checks: vec![
+                DbusCheck {
+                    name: PORTAL_FRONTEND_NAME.to_owned(),
+                    outcome: DbusOutcome::HasOwner,
+                },
+                DbusCheck {
+                    name: HYPRLAND_BACKEND.to_owned(),
+                    outcome: DbusOutcome::HasOwner,
+                },
+                DbusCheck {
+                    name: GTK_BACKEND.to_owned(),
+                    outcome: DbusOutcome::HasOwner,
+                },
+            ],
+        });
+        snapshot.services = Section::available(ServiceInfo {
+            units: vec![
+                UnitStatus {
+                    unit: ServiceInfo::frontend_unit().to_owned(),
+                    state: UnitState::Active,
+                    sub_state: Some("running".to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("hyprland"),
+                    state: UnitState::Active,
+                    sub_state: Some("running".to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("gtk"),
+                    state: UnitState::Active,
+                    sub_state: Some("running".to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+            ],
+        });
+        snapshot.pipewire = Section::available(PipeWireInfo {
+            model_version: 1,
+            version: Some("fixture".to_owned()),
+            object_count: 1,
+            node_count: 0,
+            link_count: 0,
+            portal_client_count: 0,
+            screen_cast_source_count: 1,
+            nodes: Vec::new(),
+            links: Vec::new(),
+        });
+        snapshot.wireplumber = Section::available(WirePlumberInfo {
+            model_version: 1,
+            pipewire_version: Some("fixture".to_owned()),
+            wireplumber_client_count: 1,
+        });
+        snapshot
+    }
+
     fn sway_passive_snapshot(with_wayland_display: bool) -> Snapshot {
         const WLR_BACKEND: &str = "org.freedesktop.impl.portal.desktop.wlr";
         const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
@@ -839,6 +953,104 @@ mod tests {
         assert!(services.unit("xdg-desktop-portal-gtk.service").is_some());
     }
 
+    fn assert_hyprland_mixed_routes(snapshot: &Snapshot) {
+        let routes = snapshot
+            .portal_routes
+            .value
+            .as_ref()
+            .expect("Hyprland route table");
+        for (interface, backend) in [
+            ("org.freedesktop.impl.portal.Screenshot", "hyprland"),
+            ("org.freedesktop.impl.portal.ScreenCast", "hyprland"),
+            ("org.freedesktop.impl.portal.FileChooser", "gtk"),
+            ("org.freedesktop.impl.portal.Settings", "gtk"),
+        ] {
+            let route = routes
+                .iter()
+                .find(|route| route.interface == interface)
+                .unwrap_or_else(|| panic!("missing Hyprland route for {interface}"));
+            assert_eq!(route.status, RouteStatus::Selected, "{interface}");
+            assert_eq!(route.selected_candidates, [backend], "{interface}");
+        }
+    }
+
+    fn hyprland_runtime_snapshot(
+        hyprland_outcome: DbusOutcome,
+        gtk_outcome: DbusOutcome,
+        hyprland_unit_state: UnitState,
+        gtk_unit_state: UnitState,
+    ) -> Snapshot {
+        const HYPRLAND_BACKEND: &str = "org.freedesktop.impl.portal.desktop.hyprland";
+        const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
+
+        let mut snapshot = hyprland_passive_snapshot(true);
+        snapshot.dbus = Section::available(DbusInfo {
+            connected: true,
+            checks: vec![
+                DbusCheck {
+                    name: PORTAL_FRONTEND_NAME.to_owned(),
+                    outcome: DbusOutcome::HasOwner,
+                },
+                DbusCheck {
+                    name: HYPRLAND_BACKEND.to_owned(),
+                    outcome: hyprland_outcome,
+                },
+                DbusCheck {
+                    name: GTK_BACKEND.to_owned(),
+                    outcome: gtk_outcome,
+                },
+            ],
+        });
+        snapshot.services = Section::available(ServiceInfo {
+            units: vec![
+                UnitStatus {
+                    unit: ServiceInfo::frontend_unit().to_owned(),
+                    state: UnitState::Active,
+                    sub_state: Some("running".to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("hyprland"),
+                    state: hyprland_unit_state,
+                    sub_state: Some(hyprland_unit_state.as_str().to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+                UnitStatus {
+                    unit: ServiceInfo::backend_unit("gtk"),
+                    state: gtk_unit_state,
+                    sub_state: Some(gtk_unit_state.as_str().to_owned()),
+                    unit_file_state: Some("static".to_owned()),
+                },
+            ],
+        });
+        snapshot
+    }
+
+    fn assert_hyprland_runtime_bindings(snapshot: &Snapshot) {
+        assert_eq!(
+            selected_backend_dbus_names(&snapshot.portal_routes, &snapshot.portal_backends),
+            vec![
+                "org.freedesktop.impl.portal.desktop.gtk".to_owned(),
+                "org.freedesktop.impl.portal.desktop.hyprland".to_owned(),
+            ]
+        );
+        let services = snapshot.services.value.as_ref().expect("Hyprland services");
+        assert_eq!(
+            ServiceInfo::backend_unit("hyprland"),
+            "xdg-desktop-portal-hyprland.service"
+        );
+        assert_eq!(
+            ServiceInfo::backend_unit("gtk"),
+            "xdg-desktop-portal-gtk.service"
+        );
+        assert!(
+            services
+                .unit("xdg-desktop-portal-hyprland.service")
+                .is_some()
+        );
+        assert!(services.unit("xdg-desktop-portal-gtk.service").is_some());
+    }
+
     fn assert_kde_routes_and_backend(snapshot: &Snapshot) {
         const KDE_BACKEND: &str = "org.freedesktop.impl.portal.desktop.kde";
         for interface in [
@@ -878,6 +1090,151 @@ mod tests {
         let report = Report::new(snapshot, findings, "0.2.1");
         assert!(minimum_runtime_context_available(&report.snapshot));
         assert_eq!(RunOutcome::from_report(&report), RunOutcome::Clean);
+    }
+
+    #[test]
+    fn aggregate_hyprland_wayland_mixed_passive_stack_is_clean() {
+        let snapshot = hyprland_passive_snapshot(true);
+        assert_hyprland_mixed_routes(&snapshot);
+        assert_hyprland_runtime_bindings(&snapshot);
+
+        let routes = snapshot.portal_routes.value.as_ref().unwrap();
+        let screenshot = routes
+            .iter()
+            .find(|route| route.interface == "org.freedesktop.impl.portal.Screenshot")
+            .unwrap();
+        assert_eq!(screenshot.requested_candidates, ["hyprland", "gtk"]);
+        assert_eq!(
+            snapshot
+                .portal_config
+                .value
+                .as_ref()
+                .unwrap()
+                .selected_file
+                .as_deref(),
+            Some("/fixture/hyprland-portals.conf")
+        );
+        assert_eq!(snapshot.portal_backends.value.as_ref().unwrap().len(), 2);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert!(findings.is_empty());
+        let report = Report::new(snapshot, findings, "0.2.1");
+        assert!(minimum_runtime_context_available(&report.snapshot));
+        assert_eq!(RunOutcome::from_report(&report), RunOutcome::Clean);
+    }
+
+    #[test]
+    fn aggregate_hyprland_without_wayland_display_emits_env003_only() {
+        let snapshot = hyprland_passive_snapshot(false);
+        assert_hyprland_mixed_routes(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["ENV003"]);
+        assert_eq!(
+            RunOutcome::from_report(&Report::new(snapshot, findings, "0.2.1")),
+            RunOutcome::RuntimeContextUnavailable
+        );
+    }
+
+    #[test]
+    fn hyprland_use_in_excludes_capture_backend_for_wrong_desktop() {
+        let (preferences, parse_errors) = crate::collectors::portal_config::parse_config(
+            include_str!("../tests/fixtures/portal-routing/hyprland-portals.conf"),
+            "/fixture/hyprland-portals.conf",
+            0,
+        );
+        assert!(parse_errors.is_empty());
+        let config = PortalConfigInfo {
+            candidate_files: vec!["/fixture/hyprland-portals.conf".to_owned()],
+            selected_file: Some("/fixture/hyprland-portals.conf".to_owned()),
+            preferences,
+            parse_errors,
+        };
+        let backends = vec![
+            crate::collectors::portal_files::parse_portal_file(
+                include_str!("../tests/fixtures/portal-routing/hyprland.portal"),
+                "/fixture/hyprland.portal",
+                "hyprland".to_owned(),
+            ),
+            crate::collectors::portal_files::parse_portal_file(
+                include_str!("../tests/fixtures/portal-routing/gtk.portal"),
+                "/fixture/gtk.portal",
+                "gtk".to_owned(),
+            ),
+        ];
+        let routes = crate::resolver::portal_routes::resolve_routes(
+            &crate::resolver::portal_routes::normalize_desktops("GNOME"),
+            &config,
+            &backends,
+        );
+        for interface in [
+            "org.freedesktop.impl.portal.Screenshot",
+            "org.freedesktop.impl.portal.ScreenCast",
+        ] {
+            let route = routes
+                .iter()
+                .find(|route| route.interface == interface)
+                .unwrap();
+            assert!(route.available_candidates.is_empty(), "{interface}");
+            assert!(route.selected_candidates.is_empty(), "{interface}");
+            assert_eq!(route.status, RouteStatus::NoProvider, "{interface}");
+            assert!(
+                route
+                    .evidence
+                    .iter()
+                    .any(|evidence| evidence.message.contains("excluded by UseIn")),
+                "{interface}"
+            );
+        }
+        let file_chooser = routes
+            .iter()
+            .find(|route| route.interface == "org.freedesktop.impl.portal.FileChooser")
+            .unwrap();
+        assert_eq!(file_chooser.selected_candidates, ["gtk"]);
+    }
+
+    #[test]
+    fn aggregate_hyprland_backend_missing_is_only_generic_dbus002() {
+        let snapshot = hyprland_runtime_snapshot(
+            DbusOutcome::NoOwner,
+            DbusOutcome::HasOwner,
+            UnitState::NotFound,
+            UnitState::Active,
+        );
+        assert_hyprland_mixed_routes(&snapshot);
+        assert_hyprland_runtime_bindings(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["DBUS002"]);
+        assert!(
+            findings[0]
+                .summary
+                .contains("org.freedesktop.impl.portal.desktop.hyprland")
+        );
+    }
+
+    #[test]
+    fn aggregate_hyprland_gtk_fallback_missing_is_only_generic_dbus002() {
+        let snapshot = hyprland_runtime_snapshot(
+            DbusOutcome::HasOwner,
+            DbusOutcome::NoOwner,
+            UnitState::Active,
+            UnitState::NotFound,
+        );
+        assert_hyprland_mixed_routes(&snapshot);
+        assert_hyprland_runtime_bindings(&snapshot);
+
+        let findings = evaluate(&snapshot);
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(finding_ids(&findings), ["DBUS002"]);
+        assert!(
+            findings[0]
+                .summary
+                .contains("org.freedesktop.impl.portal.desktop.gtk")
+        );
     }
 
     #[test]

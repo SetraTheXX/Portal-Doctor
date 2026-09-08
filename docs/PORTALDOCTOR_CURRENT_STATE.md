@@ -220,6 +220,23 @@ and `AvailableSourceTypes & 2` for ScreenCast) with PipeWire/WirePlumber
 ready. Do not repeatedly force the current GNOME host. This checkpoint does
 not change the Phase 8 GNOME Screenshot or ScreenCast blockers.
 
+### Phase 11 first bounded Hyprland compatibility slice — 2026-09-09
+
+Controlled Hyprland fixtures now cover a desktop-specific
+`hyprland-portals.conf`, the canonical
+`org.freedesktop.impl.portal.desktop.hyprland` descriptor, GTK fallback and a
+Hyprland Wayland environment. The existing generic resolver selects Hyprland
+for Screenshot/ScreenCast and GTK for FileChooser/Settings; `UseIn` excludes
+Hyprland on a different desktop. The passive aggregate is finding-free when
+both backends are healthy, emits only `ENV003` without `WAYLAND_DISPLAY`, and
+keeps the routes unchanged while a missing Hyprland or GTK runtime emits only
+the corresponding generic `DBUS002`.
+
+This is controlled static/passive coverage only. Production code remains
+generic; no live Hyprland session, provider installation, active probe,
+support claim or release approval follows from it. Phase 8, KDE and Sway
+blockers are unchanged.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility

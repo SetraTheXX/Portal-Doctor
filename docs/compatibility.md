@@ -82,6 +82,14 @@ service, owns `org.freedesktop.impl.portal.desktop.wlr`, selects WLR in passive
 routing, and advertises Screenshot v3 Window bit `2` plus ScreenCast
 `AvailableSourceTypes` Window bit `2`. The current GNOME host must not be
 repeatedly forced into this gate.
+
+Phase 11 now adds controlled Hyprland static/passive coverage: a generic
+desktop-specific configuration routes Screenshot/ScreenCast to the canonical
+Hyprland descriptor and FileChooser/Settings to GTK, while `UseIn` excludes
+Hyprland for another desktop. Healthy mixed routing is clean; missing
+`WAYLAND_DISPLAY` remains only `ENV003`, and missing Hyprland or GTK runtime
+state remains only generic `DBUS002`. This does not validate a live Hyprland
+session or create a support claim.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 
