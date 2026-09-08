@@ -52,20 +52,17 @@ pub fn resolve_routes(
             .map(|p| p.interface.clone()),
     );
 
-    // A controlled snapshot may contain preferences from more than one
-    // precedence layer (for example a desktop-specific Settings override and
-    // a lower-priority generic default). Lower source priorities are higher
-    // precedence; equal priorities retain the parser's last-value behavior.
-    let mut preferences: BTreeMap<&str, &PortalPreference> = BTreeMap::new();
-    for preference in &config.preferences {
-        let replace = preferences
-            .get(preference.interface.as_str())
-            .is_none_or(|current| preference.source_priority <= current.source_priority);
-        if replace {
-            preferences.insert(preference.interface.as_str(), preference);
-        }
-    }
-    let default_preference = preferences.get(DEFAULT_INTERFACE).copied();
+    // `PortalConfigInfo.preferences` is already the effective selected file;
+    // lower-precedence candidate files are intentionally not represented here.
+    let preferences: BTreeMap<&str, &PortalPreference> = config
+        .preferences
+        .iter()
+        .map(|p| (p.interface.as_str(), p))
+        .collect();
+    let default_preference = config
+        .preferences
+        .iter()
+        .find(|p| p.interface == DEFAULT_INTERFACE);
 
     interfaces
         .into_iter()
@@ -750,17 +747,6 @@ mod tests {
             0,
         );
         assert!(errors.is_empty());
-        let (generic_prefs, errors) = parse_config(
-            include_str!("../../tests/fixtures/portal-routing/generic-gnome-gtk-portals.conf"),
-            "/usr/share/xdg-desktop-portal/portals.conf",
-            1,
-        );
-        assert!(errors.is_empty());
-        assert_eq!(generic_prefs[0].backends, ["gnome", "gtk"]);
-        // Deliberately keep the higher-precedence entry first: resolution must
-        // use source_priority, not the incidental vector order.
-        let mut merged_preferences = override_prefs;
-        merged_preferences.extend(generic_prefs);
 
         let config = PortalConfigInfo {
             candidate_files: vec![
@@ -770,7 +756,9 @@ mod tests {
             selected_file: Some(
                 "/home/tester/.config/xdg-desktop-portal/niri-portals.conf".to_owned(),
             ),
-            preferences: merged_preferences,
+            // Only the selected higher-precedence file is effective. The
+            // lower generic file remains a candidate but is not merged here.
+            preferences: override_prefs,
             parse_errors: Vec::new(),
         };
         let backends = vec![

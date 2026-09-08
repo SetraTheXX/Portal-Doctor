@@ -559,21 +559,11 @@ mod tests {
             crate::collectors::environment::environment_info(process.clone(), None, Some(&process));
 
         let (preferences, parse_errors, candidate_files, selected_file) = if settings_override {
-            let (generic, generic_errors) = crate::collectors::portal_config::parse_config(
-                include_str!("../tests/fixtures/portal-routing/generic-gnome-gtk-portals.conf"),
-                "/usr/share/xdg-desktop-portal/portals.conf",
-                1,
+            let (preferences, parse_errors) = crate::collectors::portal_config::parse_config(
+                include_str!("../tests/fixtures/portal-routing/niri-settings-override.conf"),
+                "/home/tester/.config/xdg-desktop-portal/niri-portals.conf",
+                0,
             );
-            let (override_preferences, override_errors) =
-                crate::collectors::portal_config::parse_config(
-                    include_str!("../tests/fixtures/portal-routing/niri-settings-override.conf"),
-                    "/home/tester/.config/xdg-desktop-portal/niri-portals.conf",
-                    0,
-                );
-            let mut preferences = generic;
-            preferences.extend(override_preferences);
-            let mut parse_errors = generic_errors;
-            parse_errors.extend(override_errors);
             (
                 preferences,
                 parse_errors,

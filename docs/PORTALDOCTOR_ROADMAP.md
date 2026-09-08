@@ -1097,9 +1097,11 @@ the Phase 8, KDE or Sway blocker state.
   selected-GTK-missing aggregates. They remain respectively clean, only
   `ENV003`, or only generic `DBUS002`; mixed installation alone is not a
   duplicate/config finding.
-- [x] Add separate higher-precedence `Settings=gtk` and lower-precedence
-  generic `default=gnome;gtk` fixtures. The normal resolver selects only GTK
-  for Settings, leaves ScreenCast on GNOME and emits no `CFG004`.
+- [x] Add a higher-precedence effective `Settings=gtk` config and retain a
+  lower generic `default=gnome;gtk` file only as a candidate. The collector
+  selects the first existing file without merging preferences; the resolver
+  therefore selects only GTK for Settings, leaves ScreenCast on GNOME and
+  emits no `CFG004`.
 - [x] Keep the Issue #2033 compatibility warning blocked: the snapshot has no
   bounded xdg-desktop-portal package-version evidence, so no synthetic version
   field, guessed range or version-aware production rule was added.
