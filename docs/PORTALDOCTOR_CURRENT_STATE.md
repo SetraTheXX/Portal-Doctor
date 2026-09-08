@@ -179,6 +179,15 @@ existing passive rule pipeline. Healthy, WLR-missing, GTK-fallback-missing and
 WLR-failed states are covered; no real user systemd manager, portal provider or
 active probe is contacted.
 
+This controlled Phase 10 slice exercises the production
+`activation_environment::collect()` path with the same Sway mixed-routing
+snapshot. Equal Sway/Wayland values are clean; stale desktop, stale Wayland
+and missing activation `WAYLAND_DISPLAY` produce only generic `ENV004`, while
+unavailable and timed-out activation collection suppresses mismatch findings
+and preserves the normal environment note/status behavior. The integration
+harness bounds and reaps the fake `systemctl` child and does not validate a
+live Sway session or create a support claim.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility

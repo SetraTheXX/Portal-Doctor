@@ -1430,4 +1430,257 @@ mod tests {
             );
         }
     }
+
+    /// Run only from `scripts/validate-sway-activation-ci.sh`: the activation
+    /// collector and the runtime collectors must all use the isolated harness.
+    #[test]
+    #[cfg(unix)]
+    #[ignore = "requires the explicit isolated Sway activation gate"]
+    #[allow(clippy::too_many_lines)]
+    fn isolated_sway_activation_environment_feed_the_passive_rule_pipeline() {
+        use std::fs;
+        use std::path::Path;
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        use crate::model::status::CollectorState;
+
+        const FRONTEND: &str = PORTAL_FRONTEND_NAME;
+        const WLR_BACKEND: &str = "org.freedesktop.impl.portal.desktop.wlr";
+        const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
+        const WLR_UNIT: &str = "xdg-desktop-portal-wlr.service";
+        const GTK_UNIT: &str = "xdg-desktop-portal-gtk.service";
+
+        fn assert_pid_gone(path: &Path) {
+            let pid: i32 = fs::read_to_string(path)
+                .expect("timeout fake must record its PID")
+                .trim()
+                .parse()
+                .expect("timeout fake PID");
+            let deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                // SAFETY: kill(pid, 0) only probes the fake process created by
+                // this isolated test wrapper.
+                if unsafe { libc::kill(pid, 0) } != 0 {
+                    return;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "timed-out activation systemctl child was not reaped"
+                );
+                thread::sleep(Duration::from_millis(25));
+            }
+        }
+
+        let mode_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_MODE_FILE")
+            .expect("explicit Sway activation wrapper must provide a mode file");
+        let log_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_LOG")
+            .expect("explicit Sway activation wrapper must provide an invocation log");
+        let pid_file = std::env::var_os("PORTALDOCTOR_SYSTEMCTL_PID_FILE")
+            .expect("explicit Sway activation wrapper must provide a PID file");
+        let path = std::env::var_os("PATH").expect("Sway activation wrapper must provide PATH");
+        let fake_bin = std::env::split_paths(&path)
+            .next()
+            .expect("Sway activation wrapper must prepend fake PATH");
+        assert!(fake_bin.join("systemctl").is_file());
+        assert_eq!(
+            std::env::var("PORTALDOCTOR_SYSTEMCTL_FAKE_GUARD").as_deref(),
+            Ok("isolated-sway-activation")
+        );
+
+        let base = sway_passive_snapshot(true);
+        assert_sway_mixed_routes(&base);
+        assert_sway_runtime_bindings(&base);
+        let selected_backend_names =
+            selected_backend_dbus_names(&base.portal_routes, &base.portal_backends);
+        assert_eq!(
+            selected_backend_names,
+            vec![GTK_BACKEND.to_owned(), WLR_BACKEND.to_owned()]
+        );
+        let selected_units = vec![
+            ServiceInfo::frontend_unit().to_owned(),
+            ServiceInfo::backend_unit("wlr"),
+            ServiceInfo::backend_unit("gtk"),
+        ];
+        assert_eq!(
+            selected_units,
+            [
+                ServiceInfo::frontend_unit().to_owned(),
+                WLR_UNIT.to_owned(),
+                GTK_UNIT.to_owned(),
+            ]
+        );
+
+        let process = sway_fixture_vars();
+        let environment_for = |activation: &Section<BTreeMap<String, String>>| {
+            let mut environment =
+                Section::available(crate::collectors::environment::environment_info(
+                    process.clone(),
+                    None,
+                    activation.value.as_ref(),
+                ));
+            if activation.status != CollectorState::Available {
+                let reason = super::activation_note_reason(activation);
+                if reason.is_empty() {
+                    environment.push_note(format!(
+                        "systemd user activation environment: {}",
+                        activation.status
+                    ));
+                } else {
+                    environment.push_note(format!(
+                        "systemd user activation environment {}: {}",
+                        activation.status, reason
+                    ));
+                }
+            }
+            environment
+        };
+        let set_mode = |mode: &str| {
+            fs::write(&mode_file, format!("{mode}\n")).expect("write Sway activation fake mode");
+        };
+        let collect_runtime = || {
+            let dbus = crate::collectors::dbus::collect(&selected_backend_names);
+            let services = crate::collectors::systemd_user::collect(&selected_units);
+            (dbus, services)
+        };
+
+        let owner = zbus::blocking::Connection::session().expect("isolated session bus");
+        owner
+            .request_name(FRONTEND)
+            .expect("acquire isolated portal frontend name");
+        owner
+            .request_name(WLR_BACKEND)
+            .expect("acquire isolated WLR backend name");
+        owner
+            .request_name(GTK_BACKEND)
+            .expect("acquire isolated GTK backend name");
+
+        let run_scenario =
+            |mode: &str,
+             expected_activation_state: CollectorState,
+             expected_key: Option<&str>,
+             expected_findings: &[&str]| {
+                set_mode(mode);
+                let activation = crate::collectors::activation_environment::collect();
+                assert_eq!(activation.status, expected_activation_state);
+                if mode == "timeout" {
+                    assert_pid_gone(Path::new(&pid_file));
+                }
+                let (dbus, services) = collect_runtime();
+                let dbus_info = dbus.value.as_ref().expect("Sway D-Bus result");
+                assert!(dbus_info.connected);
+                assert_eq!(
+                    dbus_info
+                        .checks
+                        .iter()
+                        .map(|check| check.name.as_str())
+                        .collect::<Vec<_>>(),
+                    vec![FRONTEND, GTK_BACKEND, WLR_BACKEND]
+                );
+                let service_info = services.value.as_ref().expect("Sway service result");
+                assert_eq!(
+                    service_info
+                        .unit(ServiceInfo::frontend_unit())
+                        .expect("portal frontend unit")
+                        .state,
+                    UnitState::Active
+                );
+                assert_eq!(
+                    service_info.unit(WLR_UNIT).expect("WLR unit").state,
+                    UnitState::Active
+                );
+                assert_eq!(
+                    service_info.unit(GTK_UNIT).expect("GTK unit").state,
+                    UnitState::Active
+                );
+
+                let mut snapshot = base.clone();
+                snapshot.environment = environment_for(&activation);
+                snapshot.dbus = dbus;
+                snapshot.services = services;
+                assert_sway_mixed_routes(&snapshot);
+                let environment = snapshot
+                    .environment
+                    .value
+                    .as_ref()
+                    .expect("environment section");
+                assert_eq!(
+                    environment.activation_comparison.performed,
+                    expected_activation_state == CollectorState::Available
+                );
+                if expected_activation_state != CollectorState::Available {
+                    assert_eq!(snapshot.environment.status, CollectorState::Available);
+                    assert!(
+                        snapshot.environment.errors.iter().any(|note| note
+                            .message
+                            .contains("systemd user activation environment"))
+                    );
+                }
+
+                let findings = evaluate(&snapshot);
+                crate::rules::contract::assert_contract(&findings);
+                assert_eq!(finding_ids(&findings), expected_findings);
+                if let Some(key) = expected_key {
+                    assert!(findings[0].summary.contains(key));
+                }
+                assert_eq!(
+                    RunOutcome::from_report(&Report::new(snapshot, findings, "0.2.1")),
+                    RunOutcome::Clean
+                );
+            };
+
+        run_scenario("healthy", CollectorState::Available, None, &[]);
+        run_scenario(
+            "stale-desktop",
+            CollectorState::Available,
+            Some("XDG_CURRENT_DESKTOP"),
+            &["ENV004"],
+        );
+        run_scenario(
+            "stale-wayland",
+            CollectorState::Available,
+            Some("WAYLAND_DISPLAY"),
+            &["ENV004"],
+        );
+        run_scenario(
+            "missing-wayland",
+            CollectorState::Available,
+            Some("WAYLAND_DISPLAY"),
+            &["ENV004"],
+        );
+        run_scenario("unavailable", CollectorState::Unavailable, None, &[]);
+        run_scenario("timeout", CollectorState::TimedOut, None, &[]);
+
+        owner
+            .release_name(GTK_BACKEND)
+            .expect("release isolated GTK backend name");
+        owner
+            .release_name(WLR_BACKEND)
+            .expect("release isolated WLR backend name");
+        owner
+            .release_name(FRONTEND)
+            .expect("release isolated portal frontend name");
+
+        let invocations = fs::read_to_string(log_file).expect("Sway activation invocation log");
+        let expected_unit_invocations = [
+            "--user show xdg-desktop-portal.service -p ActiveState -p SubState -p UnitFileState --value",
+            "--user show xdg-desktop-portal-wlr.service -p ActiveState -p SubState -p UnitFileState --value",
+            "--user show xdg-desktop-portal-gtk.service -p ActiveState -p SubState -p UnitFileState --value",
+        ];
+        assert_eq!(invocations.lines().count(), 24);
+        assert_eq!(
+            invocations
+                .lines()
+                .filter(|line| *line == "--user show-environment")
+                .count(),
+            6
+        );
+        for expected in expected_unit_invocations {
+            assert_eq!(
+                invocations.lines().filter(|line| *line == expected).count(),
+                6,
+                "unexpected systemd invocation distribution"
+            );
+        }
+    }
 }
