@@ -1317,7 +1317,7 @@ mod tests {
     }
 
     #[test]
-    fn hyprland_use_in_excludes_capture_backend_for_wrong_desktop() {
+    fn hyprland_config_selects_capture_backend_for_wrong_desktop() {
         let (preferences, parse_errors) = crate::collectors::portal_config::parse_config(
             include_str!("../tests/fixtures/portal-routing/hyprland-portals.conf"),
             "/fixture/hyprland-portals.conf",
@@ -1355,14 +1355,14 @@ mod tests {
                 .iter()
                 .find(|route| route.interface == interface)
                 .unwrap();
-            assert!(route.available_candidates.is_empty(), "{interface}");
-            assert!(route.selected_candidates.is_empty(), "{interface}");
-            assert_eq!(route.status, RouteStatus::NoProvider, "{interface}");
+            assert_eq!(route.available_candidates, ["hyprland"], "{interface}");
+            assert_eq!(route.selected_candidates, ["hyprland"], "{interface}");
+            assert_eq!(route.status, RouteStatus::Selected, "{interface}");
             assert!(
                 route
                     .evidence
                     .iter()
-                    .any(|evidence| evidence.message.contains("excluded by UseIn")),
+                    .any(|evidence| evidence.message.contains("retained by config preference")),
                 "{interface}"
             );
         }

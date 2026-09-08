@@ -45,7 +45,10 @@ pub struct PortalRoute {
     pub interface: String,
     /// Backend tokens requested by configuration; empty means "any".
     pub requested_candidates: Vec<String>,
-    /// Backends discovered with the interface and allowed by `UseIn`.
+    /// Interface-compatible backends available to the resolver. For a
+    /// config-driven route this includes explicitly/default-preferred
+    /// backends even when their legacy `UseIn` does not mention the desktop;
+    /// without a preference it reflects the legacy `UseIn` fallback.
     pub available_candidates: Vec<String>,
     /// Backends actually selected for this desktop.
     pub selected_candidates: Vec<String>,

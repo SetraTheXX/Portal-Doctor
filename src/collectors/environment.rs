@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn niri_wayland_fixture_preserves_composite_desktop_identity() {
+    fn niri_wayland_fixture_preserves_upstream_desktop_identity() {
         let vars: BTreeMap<String, String> =
             include_str!("../../tests/fixtures/environment/niri-wayland.env")
                 .lines()
@@ -364,7 +364,7 @@ mod tests {
                 .map(|(key, value)| (key.to_owned(), value.to_owned()))
                 .collect();
         let session = session_info(&vars);
-        assert_eq!(session.current_desktop.as_deref(), Some("niri:GNOME"));
+        assert_eq!(session.current_desktop.as_deref(), Some("niri"));
         assert_eq!(session.session_desktop.as_deref(), Some("niri"));
         assert_eq!(session.session_type, Some(SessionType::Wayland));
         assert_eq!(session.wayland_display.as_deref(), Some("wayland-1"));
