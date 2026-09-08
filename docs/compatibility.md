@@ -66,6 +66,22 @@ collector is also covered in a bounded isolated gate: equal Sway values are
 clean, stale/missing activation values remain generic `ENV004`, and
 unavailable/timeout collection does not invent a mismatch. This is controlled
 coverage only; live Sway validation and support remain open.
+
+### Phase 10 live Sway readiness checkpoint — 2026-09-09
+
+The current host is Ubuntu 26.04.1 GNOME/Wayland, not a Sway session. A
+read-only preflight found no `xdg-desktop-portal-wlr` package, user service or
+canonical WLR D-Bus owner; passive Screenshot/ScreenCast routes select GNOME.
+PipeWire and WirePlumber are running, but this does not make WLR active-probe
+validation possible. The decision is **LIVE SWAY ENVIRONMENT BLOCKED / NOT
+AVAILABLE** and **ACTIVE PROBE READINESS BLOCKED**. No active probe, provider
+installation or support claim is made.
+
+Recheck only after a real Sway Wayland session exposes a healthy WLR backend and
+service, owns `org.freedesktop.impl.portal.desktop.wlr`, selects WLR in passive
+routing, and advertises Screenshot v3 Window bit `2` plus ScreenCast
+`AvailableSourceTypes` Window bit `2`. The current GNOME host must not be
+repeatedly forced into this gate.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 
