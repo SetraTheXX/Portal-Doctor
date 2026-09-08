@@ -146,6 +146,15 @@ the KDE backend/package and `xdg-desktop-portal-kde.service` are installed and
 healthy, and `org.freedesktop.impl.portal.desktop.kde` has a D-Bus owner. This
 checkpoint does not change the Phase 8 Screenshot or ScreenCast release gates.
 
+### Phase 10 first bounded static slice
+
+Controlled Sway/wlroots fixtures now cover a desktop-specific
+`sway-portals.conf`, `xdg-desktop-portal-wlr` and GTK descriptors, mixed
+Screenshot/ScreenCast → `wlr` routing, FileChooser/Settings → GTK fallback,
+desktop-config precedence and quiet provider/duplicate rule evaluation. This
+is parser/resolver/rule coverage only; no live Sway session, active probe,
+provider installation or wlroots support claim follows from it.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility

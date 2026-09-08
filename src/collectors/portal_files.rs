@@ -166,6 +166,45 @@ mod tests {
     }
 
     #[test]
+    fn parses_wlr_and_gtk_mixed_backend_fixtures() {
+        let wlr = parse_portal_file(
+            include_str!("../../tests/fixtures/portal-routing/wlr.portal"),
+            "/usr/share/xdg-desktop-portal/portals/wlr.portal",
+            "wlr".to_owned(),
+        );
+        assert_eq!(wlr.dbus_name, "org.freedesktop.impl.portal.desktop.wlr");
+        assert!(
+            wlr.interfaces
+                .contains("org.freedesktop.impl.portal.ScreenCast")
+        );
+        assert!(
+            wlr.interfaces
+                .contains("org.freedesktop.impl.portal.Screenshot")
+        );
+        assert_eq!(wlr.legacy_use_in, ["Sway", "wlroots"]);
+
+        let gtk = parse_portal_file(
+            include_str!("../../tests/fixtures/portal-routing/gtk.portal"),
+            "/usr/share/xdg-desktop-portal/portals/gtk.portal",
+            "gtk".to_owned(),
+        );
+        assert_eq!(gtk.dbus_name, "org.freedesktop.impl.portal.desktop.gtk");
+        assert!(gtk.legacy_use_in.is_empty());
+        assert!(
+            gtk.interfaces
+                .contains("org.freedesktop.impl.portal.FileChooser")
+        );
+        assert!(
+            gtk.interfaces
+                .contains("org.freedesktop.impl.portal.Settings")
+        );
+        assert!(
+            !gtk.interfaces
+                .contains("org.freedesktop.impl.portal.ScreenCast")
+        );
+    }
+
+    #[test]
     fn tolerates_missing_keys_and_foreign_sections() {
         let text = "[other]\nkey=value\n[portal]\nDBusName=x\n";
         let backend = parse_portal_file(text, "p.portal", "p".to_owned());

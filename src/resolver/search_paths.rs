@@ -150,4 +150,29 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn sway_desktop_config_precedes_generic_fallback() {
+        let candidates = portal_config_candidates(&roots(), &["Sway".to_owned()]);
+        let paths: Vec<String> = candidates
+            .iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            &paths[..5],
+            [
+                "/home/tester/.config/xdg-desktop-portal/sway-portals.conf",
+                "/cfg/global/xdg-desktop-portal/sway-portals.conf",
+                "/home/tester/.local/share/xdg-desktop-portal/sway-portals.conf",
+                "/usr/local/share/xdg-desktop-portal/sway-portals.conf",
+                "/usr/share/xdg-desktop-portal/sway-portals.conf",
+            ]
+        );
+        assert!(paths[5..].iter().all(|path| path.ends_with("portals.conf")));
+        assert!(
+            paths[5..]
+                .iter()
+                .all(|path| !path.ends_with("sway-portals.conf"))
+        );
+    }
 }

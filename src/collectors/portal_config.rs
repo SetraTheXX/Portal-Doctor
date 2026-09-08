@@ -145,6 +145,33 @@ mod tests {
     }
 
     #[test]
+    fn parses_sway_mixed_backend_fixture() {
+        let (prefs, errors) = parse_config(
+            include_str!("../../tests/fixtures/portal-routing/sway-portals.conf"),
+            "/usr/share/xdg-desktop-portal/sway-portals.conf",
+            0,
+        );
+        assert!(errors.is_empty());
+        assert_eq!(prefs.len(), 5);
+        assert_eq!(
+            prefs[0].interface,
+            crate::resolver::portal_routes::DEFAULT_INTERFACE
+        );
+        assert_eq!(prefs[0].backends, ["wlr", "gtk"]);
+        assert_eq!(
+            prefs[1].interface,
+            "org.freedesktop.impl.portal.FileChooser"
+        );
+        assert_eq!(prefs[1].backends, ["gtk"]);
+        assert_eq!(prefs[2].interface, "org.freedesktop.impl.portal.Screenshot");
+        assert_eq!(prefs[2].backends, ["wlr", "gtk"]);
+        assert_eq!(prefs[3].interface, "org.freedesktop.impl.portal.ScreenCast");
+        assert_eq!(prefs[3].backends, ["wlr"]);
+        assert_eq!(prefs[4].interface, "org.freedesktop.impl.portal.Settings");
+        assert_eq!(prefs[4].backends, ["gtk"]);
+    }
+
+    #[test]
     fn preserves_star_and_none_tokens() {
         let (prefs, _) = parse_config(
             "[preferred]\n\
