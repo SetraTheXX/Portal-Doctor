@@ -583,15 +583,13 @@ Summary
 
 The completed diagnostic contract is:
 
-- `0` — the diagnostic completed without ERROR/CRITICAL findings; INFO and
-  WARNING findings do not fail the run,
-- `1` — the diagnostic completed and produced at least one ERROR or CRITICAL
-  finding,
-- `2` — CLI usage or argument validation failed (handled by `clap`),
-- `3` — the diagnostic could not establish the minimum runtime context: a
-  recognized graphical session/display and a reachable user session D-Bus,
-- `4` — the diagnostic could not complete because of an output or internal
-  process error.
+| Code | Meaning |
+| --- | --- |
+| `0` | Completed with no ERROR/CRITICAL finding; INFO/WARNING findings are allowed. |
+| `1` | Completed with at least one ERROR/CRITICAL finding. |
+| `2` | Invalid CLI usage or arguments; `clap` reports the parser error. |
+| `3` | Minimum runtime context is unavailable: no recognized graphical display or no reachable user D-Bus. |
+| `4` | Output or internal process error prevented completion. |
 
 Exit code `3` takes precedence over finding severity because an incomplete
 runtime context means the result cannot be treated as a complete diagnostic.

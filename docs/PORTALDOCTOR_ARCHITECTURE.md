@@ -926,6 +926,14 @@ Patch/minor application releases may add compatible optional fields while schema
 
 Before 1.0, compatibility promises should be conservative but tests should already prevent accidental churn.
 
+The passive process contract is centralized in `run.rs`: clean/warning-only is
+`0`, severe findings are `1`, `clap` usage errors are `2`, unavailable minimum
+runtime context is `3`, and output/internal incomplete runs are `4`. Runtime
+context `3` is selected before finding severity. Parser/help behavior is owned
+by `clap` (`2` for invalid input and `0` for `--help`); explicit active probes
+keep their standalone `RunOutcome::ActiveProbe` mapping and are not folded into
+the passive 0–4 contract.
+
 ---
 
 ## 21. Testing Architecture

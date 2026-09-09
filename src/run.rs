@@ -21,6 +21,18 @@ use crate::report::{
 use crate::resolver;
 use crate::rules;
 
+/// Passive diagnostic exit code for a clean run or warning/info-only findings.
+pub const CLEAN_EXIT_CODE: u8 = 0;
+
+/// Passive diagnostic exit code for an ERROR/CRITICAL finding.
+pub const SEVERE_FINDINGS_EXIT_CODE: u8 = 1;
+
+/// `clap` exit code for invalid CLI usage or arguments.
+pub const CLI_USAGE_EXIT_CODE: u8 = 2;
+
+/// Passive diagnostic exit code for unavailable minimum runtime context.
+pub const RUNTIME_CONTEXT_UNAVAILABLE_EXIT_CODE: u8 = 3;
+
 /// Exit code for an incomplete run caused by an output or internal error.
 pub const INTERNAL_ERROR_EXIT_CODE: u8 = 4;
 
@@ -46,9 +58,9 @@ impl RunOutcome {
     #[must_use]
     pub const fn exit_code(self) -> u8 {
         match self {
-            Self::Clean => 0,
-            Self::SevereFindings => 1,
-            Self::RuntimeContextUnavailable => 3,
+            Self::Clean => CLEAN_EXIT_CODE,
+            Self::SevereFindings => SEVERE_FINDINGS_EXIT_CODE,
+            Self::RuntimeContextUnavailable => RUNTIME_CONTEXT_UNAVAILABLE_EXIT_CODE,
             Self::ActiveProbe { exit_code } => exit_code,
         }
     }
@@ -428,7 +440,11 @@ fn unix_epoch_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{RunOutcome, minimum_runtime_context_available, selected_backend_dbus_names};
+    use super::{
+        CLEAN_EXIT_CODE, CLI_USAGE_EXIT_CODE, INTERNAL_ERROR_EXIT_CODE,
+        RUNTIME_CONTEXT_UNAVAILABLE_EXIT_CODE, RunOutcome, SEVERE_FINDINGS_EXIT_CODE,
+        minimum_runtime_context_available, selected_backend_dbus_names,
+    };
     use crate::model::dbus::{DbusCheck, DbusInfo, DbusOutcome, PORTAL_FRONTEND_NAME};
     use crate::model::environment::{SessionInfo, SessionType};
     use crate::model::finding::{Confidence, Finding, Severity};
@@ -476,6 +492,28 @@ mod tests {
         }
     }
 
+    fn documented_exit_codes(markdown: &str, heading: &str) -> BTreeMap<u8, String> {
+        let after_heading = markdown
+            .split_once(heading)
+            .map(|(_, remainder)| remainder)
+            .expect("exit-code heading must exist");
+        let section = after_heading
+            .split_once("\n## ")
+            .map_or(after_heading, |(section, _)| section);
+
+        section
+            .lines()
+            .filter_map(|line| {
+                let columns = line.split('|').map(str::trim).collect::<Vec<_>>();
+                if columns.len() < 3 {
+                    return None;
+                }
+                let code = columns[1].trim_matches('`').parse::<u8>().ok()?;
+                Some((code, columns[2].to_owned()))
+            })
+            .collect()
+    }
+
     #[test]
     fn exit_codes_keep_warnings_successful() {
         let report = Report::new(
@@ -484,7 +522,7 @@ mod tests {
             "0.2.0",
         );
         assert_eq!(RunOutcome::from_report(&report), RunOutcome::Clean);
-        assert_eq!(RunOutcome::Clean.exit_code(), 0);
+        assert_eq!(RunOutcome::Clean.exit_code(), CLEAN_EXIT_CODE);
     }
 
     #[test]
@@ -495,7 +533,10 @@ mod tests {
             "0.2.0",
         );
         assert_eq!(RunOutcome::from_report(&report), RunOutcome::SevereFindings);
-        assert_eq!(RunOutcome::SevereFindings.exit_code(), 1);
+        assert_eq!(
+            RunOutcome::SevereFindings.exit_code(),
+            SEVERE_FINDINGS_EXIT_CODE
+        );
     }
 
     #[test]
@@ -511,7 +552,61 @@ mod tests {
             RunOutcome::from_report(&report),
             RunOutcome::RuntimeContextUnavailable
         );
-        assert_eq!(RunOutcome::RuntimeContextUnavailable.exit_code(), 3);
+        assert_eq!(
+            RunOutcome::RuntimeContextUnavailable.exit_code(),
+            RUNTIME_CONTEXT_UNAVAILABLE_EXIT_CODE
+        );
+    }
+
+    #[test]
+    fn passive_exit_code_constants_are_canonical() {
+        assert_eq!(CLEAN_EXIT_CODE, 0);
+        assert_eq!(SEVERE_FINDINGS_EXIT_CODE, 1);
+        assert_eq!(CLI_USAGE_EXIT_CODE, 2);
+        assert_eq!(RUNTIME_CONTEXT_UNAVAILABLE_EXIT_CODE, 3);
+        assert_eq!(INTERNAL_ERROR_EXIT_CODE, 4);
+    }
+
+    #[test]
+    fn active_probe_mapping_remains_separate_from_passive_outcomes() {
+        assert_eq!(RunOutcome::ActiveProbe { exit_code: 0 }.exit_code(), 0);
+        assert_eq!(RunOutcome::ActiveProbe { exit_code: 1 }.exit_code(), 1);
+    }
+
+    #[test]
+    fn readme_and_prd_exit_code_tables_match_the_runtime_contract() {
+        let readme = documented_exit_codes(include_str!("../README.md"), "### Exit codes");
+        let prd = documented_exit_codes(
+            include_str!("../docs/PORTALDOCTOR_PRD.md"),
+            "## 17. Exit Codes",
+        );
+        let expected = BTreeMap::from([
+            (
+                CLEAN_EXIT_CODE,
+                "Completed with no ERROR/CRITICAL finding; INFO/WARNING findings are allowed."
+                    .to_owned(),
+            ),
+            (
+                SEVERE_FINDINGS_EXIT_CODE,
+                "Completed with at least one ERROR/CRITICAL finding.".to_owned(),
+            ),
+            (
+                CLI_USAGE_EXIT_CODE,
+                "Invalid CLI usage or arguments; `clap` reports the parser error.".to_owned(),
+            ),
+            (
+                RUNTIME_CONTEXT_UNAVAILABLE_EXIT_CODE,
+                "Minimum runtime context is unavailable: no recognized graphical display or no reachable user D-Bus."
+                    .to_owned(),
+            ),
+            (
+                INTERNAL_ERROR_EXIT_CODE,
+                "Output or internal process error prevented completion.".to_owned(),
+            ),
+        ]);
+
+        assert_eq!(readme, expected);
+        assert_eq!(prd, expected);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 **Last verified:** 2026-09-09
 **Current public release:** `v0.2.1`
-**Current development phase:** Phase 13 v1.0 Hardening — stable finding-semantics and versioned public JSON schema slices COMPLETE
+**Current development phase:** Phase 13 v1.0 Hardening — finding-semantics, versioned JSON schema and exit-code contract slices COMPLETE
 **Release gate under review:** Phase 8 / `v0.3.0` remains blocked
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
 
@@ -557,6 +557,26 @@ envelope version.
 No public JSON meaning, finding ID, remediation, active probe or apply path
 was added. Phase 8 Screenshot/ScreenCast real-session gates and the `v0.3.0`
 blocker state are unchanged; Phase 12 production apply remains unauthorized.
+
+### Phase 13.3 stable/documented exit-code contract checkpoint — 2026-09-09
+
+The third bounded Phase 13 slice is **COMPLETE**. Passive exit-code constants
+are centralized and tested without changing their public values: `0` means a
+complete clean or warning/info-only run, `1` an ERROR/CRITICAL finding, `2`
+invalid `clap` usage, `3` unavailable minimum graphical/user-D-Bus context,
+and `4` an output/internal incomplete run. Runtime-context `3` remains
+authoritative before finding severity, and `main` maps all generic run errors
+to `4`.
+
+README and PRD exit-code tables are now exact-parity fixtures. Unit coverage
+locks parser error=`2`, `--help`=`0`, the five `RunOutcome` mappings and the
+runtime-context precedence rule. `RunOutcome::ActiveProbe` remains separate;
+FileChooser/Screenshot standalone exit semantics were not changed or merged
+into the passive contract.
+
+No public exit code or active-probe meaning changed. Phase 8 Screenshot/
+ScreenCast real-session gates and the `v0.3.0` blocker state are unchanged;
+Phase 12 production apply remains unauthorized.
 
 Implement and release-gate it in this order:
 
