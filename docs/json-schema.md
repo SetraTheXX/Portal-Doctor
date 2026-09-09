@@ -355,6 +355,11 @@ Each finding follows PRD §8:
 
 - `severity`: `info` | `warning` | `error` | `critical`
 - `confidence`: `low` | `medium` | `high`
+- `id` is a stable rule/catalog identifier. Catalog identifiers are unique;
+  one rule may emit multiple interface-scoped instances with the same ID when
+  the snapshot contains multiple independent affected interfaces.
+- `source_component` is the stable category/producer field for the finding;
+  the v1 contract has no additional `category` field.
 - `evidence`: one or more of `environment_mismatch`, `config_selection`,
   `config_candidate`, `missing_provider`, `dbus_timeout`, `service_state`, `pipewire_state`,
   `wireplumber_state`, `screencast_route`, `journal_excerpt`,

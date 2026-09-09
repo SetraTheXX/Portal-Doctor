@@ -665,6 +665,16 @@ Dedicated newtypes (`FindingId`, `Recommendation`) are intentionally deferred:
 plain strings keep JSON serialization stable. Introduce them only when real
 reuse pressure appears.
 
+The first bounded Phase 13 hardening slice adds a canonical 21-ID runtime
+catalog and checks it against both the registered rules and the documented
+finding catalog. The Finding serializer has an exact field/type parity test
+against the v1 JSON documentation. Severity and confidence remain stable
+enums, while `source_component` remains the category/producer boundary; no
+new category field, finding ID or schema version is introduced. A rule may
+emit multiple interface-scoped instances with one stable ID (for example
+`XDP004`, `CFG003` or `CFG004`); this is distinct from reusing an ID for
+different semantics.
+
 ### Evidence model
 
 Evidence should be structured where possible:

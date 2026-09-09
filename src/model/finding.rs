@@ -89,6 +89,8 @@ pub struct Finding {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::{Confidence, Finding, Severity};
     use crate::model::evidence::Evidence;
     use serde_json::json;
@@ -122,7 +124,7 @@ mod tests {
             source_component: "environment".to_owned(),
         };
         let value = serde_json::to_value(&finding).unwrap();
-        for key in [
+        let fields = [
             "id",
             "severity",
             "confidence",
@@ -133,8 +135,33 @@ mod tests {
             "impact",
             "recommendation",
             "source_component",
-        ] {
-            assert!(value.get(key).is_some(), "missing contract field {key}");
+        ];
+        let actual = value
+            .as_object()
+            .expect("finding serializes as an object")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let expected = fields.iter().copied().collect::<BTreeSet<_>>();
+        assert_eq!(actual, expected);
+
+        assert!(value["id"].is_string());
+        assert_eq!(value["severity"], json!("warning"));
+        assert_eq!(value["confidence"], json!("high"));
+        assert!(value["title"].is_string());
+        assert!(value["summary"].is_string());
+        assert!(value["explanation"].is_string());
+        assert!(value["evidence"].is_array());
+        assert!(value["impact"].is_string() || value["impact"].is_null());
+        assert!(value["recommendation"].is_array());
+        assert!(value["source_component"].is_string());
+
+        let schema = include_str!("../../docs/json-schema.md");
+        for field in fields {
+            assert!(
+                schema.contains(&format!("\"{field}\"")),
+                "JSON schema docs omit finding field {field}"
+            );
         }
     }
 }
