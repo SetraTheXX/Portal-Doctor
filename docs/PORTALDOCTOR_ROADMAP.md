@@ -1424,6 +1424,21 @@ write activation environment state or add an apply path; `apply` remains
 This is a transaction/rollback contract only. It does not invoke `systemctl`,
 set or unset an environment variable, add `--apply` or perform any real write.
 
+## Ninth bounded `ENV004` controlled transaction executor slice — 2026-09-09
+
+- [x] Add an injected `Env004ExecutionAdapter` boundary and consume the
+  opaque execution plan by value in an internal executor state machine.
+- [x] Apply plan steps in deterministic order and return typed `applied` on
+  complete success.
+- [x] On apply failure, roll back only previously completed steps in reverse
+  order; distinguish `apply_failed_rolled_back` from
+  `apply_failed_rollback_failed` and never roll back the failed/unapplied step.
+- [x] Cover complete success, first/second-step failure, reverse rollback,
+  rollback failure and one-shot plan consumption with a fake adapter only.
+
+This is controlled transaction semantics only. No production adapter,
+systemctl/subprocess access, environment mutation or CLI `--apply` path exists.
+
 ## Prohibited behavior
 
 No silent:

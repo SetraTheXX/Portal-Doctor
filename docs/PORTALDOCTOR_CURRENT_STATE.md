@@ -481,6 +481,15 @@ deterministic; duplicate, unknown or missing pre-state fails closed. The plan
 factory accepts no raw approval, proposal or snapshot and performs no
 `systemctl`, file, package, configuration, service or environment write.
 
+The ninth Phase 12 slice adds an internal executor state machine with an
+injected `Env004ExecutionAdapter` trait. `execute_env004_plan` consumes the
+plan by value, applies deterministic steps, and rolls back only completed
+steps in reverse order after an apply failure. Typed outcomes distinguish
+successful application, successful rollback and rollback failure; failed or
+unapplied steps are not rolled back. Only a controlled fake adapter exists;
+there is no production systemctl/subprocess adapter, environment mutation or
+CLI `--apply` path.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility

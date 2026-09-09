@@ -307,6 +307,56 @@ pub struct Env004ExecutionPlan {
     steps: Vec<Env004ExecutionStep>,
 }
 
+/// Typed failure returned by an injected execution adapter. It intentionally
+/// carries no raw subprocess output or system error text.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Env004AdapterError {
+    Failed,
+    Unavailable,
+}
+
+/// The only I/O boundary used by the internal ENV004 executor. Production
+/// adapters are deliberately out of scope for this slice; tests inject a fake
+/// implementation instead.
+#[allow(dead_code)]
+pub trait Env004ExecutionAdapter {
+    fn apply_step(&mut self, step: &Env004ExecutionStep) -> Result<(), Env004AdapterError>;
+    fn rollback_step(&mut self, step: &Env004ExecutionStep) -> Result<(), Env004AdapterError>;
+}
+
+/// Phase and key for one typed executor failure.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Env004ExecutionFailurePhase {
+    Apply,
+    Rollback,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Env004ExecutionFailure {
+    pub key: String,
+    pub phase: Env004ExecutionFailurePhase,
+    pub error: Env004AdapterError,
+}
+
+/// Result of consuming one execution plan. A rollback failure is kept
+/// separate from the original apply failure and all eligible rollback steps
+/// are attempted in reverse order.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Env004ExecutionOutcome {
+    Applied,
+    ApplyFailedRolledBack {
+        apply_failure: Env004ExecutionFailure,
+    },
+    ApplyFailedRollbackFailed {
+        apply_failure: Env004ExecutionFailure,
+        rollback_failures: Vec<Env004ExecutionFailure>,
+    },
+}
+
 /// Typed reasons why an approval or its bound proposal cannot be trusted.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -798,6 +848,49 @@ pub fn create_env004_execution_plan(permit: Env004ApplyPermit) -> Option<Env004E
         fresh_evidence_digest: permit.fresh_evidence_digest,
         steps,
     })
+}
+
+/// Consume one internal plan through an injected adapter. The plan is moved
+/// into this function and cannot be executed a second time; no concrete
+/// systemctl, subprocess or environment-writing adapter exists here.
+#[allow(dead_code)]
+#[must_use]
+pub fn execute_env004_plan<A: Env004ExecutionAdapter>(
+    plan: Env004ExecutionPlan,
+    adapter: &mut A,
+) -> Env004ExecutionOutcome {
+    let mut applied_steps = Vec::with_capacity(plan.steps.len());
+    for step in plan.steps {
+        match adapter.apply_step(&step) {
+            Ok(()) => applied_steps.push(step),
+            Err(error) => {
+                let apply_failure = Env004ExecutionFailure {
+                    key: step.key,
+                    phase: Env004ExecutionFailurePhase::Apply,
+                    error,
+                };
+                let mut rollback_failures = Vec::new();
+                for applied_step in applied_steps.into_iter().rev() {
+                    if let Err(error) = adapter.rollback_step(&applied_step) {
+                        rollback_failures.push(Env004ExecutionFailure {
+                            key: applied_step.key,
+                            phase: Env004ExecutionFailurePhase::Rollback,
+                            error,
+                        });
+                    }
+                }
+                return if rollback_failures.is_empty() {
+                    Env004ExecutionOutcome::ApplyFailedRolledBack { apply_failure }
+                } else {
+                    Env004ExecutionOutcome::ApplyFailedRollbackFailed {
+                        apply_failure,
+                        rollback_failures,
+                    }
+                };
+            }
+        }
+    }
+    Env004ExecutionOutcome::Applied
 }
 
 fn verify_approval_integrity(
@@ -1388,14 +1481,16 @@ fn session_matches_process(
 mod tests {
     use super::{
         ApplyStatus, ApprovalStaleEvidenceReason, ApprovalTamperReason, EffectApplicabilityReason,
-        EffectMismatchReason, EffectUnavailableReason, Env004ApplyPermit,
-        Env004ApprovalVerification, Env004EffectVerification, Env004ExecutionPlan,
-        Env004PreviewVerification, Env004PriorActivation, Env004RollbackAction,
-        NotApplicableReason, RemediationAction, RemediationApplicability, RemediationApproval,
-        RemediationApprovalState, RemediationProposal, RemediationTarget, StaleEvidenceReason,
-        VerificationSchemaReason, VerificationTamperReason, create_env004_apply_permit,
-        create_env004_approval, create_env004_execution_plan, preview_env004, render_terminal,
-        verify_env004_approval, verify_env004_effect, verify_env004_preview,
+        EffectMismatchReason, EffectUnavailableReason, Env004AdapterError, Env004ApplyPermit,
+        Env004ApprovalVerification, Env004EffectVerification, Env004ExecutionAdapter,
+        Env004ExecutionFailure, Env004ExecutionFailurePhase, Env004ExecutionOutcome,
+        Env004ExecutionPlan, Env004PreviewVerification, Env004PriorActivation,
+        Env004RollbackAction, NotApplicableReason, RemediationAction, RemediationApplicability,
+        RemediationApproval, RemediationApprovalState, RemediationProposal, RemediationTarget,
+        StaleEvidenceReason, VerificationSchemaReason, VerificationTamperReason,
+        create_env004_apply_permit, create_env004_approval, create_env004_execution_plan,
+        execute_env004_plan, preview_env004, render_terminal, verify_env004_approval,
+        verify_env004_effect, verify_env004_preview,
     };
     use crate::collectors::environment::{environment_info, session_info};
     use crate::model::section::Section;
@@ -1442,6 +1537,55 @@ mod tests {
         let approval = create_env004_approval(&proposal, RemediationApprovalState::Approved)
             .expect("integrity-checked approval");
         (snapshot, proposal, approval)
+    }
+
+    fn execution_plan_for(
+        process: &[(&str, &str)],
+        activation: &[(&str, &str)],
+    ) -> Env004ExecutionPlan {
+        let snapshot = snapshot(process, activation);
+        let findings = evaluate(&snapshot);
+        let proposal = preview_env004(&snapshot, &findings)
+            .proposal
+            .expect("applicable proposal");
+        let approval = create_env004_approval(&proposal, RemediationApprovalState::Approved)
+            .expect("integrity-checked approval");
+        let permit = create_env004_apply_permit(&proposal, &approval, &snapshot, &findings)
+            .expect("verified approval admits a permit");
+        create_env004_execution_plan(permit).expect("well-formed permit admits a plan")
+    }
+
+    #[derive(Default)]
+    struct FakeExecutionAdapter {
+        events: Vec<String>,
+        apply_failure_key: Option<String>,
+        rollback_failure_key: Option<String>,
+    }
+
+    impl Env004ExecutionAdapter for FakeExecutionAdapter {
+        fn apply_step(
+            &mut self,
+            step: &super::Env004ExecutionStep,
+        ) -> Result<(), Env004AdapterError> {
+            self.events.push(format!("apply:{}", step.key));
+            if self.apply_failure_key.as_deref() == Some(step.key.as_str()) {
+                Err(Env004AdapterError::Failed)
+            } else {
+                Ok(())
+            }
+        }
+
+        fn rollback_step(
+            &mut self,
+            step: &super::Env004ExecutionStep,
+        ) -> Result<(), Env004AdapterError> {
+            self.events.push(format!("rollback:{}", step.key));
+            if self.rollback_failure_key.as_deref() == Some(step.key.as_str()) {
+                Err(Env004AdapterError::Failed)
+            } else {
+                Ok(())
+            }
+        }
     }
 
     #[test]
@@ -2214,6 +2358,188 @@ mod tests {
                 .expect("verified approval admits a permit");
         unknown_key.environment_updates[0].key = "UNEXPECTED_KEY".to_owned();
         assert!(create_env004_execution_plan(unknown_key).is_none());
+    }
+
+    #[test]
+    fn executor_applies_two_steps_successfully() {
+        let plan = execution_plan_for(
+            &healthy_process(),
+            &[
+                ("XDG_CURRENT_DESKTOP", "KDE"),
+                ("XDG_SESSION_DESKTOP", "gnome"),
+                ("XDG_SESSION_TYPE", "wayland"),
+            ],
+        );
+        let mut adapter = FakeExecutionAdapter::default();
+
+        assert_eq!(
+            execute_env004_plan(plan, &mut adapter),
+            Env004ExecutionOutcome::Applied
+        );
+        assert_eq!(
+            adapter.events,
+            vec!["apply:WAYLAND_DISPLAY", "apply:XDG_CURRENT_DESKTOP"]
+        );
+    }
+
+    #[test]
+    fn first_apply_failure_does_not_rollback_unapplied_steps() {
+        let plan = execution_plan_for(
+            &healthy_process(),
+            &[
+                ("XDG_CURRENT_DESKTOP", "KDE"),
+                ("XDG_SESSION_DESKTOP", "gnome"),
+                ("XDG_SESSION_TYPE", "wayland"),
+            ],
+        );
+        let mut adapter = FakeExecutionAdapter {
+            apply_failure_key: Some("WAYLAND_DISPLAY".to_owned()),
+            ..FakeExecutionAdapter::default()
+        };
+
+        assert_eq!(
+            execute_env004_plan(plan, &mut adapter),
+            Env004ExecutionOutcome::ApplyFailedRolledBack {
+                apply_failure: Env004ExecutionFailure {
+                    key: "WAYLAND_DISPLAY".to_owned(),
+                    phase: Env004ExecutionFailurePhase::Apply,
+                    error: Env004AdapterError::Failed,
+                },
+            }
+        );
+        assert_eq!(adapter.events, vec!["apply:WAYLAND_DISPLAY"]);
+    }
+
+    #[test]
+    fn second_apply_failure_rolls_back_only_completed_steps() {
+        let plan = execution_plan_for(
+            &healthy_process(),
+            &[
+                ("XDG_CURRENT_DESKTOP", "KDE"),
+                ("XDG_SESSION_DESKTOP", "gnome"),
+                ("XDG_SESSION_TYPE", "wayland"),
+            ],
+        );
+        let mut adapter = FakeExecutionAdapter {
+            apply_failure_key: Some("XDG_CURRENT_DESKTOP".to_owned()),
+            ..FakeExecutionAdapter::default()
+        };
+
+        assert_eq!(
+            execute_env004_plan(plan, &mut adapter),
+            Env004ExecutionOutcome::ApplyFailedRolledBack {
+                apply_failure: Env004ExecutionFailure {
+                    key: "XDG_CURRENT_DESKTOP".to_owned(),
+                    phase: Env004ExecutionFailurePhase::Apply,
+                    error: Env004AdapterError::Failed,
+                },
+            }
+        );
+        assert_eq!(
+            adapter.events,
+            vec![
+                "apply:WAYLAND_DISPLAY",
+                "apply:XDG_CURRENT_DESKTOP",
+                "rollback:WAYLAND_DISPLAY"
+            ]
+        );
+    }
+
+    #[test]
+    fn rollback_runs_in_reverse_order() {
+        let plan = execution_plan_for(
+            &[
+                ("XDG_CURRENT_DESKTOP", "GNOME"),
+                ("XDG_SESSION_DESKTOP", "gnome"),
+                ("XDG_SESSION_TYPE", "wayland"),
+                ("WAYLAND_DISPLAY", "wayland-0"),
+                ("DISPLAY", ":0"),
+            ],
+            &[
+                ("XDG_CURRENT_DESKTOP", "KDE"),
+                ("XDG_SESSION_DESKTOP", "gnome"),
+                ("XDG_SESSION_TYPE", "wayland"),
+            ],
+        );
+        let mut adapter = FakeExecutionAdapter {
+            apply_failure_key: Some("XDG_CURRENT_DESKTOP".to_owned()),
+            ..FakeExecutionAdapter::default()
+        };
+
+        let outcome = execute_env004_plan(plan, &mut adapter);
+        assert!(matches!(
+            outcome,
+            Env004ExecutionOutcome::ApplyFailedRolledBack { .. }
+        ));
+        assert_eq!(
+            adapter.events,
+            vec![
+                "apply:DISPLAY",
+                "apply:WAYLAND_DISPLAY",
+                "apply:XDG_CURRENT_DESKTOP",
+                "rollback:WAYLAND_DISPLAY",
+                "rollback:DISPLAY"
+            ]
+        );
+    }
+
+    #[test]
+    fn rollback_failure_is_reported_separately() {
+        let plan = execution_plan_for(
+            &healthy_process(),
+            &[
+                ("XDG_CURRENT_DESKTOP", "KDE"),
+                ("XDG_SESSION_DESKTOP", "gnome"),
+                ("XDG_SESSION_TYPE", "wayland"),
+            ],
+        );
+        let mut adapter = FakeExecutionAdapter {
+            apply_failure_key: Some("XDG_CURRENT_DESKTOP".to_owned()),
+            rollback_failure_key: Some("WAYLAND_DISPLAY".to_owned()),
+            ..FakeExecutionAdapter::default()
+        };
+
+        assert_eq!(
+            execute_env004_plan(plan, &mut adapter),
+            Env004ExecutionOutcome::ApplyFailedRollbackFailed {
+                apply_failure: Env004ExecutionFailure {
+                    key: "XDG_CURRENT_DESKTOP".to_owned(),
+                    phase: Env004ExecutionFailurePhase::Apply,
+                    error: Env004AdapterError::Failed,
+                },
+                rollback_failures: vec![Env004ExecutionFailure {
+                    key: "WAYLAND_DISPLAY".to_owned(),
+                    phase: Env004ExecutionFailurePhase::Rollback,
+                    error: Env004AdapterError::Failed,
+                }],
+            }
+        );
+        assert_eq!(
+            adapter.events,
+            vec![
+                "apply:WAYLAND_DISPLAY",
+                "apply:XDG_CURRENT_DESKTOP",
+                "rollback:WAYLAND_DISPLAY"
+            ]
+        );
+    }
+
+    #[test]
+    fn executor_consumes_plan_by_value() {
+        let plan = execution_plan_for(
+            &healthy_process(),
+            &[
+                ("XDG_CURRENT_DESKTOP", "KDE"),
+                ("XDG_SESSION_DESKTOP", "gnome"),
+                ("XDG_SESSION_TYPE", "wayland"),
+            ],
+        );
+        let mut adapter = FakeExecutionAdapter::default();
+        let outcome = execute_env004_plan(plan, &mut adapter);
+
+        assert_eq!(outcome, Env004ExecutionOutcome::Applied);
+        // `plan` was moved above and the type intentionally has no Clone, so
+        // the same capability cannot be submitted to the executor twice.
     }
 
     #[test]

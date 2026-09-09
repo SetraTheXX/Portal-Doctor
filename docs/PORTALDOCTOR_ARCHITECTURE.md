@@ -1104,6 +1104,17 @@ deterministically and rejects duplicate, unknown or missing pre-state. It has
 no file, package, configuration, service or environment side effect, and no
 `systemctl` or CLI apply path exists.
 
+The ninth bounded Phase 12 slice adds the internal
+`Env004ExecutionAdapter`-based executor. `execute_env004_plan` consumes the
+plan by value and is the only state-machine boundary: it applies steps in the
+plan's deterministic order, records only completed steps, and on the first
+apply error rolls back those completed steps in reverse order. The typed
+outcomes distinguish `applied`, `apply_failed_rolled_back` and
+`apply_failed_rollback_failed`; an unapplied or failed step is never rolled
+back. Only a test fake implements the injected adapter in this slice. There is
+no production adapter, subprocess, systemctl call, environment mutation or
+public `--apply` path.
+
 ## 25. Architecture Decision Summary
 
 | Decision | Choice |
