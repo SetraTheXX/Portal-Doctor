@@ -18,4 +18,8 @@ pub enum Error {
     /// contract.
     #[error("only --dry-run remediation previews are supported; apply is not implemented")]
     RemediationApplyUnsupported,
+    /// A generated preview must pass its own pure provenance verifier before
+    /// it is rendered, even though this command remains preview-only.
+    #[error("generated remediation preview failed provenance verification")]
+    RemediationPreviewVerificationFailed,
 }

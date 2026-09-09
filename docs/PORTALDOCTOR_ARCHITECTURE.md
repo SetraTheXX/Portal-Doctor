@@ -1037,6 +1037,16 @@ digests before acting.
 
 ---
 
+The next preview-only boundary is a pure
+`verify_env004_preview(stored_preview, fresh_snapshot, fresh_findings)`
+verifier. It first recomputes the stored proposal digest, then checks schema,
+finding, remediation, action, target, dry-run/apply and empty-side-effect-list
+contracts, and finally regenerates the fresh preview. It never compares
+collection timestamps directly: the stored digest proves document integrity,
+while the fresh actionable evidence digest and proposed update list prove
+current applicability. Its typed outcomes are `valid`, `tampered`,
+`stale_evidence`, `not_applicable` and `unsupported_schema`.
+
 ## 25. Architecture Decision Summary
 
 | Decision | Choice |

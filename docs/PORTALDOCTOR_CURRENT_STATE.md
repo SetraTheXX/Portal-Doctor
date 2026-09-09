@@ -416,6 +416,18 @@ changed actionable evidence, proposal fields or a different collection
 timestamp changes the binding. JSON and terminal output expose the binding,
 but `apply` remains `not_implemented` and no write-capable operation is added.
 
+The third Phase 12 slice adds the pure
+`verify_env004_preview(stored_preview, fresh_snapshot, fresh_findings)`
+contract. It verifies the stored proposal digest first, then the supported
+schema and preview/action/target/dry-run/apply/empty-side-effect contract,
+and finally regenerates fresh ENV004 evidence. A changed actionable evidence
+digest or proposed update list returns `stale_evidence`; a missing fresh
+ENV004 returns `not_applicable`; schema mismatches return
+`unsupported_schema`; and any stored integrity/contract mutation returns
+`tampered`. `collected_at` remains provenance and is not compared directly,
+so an otherwise unchanged fresh snapshot can verify as `valid`. The CLI only
+self-checks generated dry-run previews; no apply or write path exists.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility
