@@ -484,11 +484,14 @@ factory accepts no raw approval, proposal or snapshot and performs no
 The ninth Phase 12 slice adds an internal executor state machine with an
 injected `Env004ExecutionAdapter` trait. `execute_env004_plan` consumes the
 plan by value, applies deterministic steps, and rolls back only completed
-steps in reverse order after an apply failure. Typed outcomes distinguish
-successful application, successful rollback and rollback failure; failed or
-unapplied steps are not rolled back. Only a controlled fake adapter exists;
-there is no production systemctl/subprocess adapter, environment mutation or
-CLI `--apply` path.
+steps in reverse order after an apply failure. The tenth bounded slice makes
+adapter results explicit as `Applied`, `DefinitelyNotApplied` or
+`OutcomeUnknown`: a definitely-not-applied current step preserves the prior
+rollback set, while an unknown current step is treated as potentially applied
+and is rolled back before earlier completed steps. Rollback failures remain
+separately typed. Only a controlled fake adapter exists; there is no
+production systemctl/subprocess adapter, environment mutation or CLI
+`--apply` path.
 
 Implement and release-gate it in this order:
 
