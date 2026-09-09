@@ -144,6 +144,15 @@ Every section is an object with:
           "source_priority": 20
         }
       ],
+      "lower_priority_candidates": [
+        {
+          "path": "/usr/share/xdg-desktop-portal/portals.conf",
+          "source_priority": 21,
+          "status": "available",
+          "preferences": [],
+          "parse_errors": []
+        }
+      ],
       "parse_errors": []
     },
     "errors": []
@@ -347,7 +356,7 @@ Each finding follows PRD §8:
 - `severity`: `info` | `warning` | `error` | `critical`
 - `confidence`: `low` | `medium` | `high`
 - `evidence`: one or more of `environment_mismatch`, `config_selection`,
-  `missing_provider`, `dbus_timeout`, `service_state`, `pipewire_state`,
+  `config_candidate`, `missing_provider`, `dbus_timeout`, `service_state`, `pipewire_state`,
   `wireplumber_state`, `screencast_route`, `journal_excerpt`,
   `portal_frontend_version`
 - `impact` may be `null` when severity already conveys the consequence.
@@ -359,6 +368,13 @@ Each finding follows PRD §8:
   consumers must ignore unknown keys.
 - Breaking changes bump `schema_version` and are documented here before any
   tagged release.
+
+`portal_config.lower_priority_candidates` contains only existing lower-
+precedence candidates inspected as non-effective compatibility evidence. Its
+status, parsed preferences and parse errors are kept separate from the
+effective `preferences` list; lower preferences are never merged into route
+resolution. Compatibility rules must require an available, parse-clean
+candidate before using it as evidence.
 
 The additive `portal_frontend` section carries software/package evidence for
 `xdg-desktop-portal`; it is not the operating-system `system.version_id` and

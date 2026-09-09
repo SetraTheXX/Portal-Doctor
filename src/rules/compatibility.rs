@@ -1,6 +1,6 @@
 use crate::model::evidence::Evidence;
 use crate::model::finding::{Confidence, Finding, Severity};
-use crate::model::portal::RouteStatus;
+use crate::model::portal::{PortalConfigCandidate, RouteStatus};
 use crate::model::portal_frontend::{PORTAL_FRONTEND_COMPONENT, SemanticVersion};
 use crate::model::snapshot::Snapshot;
 use crate::rules::engine::DiagnosticRule;
@@ -33,7 +33,10 @@ impl DiagnosticRule for Xdp006 {
         {
             return Vec::new();
         }
-        if !is_canonical_niri(snapshot) || !has_effective_settings_override(snapshot) {
+        if !is_canonical_niri(snapshot)
+            || !has_effective_settings_override(snapshot)
+            || !has_lower_settings_gnome_candidate(snapshot)
+        {
             return Vec::new();
         }
         let Some(backends) = &snapshot.portal_backends.value else {
@@ -61,7 +64,11 @@ impl DiagnosticRule for Xdp006 {
                 frontend.normalized_version
             ),
             explanation: "The exact frontend version and effective Niri configuration match a narrowly bounded upstream compatibility report involving Settings provider resolution. PortalDoctor did not observe duplicate SettingsChanged traffic or claim that a runtime conflict occurred; this finding is a known compatibility risk only.".to_owned(),
-            evidence: vec![Evidence::PortalFrontendVersion, Evidence::ConfigSelection],
+            evidence: vec![
+                Evidence::PortalFrontendVersion,
+                Evidence::ConfigSelection,
+                Evidence::ConfigCandidate,
+            ],
             impact: Some(
                 "Settings updates may be inconsistent on the affected frontend/configuration combination until the upstream behavior is confirmed or fixed.".to_owned(),
             ),
@@ -98,13 +105,18 @@ fn has_effective_settings_override(snapshot: &Snapshot) -> bool {
     let Some(selected_file) = config.selected_file.as_deref() else {
         return false;
     };
-    let Some(preference) = config
+    if !config.parse_errors.is_empty() {
+        return false;
+    }
+    let settings: Vec<_> = config
         .preferences
         .iter()
-        .find(|preference| preference.interface == SETTINGS_INTERFACE)
-    else {
+        .filter(|preference| preference.interface == SETTINGS_INTERFACE)
+        .collect();
+    if settings.len() != 1 {
         return false;
-    };
+    }
+    let preference = settings[0];
     if preference.source_file != selected_file
         || preference.backends.len() != 1
         || preference.backends[0] != GTK_BACKEND
@@ -122,6 +134,60 @@ fn has_effective_settings_override(snapshot: &Snapshot) -> bool {
     })
 }
 
+fn has_lower_settings_gnome_candidate(snapshot: &Snapshot) -> bool {
+    let Some(config) = &snapshot.portal_config.value else {
+        return false;
+    };
+    let Some(selected_file) = config.selected_file.as_deref() else {
+        return false;
+    };
+    let Some(selected_settings) = config
+        .preferences
+        .iter()
+        .find(|preference| preference.interface == SETTINGS_INTERFACE)
+    else {
+        return false;
+    };
+
+    config.lower_priority_candidates.iter().any(|candidate| {
+        candidate.path != selected_file
+            && candidate.status == crate::model::status::CollectorState::Available
+            && candidate.parse_errors.is_empty()
+            && candidate.source_priority > selected_settings.source_priority
+            && lower_candidate_settings_preference(candidate).is_some_and(|preference| {
+                preference
+                    .backends
+                    .iter()
+                    .any(|backend| backend == GNOME_BACKEND)
+            })
+    })
+}
+
+fn lower_candidate_settings_preference(
+    candidate: &PortalConfigCandidate,
+) -> Option<&crate::model::portal::PortalPreference> {
+    let explicit: Vec<_> = candidate
+        .preferences
+        .iter()
+        .filter(|preference| preference.interface == SETTINGS_INTERFACE)
+        .collect();
+    if explicit.len() > 1 {
+        return None;
+    }
+    if let Some(preference) = explicit.into_iter().next() {
+        return Some(preference);
+    }
+
+    let defaults: Vec<_> = candidate
+        .preferences
+        .iter()
+        .filter(|preference| {
+            preference.interface == crate::resolver::portal_routes::DEFAULT_INTERFACE
+        })
+        .collect();
+    (defaults.len() == 1).then(|| defaults[0])
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -129,12 +195,13 @@ mod tests {
     use super::Xdp006;
     use crate::model::dbus::DbusInfo;
     use crate::model::environment::{SessionInfo, SessionType};
-    use crate::model::portal::PortalConfigInfo;
+    use crate::model::portal::{PortalConfigCandidate, PortalConfigInfo};
     use crate::model::portal_frontend::{
         PORTAL_FRONTEND_COMPONENT, PortalFrontendInfo, SemanticVersion, VersionEvidenceSource,
     };
     use crate::model::section::Section;
     use crate::model::snapshot::Snapshot;
+    use crate::model::status::CollectorState;
     use crate::rules::engine::DiagnosticRule;
 
     const SETTINGS: &str = "org.freedesktop.impl.portal.Settings";
@@ -177,6 +244,7 @@ mod tests {
             selected_file: Some(selected_file.to_owned()),
             preferences,
             parse_errors,
+            lower_priority_candidates: Vec::new(),
         };
         let mut gnome = crate::collectors::portal_files::parse_portal_file(
             include_str!("../../tests/fixtures/portal-routing/gnome.portal"),
@@ -230,23 +298,54 @@ mod tests {
             .collect()
     }
 
+    fn with_lower_candidate(mut snapshot: Snapshot, text: &str) -> Snapshot {
+        let (preferences, parse_errors) = crate::collectors::portal_config::parse_config(
+            text,
+            "/usr/share/xdg-desktop-portal/portals.conf",
+            1,
+        );
+        snapshot
+            .portal_config
+            .value
+            .as_mut()
+            .expect("portal config fixture")
+            .lower_priority_candidates = vec![PortalConfigCandidate {
+            path: "/usr/share/xdg-desktop-portal/portals.conf".to_owned(),
+            source_priority: 1,
+            status: if parse_errors.is_empty() {
+                CollectorState::Available
+            } else {
+                CollectorState::ParseError
+            },
+            preferences,
+            parse_errors,
+        }];
+        snapshot
+    }
+
     #[test]
     fn exact_affected_version_and_effective_override_emit_one_risk() {
-        let findings = Xdp006.evaluate(&snapshot(
-            Some(SemanticVersion::new(1, 22, 0)),
-            "niri",
-            true,
-            true,
-            true,
-        ));
-        crate::rules::contract::assert_contract(&findings);
-        assert_eq!(
-            ids(&snapshot(
+        let findings = Xdp006.evaluate(&with_lower_candidate(
+            snapshot(
                 Some(SemanticVersion::new(1, 22, 0)),
                 "niri",
                 true,
                 true,
-                true
+                true,
+            ),
+            include_str!("../../tests/fixtures/portal-routing/generic-gnome-gtk-portals.conf"),
+        ));
+        crate::rules::contract::assert_contract(&findings);
+        assert_eq!(
+            ids(&with_lower_candidate(
+                snapshot(
+                    Some(SemanticVersion::new(1, 22, 0)),
+                    "niri",
+                    true,
+                    true,
+                    true
+                ),
+                include_str!("../../tests/fixtures/portal-routing/generic-gnome-gtk-portals.conf"),
             )),
             ["XDP006"]
         );
@@ -256,6 +355,71 @@ mod tests {
         );
         assert!(findings[0].summary.contains("1.22.0"));
         assert!(!findings[0].summary.contains("duplicate"));
+    }
+
+    #[test]
+    fn lower_candidate_is_required_for_the_regression_risk() {
+        assert!(
+            ids(&snapshot(
+                Some(SemanticVersion::new(1, 22, 0)),
+                "niri",
+                true,
+                true,
+                true,
+            ))
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn lower_candidate_must_make_gnome_a_settings_candidate() {
+        let no_gnome = with_lower_candidate(
+            snapshot(
+                Some(SemanticVersion::new(1, 22, 0)),
+                "niri",
+                true,
+                true,
+                true,
+            ),
+            "[preferred]\norg.freedesktop.impl.portal.Settings=gtk;\n",
+        );
+        assert!(ids(&no_gnome).is_empty());
+
+        let malformed = with_lower_candidate(
+            snapshot(
+                Some(SemanticVersion::new(1, 22, 0)),
+                "niri",
+                true,
+                true,
+                true,
+            ),
+            "[preferred]\ndefault=gnome;gtk\nbroken-line\n",
+        );
+        assert!(ids(&malformed).is_empty());
+    }
+
+    #[test]
+    fn unreadable_lower_candidate_is_silent() {
+        let mut snapshot = snapshot(
+            Some(SemanticVersion::new(1, 22, 0)),
+            "niri",
+            true,
+            true,
+            true,
+        );
+        snapshot
+            .portal_config
+            .value
+            .as_mut()
+            .expect("portal config fixture")
+            .lower_priority_candidates = vec![PortalConfigCandidate {
+            path: "/usr/share/xdg-desktop-portal/portals.conf".to_owned(),
+            source_priority: 1,
+            status: CollectorState::Unavailable,
+            preferences: Vec::new(),
+            parse_errors: vec!["cannot read lower-priority candidate".to_owned()],
+        }];
+        assert!(ids(&snapshot).is_empty());
     }
 
     #[test]

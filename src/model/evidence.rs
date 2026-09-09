@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 pub enum Evidence {
     EnvironmentMismatch,
     ConfigSelection,
+    ConfigCandidate,
     MissingProvider,
     DbusTimeout,
     ServiceState,
@@ -30,6 +31,7 @@ impl Evidence {
         match self {
             Self::EnvironmentMismatch => "environment mismatch",
             Self::ConfigSelection => "config selection",
+            Self::ConfigCandidate => "config candidate",
             Self::MissingProvider => "missing provider",
             Self::DbusTimeout => "dbus timeout",
             Self::ServiceState => "service state",

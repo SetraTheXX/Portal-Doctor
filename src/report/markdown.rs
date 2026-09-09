@@ -207,6 +207,7 @@ fn write_roots(out: &mut String, title: &str, roots: &[String]) {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn write_portal(out: &mut String, snapshot: &Snapshot, verbose: bool) {
     writeln!(out, "## Portal routing").expect("String writes cannot fail");
     row(
@@ -236,6 +237,7 @@ fn write_portal(out: &mut String, snapshot: &Snapshot, verbose: bool) {
                 .expect("String writes cannot fail");
             }
         }
+        write_lower_priority_candidates(out, config, verbose);
     }
 
     row(
@@ -311,6 +313,46 @@ fn write_portal(out: &mut String, snapshot: &Snapshot, verbose: bool) {
         }
     }
     out.push('\n');
+}
+
+fn write_lower_priority_candidates(
+    out: &mut String,
+    config: &crate::model::portal::PortalConfigInfo,
+    verbose: bool,
+) {
+    row(
+        out,
+        "Lower-priority candidates",
+        &config.lower_priority_candidates.len().to_string(),
+    );
+    if !verbose || config.lower_priority_candidates.is_empty() {
+        return;
+    }
+    writeln!(out, "### Lower-priority candidate evidence").expect("String writes cannot fail");
+    writeln!(
+        out,
+        "| Path | Priority | Status | Preferences | Parse errors |"
+    )
+    .expect("String writes cannot fail");
+    writeln!(out, "| --- | ---: | --- | --- | --- |").expect("String writes cannot fail");
+    for candidate in &config.lower_priority_candidates {
+        let preferences = candidate
+            .preferences
+            .iter()
+            .map(|preference| format!("{}={}", preference.interface, preference.backends.join(",")))
+            .collect::<Vec<_>>()
+            .join("; ");
+        writeln!(
+            out,
+            "| {} | {} | {} | {} | {} |",
+            escape(&candidate.path),
+            candidate.source_priority,
+            candidate.status,
+            escape(&preferences),
+            escape(&candidate.parse_errors.join("; ")),
+        )
+        .expect("String writes cannot fail");
+    }
 }
 
 fn write_runtime(out: &mut String, snapshot: &Snapshot, verbose: bool) {

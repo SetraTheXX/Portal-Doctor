@@ -28,7 +28,7 @@ diagnosis.
 | `XDP003` | WARNING | HIGH | No `.portal` backend descriptors were discovered in any effective `XDG` data root. |
 | `XDP004` | WARNING | HIGH | An interface listed in `[preferred]` has no available backend in this desktop context. Explicitly disabled (`none`) interfaces do not fire this rule. |
 | `XDP005` | WARNING | HIGH | A `[preferred]` entry names a backend whose descriptor does not exist (`*` and `none` are exempt). |
-| `XDP006` | WARNING | MEDIUM | Exact `xdg-desktop-portal` version `1.22.0`, pure Niri identity, effective `Settings=gtk`, and both GNOME/GTK Settings-capable descriptors match the narrowly bounded XDP #2033 compatibility-risk fixture. This does not claim an observed duplicate SettingsChanged conflict. |
+| `XDP006` | WARNING | MEDIUM | Exact `xdg-desktop-portal` version `1.22.0`, pure Niri identity, effective `Settings=gtk`, a valid lower-priority config whose effective Settings candidate includes GNOME, and both GNOME/GTK Settings-capable descriptors match the narrowly bounded XDP #2033 compatibility-risk fixture. This does not claim an observed duplicate SettingsChanged conflict. |
 
 ## Configuration
 
@@ -90,7 +90,7 @@ display the sanitized excerpts.
 - Findings are deterministic: the same snapshot always yields the same
   findings in the same order (sorted by ID).
 - Every finding carries at least one structured evidence item
-  (`environment_mismatch`, `config_selection`, `missing_provider`,
+  (`environment_mismatch`, `config_selection`, `config_candidate`, `missing_provider`,
   `dbus_timeout`, `service_state`, `pipewire_state`, `wireplumber_state`,
   `screencast_route`, `journal_excerpt`) and at least one recommended next
   step.

@@ -1,7 +1,7 @@
 use std::fs;
 
 use crate::model::environment::SearchRoots;
-use crate::model::portal::{PortalConfigInfo, PortalPreference};
+use crate::model::portal::{PortalConfigCandidate, PortalConfigInfo, PortalPreference};
 use crate::model::section::Section;
 use crate::resolver::search_paths;
 
@@ -85,6 +85,7 @@ pub fn collect(roots: &SearchRoots, desktops: &[String]) -> Section<PortalConfig
             selected_file: None,
             preferences: Vec::new(),
             parse_errors: Vec::new(),
+            lower_priority_candidates: Vec::new(),
         });
     };
     let path = &candidates[selected];
@@ -92,15 +93,58 @@ pub fn collect(roots: &SearchRoots, desktops: &[String]) -> Section<PortalConfig
         Ok(text) => {
             let (preferences, parse_errors) =
                 parse_config(&text, &path.to_string_lossy(), selected);
+            let lower_priority_candidates =
+                collect_lower_priority_candidates(&candidates, selected);
             Section::available(PortalConfigInfo {
                 candidate_files,
                 selected_file: Some(path.to_string_lossy().into_owned()),
                 preferences,
                 parse_errors,
+                lower_priority_candidates,
             })
         }
         Err(err) => Section::unavailable(format!("cannot read {}: {err}", path.display())),
     }
+}
+
+fn collect_lower_priority_candidates(
+    candidates: &[std::path::PathBuf],
+    selected: usize,
+) -> Vec<PortalConfigCandidate> {
+    candidates
+        .iter()
+        .enumerate()
+        .skip(selected + 1)
+        .filter_map(|(source_priority, path)| {
+            let path_string = path.to_string_lossy().into_owned();
+            match fs::read_to_string(path) {
+                Ok(text) => {
+                    let (preferences, parse_errors) =
+                        parse_config(&text, &path_string, source_priority);
+                    let status = if parse_errors.is_empty() {
+                        crate::model::status::CollectorState::Available
+                    } else {
+                        crate::model::status::CollectorState::ParseError
+                    };
+                    Some(PortalConfigCandidate {
+                        path: path_string,
+                        source_priority,
+                        status,
+                        preferences,
+                        parse_errors,
+                    })
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                Err(error) => Some(PortalConfigCandidate {
+                    path: path_string,
+                    source_priority,
+                    status: crate::model::status::CollectorState::Unavailable,
+                    preferences: Vec::new(),
+                    parse_errors: vec![format!("cannot read lower-priority candidate: {error}")],
+                }),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -307,6 +351,82 @@ mod tests {
                 .preferences
                 .iter()
                 .all(|preference| preference.source_file == high_path)
+        );
+        assert_eq!(config.lower_priority_candidates.len(), 1);
+        let lower = &config.lower_priority_candidates[0];
+        assert_eq!(lower.path, low_path);
+        assert!(lower.source_priority > 0);
+        assert_eq!(
+            lower.status,
+            crate::model::status::CollectorState::Available
+        );
+        assert!(lower.parse_errors.is_empty());
+        assert_eq!(lower.preferences[0].backends, ["gnome", "gtk"]);
+
+        std::fs::remove_dir_all(root).expect("remove controlled config tree");
+    }
+
+    #[test]
+    fn collect_marks_malformed_lower_candidate_without_making_it_effective() {
+        let root = std::env::temp_dir().join(format!(
+            "portaldoctor-config-lower-malformed-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock is after the Unix epoch")
+                .as_nanos()
+        ));
+        let high_dir = root.join("config/xdg-desktop-portal");
+        let low_dir = root.join("data/xdg-desktop-portal");
+        let high_path = high_dir.join("niri-portals.conf");
+        let low_path = low_dir.join("portals.conf");
+        std::fs::create_dir_all(&high_dir).expect("create high-precedence config directory");
+        std::fs::create_dir_all(&low_dir).expect("create lower-precedence config directory");
+        std::fs::write(
+            &high_path,
+            include_str!("../../tests/fixtures/portal-routing/niri-settings-override.conf"),
+        )
+        .expect("write high-precedence Niri config");
+        std::fs::write(&low_path, "[preferred]\ndefault=gnome;gtk\nbroken-line\n")
+            .expect("write malformed lower config");
+
+        let section = collect(
+            &SearchRoots {
+                config_roots: vec![root.join("config").to_string_lossy().into_owned()],
+                data_roots: vec![root.join("data").to_string_lossy().into_owned()],
+            },
+            &["niri".to_owned()],
+        );
+        let config = section
+            .value
+            .expect("controlled config should be available");
+        assert_eq!(
+            config.selected_file.as_deref(),
+            Some(high_path.to_string_lossy().as_ref())
+        );
+        assert_eq!(config.lower_priority_candidates.len(), 1);
+        assert_eq!(
+            config.lower_priority_candidates[0].status,
+            crate::model::status::CollectorState::ParseError
+        );
+        assert!(!config.lower_priority_candidates[0].parse_errors.is_empty());
+
+        std::fs::remove_file(&low_path).expect("remove malformed lower config");
+        std::fs::create_dir(&low_path).expect("create unreadable lower candidate directory");
+        let section = collect(
+            &SearchRoots {
+                config_roots: vec![root.join("config").to_string_lossy().into_owned()],
+                data_roots: vec![root.join("data").to_string_lossy().into_owned()],
+            },
+            &["niri".to_owned()],
+        );
+        let config = section
+            .value
+            .expect("controlled config should be available");
+        assert_eq!(config.lower_priority_candidates.len(), 1);
+        assert_eq!(
+            config.lower_priority_candidates[0].status,
+            crate::model::status::CollectorState::Unavailable
         );
 
         std::fs::remove_dir_all(root).expect("remove controlled config tree");

@@ -279,9 +279,11 @@ The passive aggregate is clean with both selected runtime owners healthy,
 emits only `ENV003` when `WAYLAND_DISPLAY` is absent, and emits only generic
 `DBUS002` when the selected GNOME or GTK owner is missing. A separate
 higher-precedence `Settings=gtk` file is the effective selected config; the
-lower generic `default=gnome;gtk` file remains only in the candidate list and
-is not merged. Settings resolves to GTK while capture remains on GNOME, and
-intentional multiple installed descriptors do not produce `CFG004`.
+lower generic `default=gnome;gtk` file remains non-effective and is not
+merged. Existing lower candidates are recorded separately with parse/read
+status and parsed preferences for bounded compatibility evidence. Settings
+resolves to GTK while capture remains on GNOME, and intentional multiple
+installed descriptors do not produce `CFG004`.
 
 The XDG Desktop Portal 1.22.0 / Issue #2033 behavior is represented as a
 controlled regression fixture. The new additive `portal_frontend` snapshot
@@ -334,13 +336,17 @@ properties are a separate concept.
 
 `XDP006` is deliberately narrow: it requires exact normalized frontend version
 `1.22.0`, pure `XDG_CURRENT_DESKTOP=niri`/session identity, an effective
-selected `Settings=gtk` preference from the selected config, and both GNOME and
-GTK descriptors advertising Settings. It reports a known upstream compatibility
-risk, not an observed duplicate `SettingsChanged` conflict. Missing or
-uncomparable version evidence, another version/desktop, canonical
-`default=gnome;gtk`, a single capable descriptor, or merely having GNOME and
-GTK installed is silent. This is controlled evidence/compatibility coverage,
-not live Niri validation, active-probe validation, a support claim or release
+selected `Settings=gtk` preference from the selected config, a valid existing
+lower-priority candidate whose effective Settings preference (explicit entry
+or fallback default) includes GNOME, and both GNOME and GTK descriptors
+advertising Settings. Lower candidates are never merged into route resolution;
+missing, malformed, unreadable or non-GNOME lower evidence is ignored. It
+reports a known upstream compatibility risk, not an observed duplicate
+`SettingsChanged` conflict. Missing or uncomparable version evidence, another
+version/desktop, canonical `default=gnome;gtk` without the lower candidate
+evidence, a single capable descriptor, or merely having GNOME and GTK
+installed is silent. This is controlled evidence/compatibility coverage, not
+live Niri validation, active-probe validation, a support claim or release
 approval; Phase 8, KDE and Sway blockers are unchanged.
 
 Implement and release-gate it in this order:

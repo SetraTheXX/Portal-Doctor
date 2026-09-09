@@ -37,6 +37,25 @@ pub struct PortalConfigInfo {
     pub selected_file: Option<String>,
     pub preferences: Vec<PortalPreference>,
     pub parse_errors: Vec<String>,
+    /// Existing lower-precedence candidates inspected as non-effective
+    /// compatibility evidence. These preferences never participate in route
+    /// resolution.
+    #[serde(default)]
+    pub lower_priority_candidates: Vec<PortalConfigCandidate>,
+}
+
+/// Evidence about an existing lower-precedence `portals.conf` candidate.
+///
+/// This is deliberately separate from `PortalConfigInfo.preferences`: a
+/// candidate can inform a bounded compatibility rule, but it must never be
+/// merged into the effective configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PortalConfigCandidate {
+    pub path: String,
+    pub source_priority: usize,
+    pub status: crate::model::status::CollectorState,
+    pub preferences: Vec<PortalPreference>,
+    pub parse_errors: Vec<String>,
 }
 
 /// Outcome of route resolution for one portal interface (architecture §10).

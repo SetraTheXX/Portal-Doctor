@@ -130,11 +130,16 @@ compatibility warning fires; the package fallback preserves raw revisions such
 as `1.21.1+ds-1ubuntu3`.
 
 `XDP006` requires exact normalized `1.22.0`, pure Niri identity, effective
-selected `Settings=gtk` from the selected file, and both GNOME/GTK descriptors
-advertising Settings. It reports a known upstream compatibility risk only; it
-does not claim an observed duplicate SettingsChanged conflict. Unknown or
-uncomparable versions, other desktops, canonical `default=gnome;gtk`, a
-single capable descriptor, and mere GNOME+GTK installation are silent. The
+selected `Settings=gtk` from the selected file, a valid existing lower-priority
+candidate whose effective Settings preference includes GNOME, and both
+GNOME/GTK descriptors advertising Settings. Lower candidates are captured as
+separate non-effective metadata; their preferences are never merged into the
+effective config or resolver. Missing, non-GNOME, malformed or unreadable
+lower candidates are not evidence. It reports a known upstream compatibility
+risk only; it does not claim an observed duplicate SettingsChanged conflict.
+Unknown or uncomparable versions, other desktops, canonical
+`default=gnome;gtk` without the lower candidate evidence, a single capable
+descriptor, and mere GNOME+GTK installation are silent. The
 Secret/gnome-keyring entry is not claimed because the current model lacks its
 service-specific runtime contract. No live Niri validation or Niri support
 claim follows from this coverage.

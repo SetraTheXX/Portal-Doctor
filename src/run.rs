@@ -596,6 +596,7 @@ mod tests {
             selected_file,
             preferences,
             parse_errors,
+            lower_priority_candidates: Vec::new(),
         };
         let backends = vec![
             crate::collectors::portal_files::parse_portal_file(
@@ -727,6 +728,7 @@ mod tests {
             selected_file: Some("/fixture/kde-portals.conf".to_owned()),
             preferences,
             parse_errors,
+            lower_priority_candidates: Vec::new(),
         };
         let kde = crate::collectors::portal_files::parse_portal_file(
             include_str!("../tests/fixtures/portal-routing/kde.portal"),
@@ -820,6 +822,7 @@ mod tests {
             .collect()
     }
 
+    #[allow(clippy::too_many_lines)]
     fn hyprland_passive_snapshot(with_wayland_display: bool) -> Snapshot {
         const HYPRLAND_BACKEND: &str = "org.freedesktop.impl.portal.desktop.hyprland";
         const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
@@ -842,6 +845,7 @@ mod tests {
             selected_file: Some("/fixture/hyprland-portals.conf".to_owned()),
             preferences,
             parse_errors,
+            lower_priority_candidates: Vec::new(),
         };
         let backends = vec![
             crate::collectors::portal_files::parse_portal_file(
@@ -926,6 +930,7 @@ mod tests {
         snapshot
     }
 
+    #[allow(clippy::too_many_lines)]
     fn sway_passive_snapshot(with_wayland_display: bool) -> Snapshot {
         const WLR_BACKEND: &str = "org.freedesktop.impl.portal.desktop.wlr";
         const GTK_BACKEND: &str = "org.freedesktop.impl.portal.desktop.gtk";
@@ -948,6 +953,7 @@ mod tests {
             selected_file: Some("/fixture/sway-portals.conf".to_owned()),
             preferences,
             parse_errors,
+            lower_priority_candidates: Vec::new(),
         };
         let backends = vec![
             crate::collectors::portal_files::parse_portal_file(
@@ -1324,6 +1330,7 @@ mod tests {
             selected_file: Some("/fixture/hyprland-portals.conf".to_owned()),
             preferences,
             parse_errors,
+            lower_priority_candidates: Vec::new(),
         };
         let backends = vec![
             crate::collectors::portal_files::parse_portal_file(
@@ -1535,7 +1542,7 @@ mod tests {
     }
 
     #[test]
-    fn niri_exact_xdp_2033_version_emits_only_bounded_compatibility_risk() {
+    fn niri_exact_xdp_2033_version_without_lower_candidate_is_silent() {
         let mut snapshot = niri_snapshot(
             DbusOutcome::HasOwner,
             DbusOutcome::HasOwner,
@@ -1554,9 +1561,7 @@ mod tests {
 
         let findings = evaluate(&snapshot);
         crate::rules::contract::assert_contract(&findings);
-        assert_eq!(finding_ids(&findings), ["XDP006"]);
-        assert!(findings[0].summary.contains("1.22.0"));
-        assert!(!findings[0].summary.contains("duplicate"));
+        assert!(findings.is_empty());
     }
 
     #[test]
@@ -3200,6 +3205,25 @@ mod tests {
         override_snapshot.environment = environment_for(&activation);
         override_snapshot.dbus = dbus;
         override_snapshot.services = services;
+        override_snapshot.portal_frontend = Section::available(PortalFrontendInfo::new(
+            "1.22.0",
+            SemanticVersion::new(1, 22, 0),
+            VersionEvidenceSource::DpkgQuery {
+                package: PORTAL_FRONTEND_COMPONENT.to_owned(),
+            },
+        ));
+        let lower_candidates = &override_snapshot
+            .portal_config
+            .value
+            .as_ref()
+            .expect("Niri selected config")
+            .lower_priority_candidates;
+        assert_eq!(lower_candidates.len(), 1);
+        assert_eq!(lower_candidates[0].status, CollectorState::Available);
+        assert_eq!(
+            lower_candidates[0].preferences[0].backends,
+            ["gnome", "gtk"]
+        );
         let override_routes = override_snapshot
             .portal_routes
             .value
@@ -3229,7 +3253,9 @@ mod tests {
         );
         let findings = evaluate(&override_snapshot);
         crate::rules::contract::assert_contract(&findings);
-        assert!(findings.is_empty());
+        assert_eq!(finding_ids(&findings), ["XDP006"]);
+        assert!(findings[0].summary.contains("1.22.0"));
+        assert!(!findings[0].summary.contains("duplicate"));
         assert!(!findings.iter().any(|finding| finding.id == "CFG004"));
 
         set_name(&owner, GNOME_BACKEND, false, &mut gnome_owned);
