@@ -1439,6 +1439,23 @@ set or unset an environment variable, add `--apply` or perform any real write.
 This is controlled transaction semantics only. No production adapter,
 systemctl/subprocess access, environment mutation or CLI `--apply` path exists.
 
+## Tenth bounded `ENV004` ambiguous apply-result slice — 2026-09-09
+
+- [x] Make the injected adapter distinguish `Applied`,
+  `DefinitelyNotApplied` and `OutcomeUnknown` without adding production I/O.
+- [x] Preserve the existing rollback behavior for a definitely-not-applied
+  current step: only earlier completed steps are rolled back in reverse order.
+- [x] Treat an unknown current step as potentially applied and roll it back
+  first, followed by earlier completed steps in reverse order.
+- [x] Keep rollback failures as a separate typed outcome and retain every
+  attempted rollback.
+- [x] Cover first-step and second-step unknown results, definite non-application,
+  rollback failure and normal success/failure paths with the fake adapter.
+
+This is controlled ambiguity/rollback semantics only. It does not add a
+production adapter, subprocess or systemctl access, environment mutation or
+CLI `--apply` path.
+
 ## Prohibited behavior
 
 No silent:

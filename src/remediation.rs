@@ -316,12 +316,24 @@ pub enum Env004AdapterError {
     Unavailable,
 }
 
+/// The adapter's certainty about the effect of one apply attempt. A transport
+/// failure must not be interpreted as proof that the current step was not
+/// applied: `OutcomeUnknown` makes the executor include that step in the
+/// rollback set.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Env004ApplyResult {
+    Applied,
+    DefinitelyNotApplied { error: Env004AdapterError },
+    OutcomeUnknown { error: Env004AdapterError },
+}
+
 /// The only I/O boundary used by the internal ENV004 executor. Production
 /// adapters are deliberately out of scope for this slice; tests inject a fake
 /// implementation instead.
 #[allow(dead_code)]
 pub trait Env004ExecutionAdapter {
-    fn apply_step(&mut self, step: &Env004ExecutionStep) -> Result<(), Env004AdapterError>;
+    fn apply_step(&mut self, step: &Env004ExecutionStep) -> Env004ApplyResult;
     fn rollback_step(&mut self, step: &Env004ExecutionStep) -> Result<(), Env004AdapterError>;
 }
 
@@ -339,6 +351,15 @@ pub struct Env004ExecutionFailure {
     pub key: String,
     pub phase: Env004ExecutionFailurePhase,
     pub error: Env004AdapterError,
+    pub apply_certainty: Option<Env004ApplyCertainty>,
+}
+
+/// Why an apply-phase failure is eligible for the executor's rollback set.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Env004ApplyCertainty {
+    DefinitelyNotApplied,
+    OutcomeUnknown,
 }
 
 /// Result of consuming one execution plan. A rollback failure is kept
@@ -862,35 +883,57 @@ pub fn execute_env004_plan<A: Env004ExecutionAdapter>(
     let mut applied_steps = Vec::with_capacity(plan.steps.len());
     for step in plan.steps {
         match adapter.apply_step(&step) {
-            Ok(()) => applied_steps.push(step),
-            Err(error) => {
+            Env004ApplyResult::Applied => applied_steps.push(step),
+            Env004ApplyResult::DefinitelyNotApplied { error } => {
                 let apply_failure = Env004ExecutionFailure {
                     key: step.key,
                     phase: Env004ExecutionFailurePhase::Apply,
                     error,
+                    apply_certainty: Some(Env004ApplyCertainty::DefinitelyNotApplied),
                 };
-                let mut rollback_failures = Vec::new();
-                for applied_step in applied_steps.into_iter().rev() {
-                    if let Err(error) = adapter.rollback_step(&applied_step) {
-                        rollback_failures.push(Env004ExecutionFailure {
-                            key: applied_step.key,
-                            phase: Env004ExecutionFailurePhase::Rollback,
-                            error,
-                        });
-                    }
-                }
-                return if rollback_failures.is_empty() {
-                    Env004ExecutionOutcome::ApplyFailedRolledBack { apply_failure }
-                } else {
-                    Env004ExecutionOutcome::ApplyFailedRollbackFailed {
-                        apply_failure,
-                        rollback_failures,
-                    }
+                return finish_env004_rollback(applied_steps, adapter, apply_failure);
+            }
+            Env004ApplyResult::OutcomeUnknown { error } => {
+                let apply_failure = Env004ExecutionFailure {
+                    key: step.key.clone(),
+                    phase: Env004ExecutionFailurePhase::Apply,
+                    error,
+                    apply_certainty: Some(Env004ApplyCertainty::OutcomeUnknown),
                 };
+                // An ambiguous current step may already have changed the
+                // activation environment, so it must be rolled back first.
+                applied_steps.push(step);
+                return finish_env004_rollback(applied_steps, adapter, apply_failure);
             }
         }
     }
     Env004ExecutionOutcome::Applied
+}
+
+fn finish_env004_rollback<A: Env004ExecutionAdapter>(
+    completed_steps: Vec<Env004ExecutionStep>,
+    adapter: &mut A,
+    apply_failure: Env004ExecutionFailure,
+) -> Env004ExecutionOutcome {
+    let mut rollback_failures = Vec::new();
+    for completed_step in completed_steps.into_iter().rev() {
+        if let Err(error) = adapter.rollback_step(&completed_step) {
+            rollback_failures.push(Env004ExecutionFailure {
+                key: completed_step.key,
+                phase: Env004ExecutionFailurePhase::Rollback,
+                error,
+                apply_certainty: None,
+            });
+        }
+    }
+    if rollback_failures.is_empty() {
+        Env004ExecutionOutcome::ApplyFailedRolledBack { apply_failure }
+    } else {
+        Env004ExecutionOutcome::ApplyFailedRollbackFailed {
+            apply_failure,
+            rollback_failures,
+        }
+    }
 }
 
 fn verify_approval_integrity(
@@ -1481,16 +1524,16 @@ fn session_matches_process(
 mod tests {
     use super::{
         ApplyStatus, ApprovalStaleEvidenceReason, ApprovalTamperReason, EffectApplicabilityReason,
-        EffectMismatchReason, EffectUnavailableReason, Env004AdapterError, Env004ApplyPermit,
-        Env004ApprovalVerification, Env004EffectVerification, Env004ExecutionAdapter,
-        Env004ExecutionFailure, Env004ExecutionFailurePhase, Env004ExecutionOutcome,
-        Env004ExecutionPlan, Env004PreviewVerification, Env004PriorActivation,
-        Env004RollbackAction, NotApplicableReason, RemediationAction, RemediationApplicability,
-        RemediationApproval, RemediationApprovalState, RemediationProposal, RemediationTarget,
-        StaleEvidenceReason, VerificationSchemaReason, VerificationTamperReason,
-        create_env004_apply_permit, create_env004_approval, create_env004_execution_plan,
-        execute_env004_plan, preview_env004, render_terminal, verify_env004_approval,
-        verify_env004_effect, verify_env004_preview,
+        EffectMismatchReason, EffectUnavailableReason, Env004AdapterError, Env004ApplyCertainty,
+        Env004ApplyPermit, Env004ApplyResult, Env004ApprovalVerification, Env004EffectVerification,
+        Env004ExecutionAdapter, Env004ExecutionFailure, Env004ExecutionFailurePhase,
+        Env004ExecutionOutcome, Env004ExecutionPlan, Env004PreviewVerification,
+        Env004PriorActivation, Env004RollbackAction, NotApplicableReason, RemediationAction,
+        RemediationApplicability, RemediationApproval, RemediationApprovalState,
+        RemediationProposal, RemediationTarget, StaleEvidenceReason, VerificationSchemaReason,
+        VerificationTamperReason, create_env004_apply_permit, create_env004_approval,
+        create_env004_execution_plan, execute_env004_plan, preview_env004, render_terminal,
+        verify_env004_approval, verify_env004_effect, verify_env004_preview,
     };
     use crate::collectors::environment::{environment_info, session_info};
     use crate::model::section::Section;
@@ -1558,21 +1601,19 @@ mod tests {
     #[derive(Default)]
     struct FakeExecutionAdapter {
         events: Vec<String>,
-        apply_failure_key: Option<String>,
+        apply_result_for_key: Option<(String, Env004ApplyResult)>,
         rollback_failure_key: Option<String>,
     }
 
     impl Env004ExecutionAdapter for FakeExecutionAdapter {
-        fn apply_step(
-            &mut self,
-            step: &super::Env004ExecutionStep,
-        ) -> Result<(), Env004AdapterError> {
+        fn apply_step(&mut self, step: &super::Env004ExecutionStep) -> Env004ApplyResult {
             self.events.push(format!("apply:{}", step.key));
-            if self.apply_failure_key.as_deref() == Some(step.key.as_str()) {
-                Err(Env004AdapterError::Failed)
-            } else {
-                Ok(())
+            if let Some((key, result)) = &self.apply_result_for_key
+                && key == &step.key
+            {
+                return *result;
             }
+            Env004ApplyResult::Applied
         }
 
         fn rollback_step(
@@ -2393,7 +2434,12 @@ mod tests {
             ],
         );
         let mut adapter = FakeExecutionAdapter {
-            apply_failure_key: Some("WAYLAND_DISPLAY".to_owned()),
+            apply_result_for_key: Some((
+                "WAYLAND_DISPLAY".to_owned(),
+                Env004ApplyResult::DefinitelyNotApplied {
+                    error: Env004AdapterError::Failed,
+                },
+            )),
             ..FakeExecutionAdapter::default()
         };
 
@@ -2404,10 +2450,48 @@ mod tests {
                     key: "WAYLAND_DISPLAY".to_owned(),
                     phase: Env004ExecutionFailurePhase::Apply,
                     error: Env004AdapterError::Failed,
+                    apply_certainty: Some(Env004ApplyCertainty::DefinitelyNotApplied),
                 },
             }
         );
         assert_eq!(adapter.events, vec!["apply:WAYLAND_DISPLAY"]);
+    }
+
+    #[test]
+    fn first_unknown_apply_result_rolls_back_the_current_step() {
+        let plan = execution_plan_for(
+            &healthy_process(),
+            &[
+                ("XDG_CURRENT_DESKTOP", "KDE"),
+                ("XDG_SESSION_DESKTOP", "gnome"),
+                ("XDG_SESSION_TYPE", "wayland"),
+            ],
+        );
+        let mut adapter = FakeExecutionAdapter {
+            apply_result_for_key: Some((
+                "WAYLAND_DISPLAY".to_owned(),
+                Env004ApplyResult::OutcomeUnknown {
+                    error: Env004AdapterError::Unavailable,
+                },
+            )),
+            ..FakeExecutionAdapter::default()
+        };
+
+        assert_eq!(
+            execute_env004_plan(plan, &mut adapter),
+            Env004ExecutionOutcome::ApplyFailedRolledBack {
+                apply_failure: Env004ExecutionFailure {
+                    key: "WAYLAND_DISPLAY".to_owned(),
+                    phase: Env004ExecutionFailurePhase::Apply,
+                    error: Env004AdapterError::Unavailable,
+                    apply_certainty: Some(Env004ApplyCertainty::OutcomeUnknown),
+                },
+            }
+        );
+        assert_eq!(
+            adapter.events,
+            vec!["apply:WAYLAND_DISPLAY", "rollback:WAYLAND_DISPLAY"]
+        );
     }
 
     #[test]
@@ -2421,7 +2505,12 @@ mod tests {
             ],
         );
         let mut adapter = FakeExecutionAdapter {
-            apply_failure_key: Some("XDG_CURRENT_DESKTOP".to_owned()),
+            apply_result_for_key: Some((
+                "XDG_CURRENT_DESKTOP".to_owned(),
+                Env004ApplyResult::DefinitelyNotApplied {
+                    error: Env004AdapterError::Failed,
+                },
+            )),
             ..FakeExecutionAdapter::default()
         };
 
@@ -2432,6 +2521,7 @@ mod tests {
                     key: "XDG_CURRENT_DESKTOP".to_owned(),
                     phase: Env004ExecutionFailurePhase::Apply,
                     error: Env004AdapterError::Failed,
+                    apply_certainty: Some(Env004ApplyCertainty::DefinitelyNotApplied),
                 },
             }
         );
@@ -2440,6 +2530,47 @@ mod tests {
             vec![
                 "apply:WAYLAND_DISPLAY",
                 "apply:XDG_CURRENT_DESKTOP",
+                "rollback:WAYLAND_DISPLAY"
+            ]
+        );
+    }
+
+    #[test]
+    fn second_unknown_apply_result_rolls_back_current_then_completed_steps() {
+        let plan = execution_plan_for(
+            &healthy_process(),
+            &[
+                ("XDG_CURRENT_DESKTOP", "KDE"),
+                ("XDG_SESSION_DESKTOP", "gnome"),
+                ("XDG_SESSION_TYPE", "wayland"),
+            ],
+        );
+        let mut adapter = FakeExecutionAdapter {
+            apply_result_for_key: Some((
+                "XDG_CURRENT_DESKTOP".to_owned(),
+                Env004ApplyResult::OutcomeUnknown {
+                    error: Env004AdapterError::Failed,
+                },
+            )),
+            ..FakeExecutionAdapter::default()
+        };
+
+        let outcome = execute_env004_plan(plan, &mut adapter);
+        assert!(matches!(
+            outcome,
+            Env004ExecutionOutcome::ApplyFailedRolledBack {
+                apply_failure: Env004ExecutionFailure {
+                    apply_certainty: Some(Env004ApplyCertainty::OutcomeUnknown),
+                    ..
+                }
+            }
+        ));
+        assert_eq!(
+            adapter.events,
+            vec![
+                "apply:WAYLAND_DISPLAY",
+                "apply:XDG_CURRENT_DESKTOP",
+                "rollback:XDG_CURRENT_DESKTOP",
                 "rollback:WAYLAND_DISPLAY"
             ]
         );
@@ -2462,7 +2593,12 @@ mod tests {
             ],
         );
         let mut adapter = FakeExecutionAdapter {
-            apply_failure_key: Some("XDG_CURRENT_DESKTOP".to_owned()),
+            apply_result_for_key: Some((
+                "XDG_CURRENT_DESKTOP".to_owned(),
+                Env004ApplyResult::DefinitelyNotApplied {
+                    error: Env004AdapterError::Failed,
+                },
+            )),
             ..FakeExecutionAdapter::default()
         };
 
@@ -2494,7 +2630,12 @@ mod tests {
             ],
         );
         let mut adapter = FakeExecutionAdapter {
-            apply_failure_key: Some("XDG_CURRENT_DESKTOP".to_owned()),
+            apply_result_for_key: Some((
+                "XDG_CURRENT_DESKTOP".to_owned(),
+                Env004ApplyResult::OutcomeUnknown {
+                    error: Env004AdapterError::Failed,
+                },
+            )),
             rollback_failure_key: Some("WAYLAND_DISPLAY".to_owned()),
             ..FakeExecutionAdapter::default()
         };
@@ -2506,11 +2647,13 @@ mod tests {
                     key: "XDG_CURRENT_DESKTOP".to_owned(),
                     phase: Env004ExecutionFailurePhase::Apply,
                     error: Env004AdapterError::Failed,
+                    apply_certainty: Some(Env004ApplyCertainty::OutcomeUnknown),
                 },
                 rollback_failures: vec![Env004ExecutionFailure {
                     key: "WAYLAND_DISPLAY".to_owned(),
                     phase: Env004ExecutionFailurePhase::Rollback,
                     error: Env004AdapterError::Failed,
+                    apply_certainty: None,
                 }],
             }
         );
@@ -2519,6 +2662,7 @@ mod tests {
             vec![
                 "apply:WAYLAND_DISPLAY",
                 "apply:XDG_CURRENT_DESKTOP",
+                "rollback:XDG_CURRENT_DESKTOP",
                 "rollback:WAYLAND_DISPLAY"
             ]
         );
