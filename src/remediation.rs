@@ -191,7 +191,6 @@ pub enum EffectMismatchReason {
 #[serde(rename_all = "snake_case")]
 pub enum EffectApplicabilityReason {
     ExpectedProcessValueChanged,
-    ExpectedValueNotConverged,
 }
 
 /// Why the fresh snapshot cannot safely establish the post-apply effect.
@@ -205,6 +204,7 @@ pub enum EffectUnavailableReason {
     ProcessValueMissing,
     ComparisonEntryMissing,
     InconsistentComparison,
+    InconsistentFindings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -429,9 +429,25 @@ pub fn verify_env004_effect(
         };
     }
 
-    let has_env004 = fresh_findings
+    let comparison_has_env004 = match fresh_comparison_has_env004(environment) {
+        Ok(has_mismatch) => has_mismatch,
+        Err(reason) => return Env004EffectVerification::Unavailable { reason },
+    };
+    let env004_finding_count = fresh_findings
         .iter()
-        .any(|finding| finding.id == ENV004_FINDING_ID);
+        .filter(|finding| finding.id == ENV004_FINDING_ID)
+        .count();
+    let findings_are_consistent = if comparison_has_env004 {
+        env004_finding_count == 1
+    } else {
+        env004_finding_count == 0
+    };
+    if !findings_are_consistent {
+        return Env004EffectVerification::Unavailable {
+            reason: EffectUnavailableReason::InconsistentFindings,
+        };
+    }
+    let has_env004 = comparison_has_env004;
     let mut all_converged = true;
     for update in &proposal.environment_updates {
         let update_status = match verify_effect_update(environment, update) {
@@ -454,9 +470,7 @@ pub fn verify_env004_effect(
         }
     }
 
-    if all_converged && !has_env004 {
-        Env004EffectVerification::Converged
-    } else if has_env004 {
+    if has_env004 {
         Env004EffectVerification::StillMismatched {
             reason: if all_converged {
                 EffectMismatchReason::AdditionalEnv004Finding
@@ -465,10 +479,41 @@ pub fn verify_env004_effect(
             },
         }
     } else {
-        Env004EffectVerification::NoLongerApplicable {
-            reason: EffectApplicabilityReason::ExpectedValueNotConverged,
+        Env004EffectVerification::Converged
+    }
+}
+
+fn fresh_comparison_has_env004(
+    environment: &EnvironmentInfo,
+) -> Result<bool, EffectUnavailableReason> {
+    let mut seen_keys = BTreeSet::new();
+    for entry in &environment.activation_comparison.entries {
+        if !COMPARISON_KEYS.contains(&entry.key.as_str()) || !seen_keys.insert(entry.key.as_str()) {
+            return Err(EffectUnavailableReason::InconsistentComparison);
+        }
+        let process_value = environment.process.get(&entry.key).map(String::as_str);
+        if entry.process_value.as_deref() != process_value
+            || expected_relation(
+                entry.process_value.as_deref(),
+                entry.activation_value.as_deref(),
+            ) != Some(entry.relation)
+        {
+            return Err(EffectUnavailableReason::InconsistentComparison);
         }
     }
+
+    if COMPARISON_KEYS
+        .iter()
+        .any(|key| environment.process.contains_key(*key) && !seen_keys.contains(key))
+    {
+        return Err(EffectUnavailableReason::InconsistentComparison);
+    }
+
+    Ok(environment
+        .activation_comparison
+        .entries
+        .iter()
+        .any(|entry| entry.relation != EnvironmentRelation::Equal))
 }
 
 fn verify_effect_update(
@@ -1204,6 +1249,48 @@ mod tests {
             verify_env004_effect(proposal, &stored_snapshot, &evaluate(&stored_snapshot)),
             Env004EffectVerification::StillMismatched {
                 reason: EffectMismatchReason::RequestedValueNotConverged,
+            }
+        );
+    }
+
+    #[test]
+    fn post_apply_rejects_a_mismatch_with_missing_fresh_findings() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let proposal = preview.proposal.as_ref().expect("proposal");
+
+        assert_eq!(
+            verify_env004_effect(proposal, &stored_snapshot, &[]),
+            Env004EffectVerification::Unavailable {
+                reason: EffectUnavailableReason::InconsistentFindings,
+            }
+        );
+    }
+
+    #[test]
+    fn post_apply_rejects_a_fake_finding_after_comparison_converges() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let proposal = preview.proposal.as_ref().expect("proposal");
+        let fresh_snapshot = snapshot(&process, &process);
+        let fake_findings = evaluate(&stored_snapshot);
+
+        assert_eq!(
+            verify_env004_effect(proposal, &fresh_snapshot, &fake_findings),
+            Env004EffectVerification::Unavailable {
+                reason: EffectUnavailableReason::InconsistentFindings,
             }
         );
     }
