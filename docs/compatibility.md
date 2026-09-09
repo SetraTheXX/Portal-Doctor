@@ -165,14 +165,20 @@ GNOME portal path are available, but this is not target evidence for either
 Hyprland or Niri. Hyprland is `BLOCKED / NOT AVAILABLE`: its session,
 `xdg-desktop-portal-hyprland` package/binary/descriptor, user service and
 canonical D-Bus owner are absent. Niri is independently
-`BLOCKED / NOT AVAILABLE` for the equivalent session, package/binary,
-descriptor, user service and `org.freedesktop.impl.portal.desktop.niri` owner.
+`BLOCKED / NOT AVAILABLE` because this host has no real Niri Wayland session;
+the upstream-shaped Niri effective configuration, expected GNOME/GTK mixed
+passive routes and target capability evidence cannot be validated from the
+current GNOME session. The live model uses the GNOME/GTK portal backends; a
+separate Niri backend artifact is not part of this trigger.
 
 The current GNOME Screenshot/ScreenCast route is not used as a fallback or
-support claim. Re-evaluate each target only when a real target Wayland session,
-healthy matching backend/service, canonical D-Bus owner, correct passive route
-and the required advertised Screenshot/ScreenCast capability evidence are
-present. No active probe, provider installation or desktop change was done.
+support claim. Re-evaluate Hyprland only when its existing target-specific
+trigger is satisfied. Re-evaluate Niri only when a real Niri Wayland session,
+an upstream-shaped effective `niri-portals.conf`, healthy GNOME and GTK portal
+backends/services, canonical GNOME/GTK D-Bus ownership, expected Niri mixed
+passive routes, required advertised Screenshot/ScreenCast capability evidence
+and ready PipeWire/WirePlumber are present. No active probe, provider
+installation or desktop change was done.
 - **Automatic fixes** — PortalDoctor diagnoses; it never edits configuration.
 - **GUI** — CLI only.
 

@@ -1181,20 +1181,28 @@ a release. Phase 8, KDE and Sway blocker state is unchanged.
 - [x] Classify Hyprland separately as `BLOCKED / NOT AVAILABLE`: no real
   Hyprland session, backend package/binary/descriptor, active user unit or
   canonical D-Bus owner is present.
-- [x] Classify Niri separately as `BLOCKED / NOT AVAILABLE`: no real Niri
-  session, backend package/binary/descriptor, active user unit or canonical
-  D-Bus owner is present.
+- [x] Classify Niri separately as `BLOCKED / NOT AVAILABLE`: this host has no
+  real Niri Wayland session, so the upstream-shaped effective
+  `niri-portals.conf`, expected GNOME/GTK mixed passive routes and target
+  capabilities cannot be validated here. The live model uses the GNOME/GTK
+  portal backends; a separate Niri backend artifact is not part of this
+  trigger.
 - [x] Keep the current GNOME passive route and media-stack evidence separate
   from target capability evidence; do not treat it as Hyprland/Niri validation.
 - [x] Leave active Screenshot/ScreenCast validation and support/release claims
   open. Do not retry this checkpoint on the same GNOME host.
 
-Recheck trigger for either target: a real target Wayland session, the matching
-backend package/descriptor and healthy user service, canonical D-Bus ownership,
-the expected passive Screenshot/ScreenCast route, and the required advertised
-portal capability evidence. Controlled Phase 11 development coverage is
-complete, but these live/active gates are not release approval and do not alter
-the Phase 8, KDE or Sway blocker state.
+Hyprland recheck trigger: a real Hyprland Wayland session, its matching backend
+package/descriptor and healthy user service, canonical D-Bus ownership, the
+expected passive Screenshot/ScreenCast route, required advertised portal
+capability evidence, and ready PipeWire/WirePlumber. Niri recheck trigger: a
+real Niri Wayland session, an upstream-shaped effective `niri-portals.conf`,
+healthy GNOME and GTK portal backends/services, canonical GNOME/GTK D-Bus
+ownership, expected Niri mixed passive routes, required advertised
+Screenshot/ScreenCast capability evidence, and ready PipeWire/WirePlumber.
+Controlled Phase 11 development coverage is complete, but these live/active
+gates are not release approval and do not alter the Phase 8, KDE or Sway
+blocker state.
 
 ## Tasks
 

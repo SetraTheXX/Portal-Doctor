@@ -361,19 +361,26 @@ Hyprland is `BLOCKED / NOT AVAILABLE`: no Hyprland session identity,
 `xdg-desktop-portal-hyprland` package/binary/descriptor, active
 `xdg-desktop-portal-hyprland.service`, or canonical
 `org.freedesktop.impl.portal.desktop.hyprland` owner was found. Niri is
-`BLOCKED / NOT AVAILABLE` for the same reasons: no Niri session identity,
-Niri package/binary/descriptor, active Niri portal unit, or canonical
-`org.freedesktop.impl.portal.desktop.niri` owner was found. No provider was
-installed or started, and no active probe was run.
+`BLOCKED / NOT AVAILABLE` because no real Niri Wayland session is present;
+the upstream-shaped effective `niri-portals.conf`, expected GNOME/GTK mixed
+passive routes and target capabilities cannot be validated from this GNOME
+host. The live model uses the GNOME/GTK portal backends; a separate Niri
+backend artifact is not part of this trigger. No provider was installed or
+started, and no active probe was run.
 
-Each target may be re-evaluated only after a real target Wayland session is
-available with the corresponding backend package/descriptor and healthy user
-unit, canonical D-Bus ownership, the correct target passive route, and the
-required Screenshot/ScreenCast capability evidence. The same GNOME host must
-not be forced to stand in for either target. Phase 11 controlled static,
-runtime, activation and version-evidence coverage is complete; live
-Hyprland/Niri readiness and active Screenshot/ScreenCast validation remain
-open. No support or release claim follows from this checkpoint.
+Hyprland may be re-evaluated only after a real Hyprland Wayland session is
+available with its corresponding backend package/descriptor and healthy user
+unit, canonical D-Bus ownership, the correct target passive route, required
+Screenshot/ScreenCast capability evidence, and ready PipeWire/WirePlumber.
+Niri may be re-evaluated only after a real Niri Wayland session is available
+with an upstream-shaped effective `niri-portals.conf`, healthy GNOME and GTK
+portal backends/services, canonical GNOME/GTK D-Bus ownership, expected Niri
+mixed passive routes, required Screenshot/ScreenCast capability evidence, and
+ready PipeWire/WirePlumber. The same GNOME host must not be forced to stand in
+for either target. Phase 11 controlled static, runtime, activation and
+version-evidence coverage is complete; live Hyprland/Niri readiness and active
+Screenshot/ScreenCast validation remain open. No support or release claim
+follows from this checkpoint.
 
 Implement and release-gate it in this order:
 
