@@ -986,9 +986,11 @@ Later package channels can include distro/community packaging, but package-manag
 
 ---
 
-## 24. Safe Remediation Architecture — Future Only
+## 24. Safe Remediation Architecture — Preview-only boundary
 
-Automatic remediation is intentionally deferred.
+Automatic apply remains intentionally deferred. Phase 12 currently implements
+only the typed, read-only `ENV004` preview; it does not execute any write or
+service operation.
 
 If introduced later, architecture should require:
 
@@ -1004,13 +1006,16 @@ Finding
 
 Never encode fixes directly inside rendering strings.
 
-Example future command:
+Preview command:
 
 ```bash
 portaldoctor fix ENV004 --dry-run
 ```
 
-Initial versions should provide copyable recommendations without executing them.
+The preview must remain deterministic, list `files_modified` as empty, avoid
+service/package/configuration changes, and fail closed when the finding or
+process-side evidence is unavailable. A future apply slice requires explicit
+approval, post-apply verification and rollback/non-destructive semantics.
 
 ---
 

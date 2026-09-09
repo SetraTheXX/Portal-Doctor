@@ -2,8 +2,8 @@ use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::cli::{
-    CheckArgs, CheckDomain, Cli, PortalArgs, PortalCmd, ProbeArgs, ProbeCmd, ReportArgs,
-    ReportFormat,
+    CheckArgs, CheckDomain, Cli, FixArgs, FixTarget, PortalArgs, PortalCmd, ProbeArgs, ProbeCmd,
+    ReportArgs, ReportFormat,
 };
 use crate::collectors;
 use crate::error::Error;
@@ -12,6 +12,7 @@ use crate::model::portal::PortalRoute;
 use crate::model::section::Section;
 use crate::model::service::ServiceInfo;
 use crate::model::snapshot::Snapshot;
+use crate::remediation;
 use crate::report::{
     JsonRenderer, MarkdownRenderer, PortalExplainRenderer, PortalListRenderer,
     PortalRoutesRenderer, RedactionOptions, Renderer, Report, ShareableJsonRenderer,
@@ -102,8 +103,28 @@ pub fn run(cli: &Cli) -> Result<RunOutcome, Error> {
         crate::cli::Command::Check(args) => run_check(&args, cli.json, cli.verbose, cli.journal),
         crate::cli::Command::Portal(args) => run_portal(&args, cli.json, cli.journal),
         crate::cli::Command::Report(args) => run_report(&args, cli.json, cli.verbose, cli.journal),
+        crate::cli::Command::Fix(args) => run_fix(&args, cli.json),
         crate::cli::Command::Probe(args) => run_probe(&args, cli.json),
     }
+}
+
+fn run_fix(args: &FixArgs, json: bool) -> Result<RunOutcome, Error> {
+    if !args.dry_run {
+        return Err(Error::RemediationApplyUnsupported);
+    }
+    let collected = collect_snapshot(false);
+    let findings = rules::engine::evaluate(&collected.snapshot);
+    let preview = match args.target {
+        FixTarget::Env004 => remediation::preview_env004(&collected.snapshot, &findings),
+    };
+    let rendered = if json {
+        serde_json::to_string_pretty(&preview)
+            .map_err(|error| Error::ProbeOutput(error.to_string()))?
+    } else {
+        remediation::render_terminal(&preview)
+    };
+    write_stdout(&rendered)?;
+    Ok(RunOutcome::Clean)
 }
 
 fn run_probe(args: &ProbeArgs, json: bool) -> Result<RunOutcome, Error> {

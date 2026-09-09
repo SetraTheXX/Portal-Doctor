@@ -1261,6 +1261,29 @@ into the systemd user activation environment.
 Files modified: none
 ```
 
+## First bounded `ENV004` preview slice — 2026-09-09
+
+- [x] Add a standalone typed remediation-preview schema v1 that maps an
+  evaluated `ENV004` finding to an activation-environment import proposal.
+- [x] Make applicability deterministic and fail closed: require the current
+  `ENV004` finding, the current snapshot schema and available session/
+  environment sections, a performed comparison, consistent evidence and a
+  non-empty process-side value for every proposed key.
+- [x] Expose only `portaldoctor fix ENV004 --dry-run`. The preview lists the
+  differing/missing activation values in deterministic order and explicitly
+  reports `files_modified = none`.
+- [x] Keep service restarts, package changes, configuration changes and every
+  write-capable systemd operation out of the proposal; apply remains
+  `not_implemented`.
+- [x] Cover positive serialization/terminal output and negative absent-finding,
+  missing-process-value, unsupported/stale-snapshot and inconsistent-evidence
+  cases with unit tests.
+
+This is a read-only preview contract only. It does not modify files, call
+`systemctl import-environment`, restart services, install packages, or approve
+a release. A future apply slice must add explicit approval, post-apply
+verification and rollback/non-destructive semantics before it can exist.
+
 ## Prohibited behavior
 
 No silent:

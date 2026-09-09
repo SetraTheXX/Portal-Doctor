@@ -31,8 +31,29 @@ pub enum Command {
     Portal(PortalArgs),
     /// Generate a privacy-aware report suitable for sharing in an issue.
     Report(ReportArgs),
+    /// Preview a bounded, read-only remediation proposal.
+    Fix(FixArgs),
     /// Run an explicitly requested, bounded active portal probe.
     Probe(ProbeArgs),
+}
+
+/// Options for the read-only remediation preview command.
+#[derive(Debug, Clone, Args)]
+pub struct FixArgs {
+    /// Finding to preview.
+    #[arg(value_enum)]
+    pub target: FixTarget,
+    /// Required guard: applying remediation is not implemented in this slice.
+    #[arg(long, required = true)]
+    pub dry_run: bool,
+}
+
+/// Remediation targets with a bounded implementation contract.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum FixTarget {
+    /// Preview alignment of the systemd user activation environment.
+    #[value(name = "ENV004")]
+    Env004,
 }
 
 /// Options for explicit active portal probes.
@@ -116,7 +137,7 @@ pub enum PortalCmd {
 
 #[cfg(test)]
 mod tests {
-    use super::{CheckDomain, Cli, Command, ProbeCmd, ReportFormat};
+    use super::{CheckDomain, Cli, Command, FixTarget, ProbeCmd, ReportFormat};
     use clap::Parser;
 
     #[test]
@@ -176,5 +197,20 @@ mod tests {
             panic!("expected probe command");
         };
         assert!(matches!(args.command, ProbeCmd::Screenshot));
+    }
+
+    #[test]
+    fn parses_env004_dry_run_preview() {
+        let cli = Cli::parse_from(["portaldoctor", "fix", "ENV004", "--dry-run"]);
+        let Some(Command::Fix(args)) = cli.command else {
+            panic!("expected fix command");
+        };
+        assert!(args.dry_run);
+        assert!(matches!(args.target, FixTarget::Env004));
+    }
+
+    #[test]
+    fn remediation_preview_requires_dry_run() {
+        assert!(Cli::try_parse_from(["portaldoctor", "fix", "ENV004"]).is_err());
     }
 }

@@ -3,6 +3,7 @@ mod collectors;
 mod error;
 mod model;
 mod probes;
+mod remediation;
 mod report;
 mod resolver;
 mod rules;
