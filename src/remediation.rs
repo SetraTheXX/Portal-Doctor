@@ -13,7 +13,7 @@ use crate::model::status::CollectorState;
 /// Version of the standalone remediation-preview contract.
 pub const REMEDIATION_PREVIEW_SCHEMA_VERSION: u32 = 1;
 /// Version of the explicit approval binding contract.
-pub const REMEDIATION_APPROVAL_SCHEMA_VERSION: u32 = 1;
+pub const REMEDIATION_APPROVAL_SCHEMA_VERSION: u32 = 2;
 /// Stable remediation identifier for the first bounded preview.
 pub const ENV004_REMEDIATION_ID: &str = "ENV004.activation_environment_import";
 const ENV004_FINDING_ID: &str = "ENV004";
@@ -229,6 +229,8 @@ pub struct RemediationApproval {
     pub action: RemediationAction,
     pub target: RemediationTarget,
     pub user_approval: RemediationApprovalState,
+    /// Digest over every bounded approval field except this digest itself.
+    pub approval_digest: String,
 }
 
 /// Typed reasons why an approval or its bound proposal cannot be trusted.
@@ -236,6 +238,7 @@ pub struct RemediationApproval {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ApprovalTamperReason {
+    ApprovalDigest,
     ApprovalContractVersion,
     ProposalDigest,
     ProposalContract,
@@ -544,7 +547,7 @@ pub fn create_env004_approval(
     {
         return None;
     }
-    Some(RemediationApproval {
+    let mut approval = RemediationApproval {
         approval_contract_version: REMEDIATION_APPROVAL_SCHEMA_VERSION,
         remediation_id: proposal.remediation_id.clone(),
         proposal_digest: proposal.binding.proposal_digest.clone(),
@@ -552,7 +555,10 @@ pub fn create_env004_approval(
         action: proposal.action,
         target: proposal.target,
         user_approval,
-    })
+        approval_digest: String::new(),
+    };
+    approval.approval_digest = digest_approval(&approval);
+    Some(approval)
 }
 
 /// Verify an explicit approval against one exact proposal and fresh ENV004
@@ -566,6 +572,11 @@ pub fn verify_env004_approval(
     fresh_snapshot: &Snapshot,
     fresh_findings: &[Finding],
 ) -> Env004ApprovalVerification {
+    if digest_approval(approval) != approval.approval_digest {
+        return Env004ApprovalVerification::Tampered {
+            reason: ApprovalTamperReason::ApprovalDigest,
+        };
+    }
     if let Err(reason) = verify_approval_integrity(approval, proposal) {
         return Env004ApprovalVerification::Tampered { reason };
     }
@@ -1009,6 +1020,29 @@ fn digest_proposal(proposal: &RemediationProposal) -> String {
     hex_digest(&hasher.finalize())
 }
 
+fn digest_approval(approval: &RemediationApproval) -> String {
+    let mut hasher = Sha256::new();
+    hash_text(&mut hasher, "portaldoctor:env004:approval:v2");
+    hash_field_u32(
+        &mut hasher,
+        "approval_contract_version",
+        approval.approval_contract_version,
+    );
+    hash_field_text(&mut hasher, "remediation_id", &approval.remediation_id);
+    hash_field_text(&mut hasher, "proposal_digest", &approval.proposal_digest);
+    hash_field_text(&mut hasher, "evidence_digest", &approval.evidence_digest);
+    hash_field_text(&mut hasher, "action", action_digest_label(approval.action));
+    hash_field_text(&mut hasher, "target", target_digest_label(approval.target));
+    hash_field_text(
+        &mut hasher,
+        "user_approval",
+        approval_state_digest_label(approval.user_approval),
+    );
+    // `approval_digest` is intentionally excluded to avoid a self-referential
+    // hash. Every other bounded approval field is explicitly labelled above.
+    hex_digest(&hasher.finalize())
+}
+
 fn action_digest_label(action: RemediationAction) -> &'static str {
     match action {
         RemediationAction::ImportActivationEnvironment => "import_activation_environment",
@@ -1026,6 +1060,13 @@ fn target_digest_label(target: RemediationTarget) -> &'static str {
 fn apply_digest_label(apply: ApplyStatus) -> &'static str {
     match apply {
         ApplyStatus::NotImplemented => "not_implemented",
+    }
+}
+
+fn approval_state_digest_label(state: RemediationApprovalState) -> &'static str {
+    match state {
+        RemediationApprovalState::Approved => "approved",
+        RemediationApprovalState::NotApproved => "not_approved",
     }
 }
 
@@ -1743,13 +1784,18 @@ mod tests {
     fn approved_proposal_produces_a_bound_approval_record() {
         let (_snapshot, proposal, approval) = approved_fixture();
 
-        assert_eq!(approval.approval_contract_version, 1);
+        assert_eq!(
+            approval.approval_contract_version,
+            super::REMEDIATION_APPROVAL_SCHEMA_VERSION
+        );
         assert_eq!(approval.remediation_id, proposal.remediation_id);
         assert_eq!(approval.proposal_digest, proposal.binding.proposal_digest);
         assert_eq!(approval.evidence_digest, proposal.binding.evidence_digest);
         assert_eq!(approval.action, proposal.action);
         assert_eq!(approval.target, proposal.target);
         assert_eq!(approval.user_approval, RemediationApprovalState::Approved);
+        assert_eq!(approval.approval_digest.len(), 64);
+        assert_eq!(approval.approval_digest, super::digest_approval(&approval));
     }
 
     #[test]
@@ -1783,6 +1829,47 @@ mod tests {
     }
 
     #[test]
+    fn not_approved_mutated_to_approved_is_tampered() {
+        let (snapshot, proposal, _) = approved_fixture();
+        let mut approval = create_env004_approval(&proposal, RemediationApprovalState::NotApproved)
+            .expect("integrity-checked approval");
+        approval.user_approval = RemediationApprovalState::Approved;
+
+        assert_eq!(
+            verify_env004_approval(&approval, &proposal, &snapshot, &evaluate(&snapshot)),
+            Env004ApprovalVerification::Tampered {
+                reason: ApprovalTamperReason::ApprovalDigest,
+            }
+        );
+    }
+
+    #[test]
+    fn approved_mutated_to_not_approved_is_tampered() {
+        let (snapshot, proposal, mut approval) = approved_fixture();
+        approval.user_approval = RemediationApprovalState::NotApproved;
+
+        assert_eq!(
+            verify_env004_approval(&approval, &proposal, &snapshot, &evaluate(&snapshot)),
+            Env004ApprovalVerification::Tampered {
+                reason: ApprovalTamperReason::ApprovalDigest,
+            }
+        );
+    }
+
+    #[test]
+    fn approval_digest_mutation_is_tampered() {
+        let (snapshot, proposal, mut approval) = approved_fixture();
+        approval.approval_digest = "tampered".to_owned();
+
+        assert_eq!(
+            verify_env004_approval(&approval, &proposal, &snapshot, &evaluate(&snapshot)),
+            Env004ApprovalVerification::Tampered {
+                reason: ApprovalTamperReason::ApprovalDigest,
+            }
+        );
+    }
+
+    #[test]
     fn proposal_or_approval_binding_mutation_is_tampered() {
         let (snapshot, proposal, approval) = approved_fixture();
         let mut changed_proposal = proposal.clone();
@@ -1799,8 +1886,21 @@ mod tests {
             }
         );
 
-        let mut changed_approval = approval;
+        let mut changed_approval = approval.clone();
         changed_approval.evidence_digest = "different-evidence".to_owned();
+        assert_eq!(
+            verify_env004_approval(
+                &changed_approval,
+                &proposal,
+                &snapshot,
+                &evaluate(&snapshot),
+            ),
+            Env004ApprovalVerification::Tampered {
+                reason: ApprovalTamperReason::ApprovalDigest,
+            }
+        );
+
+        changed_approval.approval_digest = super::digest_approval(&changed_approval);
         assert_eq!(
             verify_env004_approval(
                 &changed_approval,
@@ -1819,6 +1919,14 @@ mod tests {
         let (snapshot, proposal, mut approval) = approved_fixture();
         approval.approval_contract_version += 1;
 
+        assert_eq!(
+            verify_env004_approval(&approval, &proposal, &snapshot, &evaluate(&snapshot)),
+            Env004ApprovalVerification::Tampered {
+                reason: ApprovalTamperReason::ApprovalDigest,
+            }
+        );
+
+        approval.approval_digest = super::digest_approval(&approval);
         assert_eq!(
             verify_env004_approval(&approval, &proposal, &snapshot, &evaluate(&snapshot)),
             Env004ApprovalVerification::Tampered {

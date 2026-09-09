@@ -450,15 +450,18 @@ decision. The verifier is not wired to apply, `systemctl` or any write path;
 
 The fifth Phase 12 slice adds the typed `RemediationApproval` contract for
 ENV004. `create_env004_approval` can create a record only from an
-integrity-checked, contract-valid proposal and binds the approval-contract
-version, remediation ID, proposal digest, evidence digest, action, target and
-explicit user-approval state. `verify_env004_approval(...)` checks that exact
-binding before fresh evidence, rejects `NotApproved`, cross-proposal reuse and
-mutations, and returns `valid` only when fresh comparison/findings are
-consistent and the actionable evidence still matches. Its other typed results
-are `tampered`, `stale_evidence` and `not_applicable`. This is an approval and
-verification boundary only; no apply authority, `systemctl` invocation or
-write-capable CLI path exists.
+integrity-checked, contract-valid proposal and binds approval-contract version
+2, remediation ID, proposal digest, evidence digest, action, target and
+explicit user-approval state. Each record also carries an `approval_digest`
+computed with explicit field labels and length-prefixed values over those
+bounded fields; the digest excludes itself. `verify_env004_approval(...)`
+checks that approval digest first, then proposal digest/contract, approval
+binding, explicit `Approved` state and finally fresh evidence. Therefore a
+state or binding mutation is `tampered`, not a valid `not_approved` or
+authorization result. Its other typed results are `stale_evidence`,
+`not_approved` and `not_applicable`. This is an approval and verification
+boundary only; no apply authority, `systemctl` invocation or write-capable CLI
+path exists.
 
 Implement and release-gate it in this order:
 
