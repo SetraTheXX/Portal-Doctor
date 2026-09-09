@@ -2,7 +2,7 @@
 
 **Last verified:** 2026-09-09
 **Current public release:** `v0.2.1`
-**Current development phase:** Phase 13 v1.0 Hardening — finding-semantics, versioned JSON schema and exit-code contract slices COMPLETE
+**Current development phase:** Phase 13 v1.0 Hardening — finding-semantics, versioned JSON schema, exit-code and shareable-report privacy contract slices COMPLETE
 **Release gate under review:** Phase 8 / `v0.3.0` remains blocked
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
 
@@ -577,6 +577,29 @@ into the passive contract.
 No public exit code or active-probe meaning changed. Phase 8 Screenshot/
 ScreenCast real-session gates and the `v0.3.0` blocker state are unchanged;
 Phase 12 production apply remains unauthorized.
+
+### Phase 13.4 shareable-report privacy contract checkpoint — 2026-09-09
+
+The fourth bounded Phase 13 slice is **COMPLETE**. The shareable constructor
+now applies the redaction boundary before creating `ShareableReport`, so raw
+reports cannot be mislabeled as safe. A canonical privacy invariant requires
+`redacted=true` and `raw_journal=excluded` plus `raw_pipewire=excluded`;
+serde and both JSON/Markdown renderers fail closed on mutated or inconsistent
+metadata.
+
+Regression coverage verifies the process-environment allowlist, deterministic
+`$HOME` normalization, hostname suppression, secret/path redaction across all
+finding text fields and normalized journal evidence, and the absence of raw
+journal/PipeWire fields. The documented privacy envelope is compared with
+runtime serialization. The legacy non-shareable diagnostic output, active
+probe behavior and remediation/apply contracts are unchanged.
+
+Phase 8 Screenshot/ScreenCast real-session gates and the `v0.3.0` blocker
+state are unchanged; Phase 12 production apply remains unauthorized. The
+remaining v0.3.0 external work is still one real Screenshot success plus one
+portal-native cancellation and one real ScreenCast success plus one
+portal-native cancellation, followed by the locked release/public-command
+decision.
 
 Implement and release-gate it in this order:
 

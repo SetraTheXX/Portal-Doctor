@@ -232,7 +232,7 @@ fn run_report(
     let report = Report::new(collected.snapshot, findings, env!("CARGO_PKG_VERSION"));
     let options = RedactionOptions::from_environment(args.suppress_hostname);
     let redacted = redact_report(&report, &options);
-    let shareable = ShareableReport::from_report(&redacted, &options);
+    let shareable = ShareableReport::from_report(&report, &options);
     let format = if json {
         ReportFormat::Json
     } else {

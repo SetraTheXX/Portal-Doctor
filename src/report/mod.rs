@@ -318,12 +318,16 @@ mod tests {
                 id: "TEST001".to_owned(),
                 severity: Severity::Warning,
                 confidence: Confidence::High,
-                title: "Host workstation needs review".to_owned(),
-                summary: "A path /home/alice was observed".to_owned(),
+                title: "Host workstation token=title-secret needs review".to_owned(),
+                summary: "A path /home/alice password=summary-secret was observed".to_owned(),
                 explanation: "token=abc host=workstation".to_owned(),
                 evidence: Vec::new(),
-                impact: None,
-                recommendation: vec!["Review /home/alice before sharing".to_owned()],
+                impact: Some(
+                    "Impact from /home/alice access_token=impact-secret on workstation".to_owned(),
+                ),
+                recommendation: vec![
+                    "Review /home/alice authorization=recommend-secret before sharing".to_owned(),
+                ],
                 source_component: "test".to_owned(),
             }],
             "0.1.0",
@@ -355,6 +359,124 @@ mod tests {
         assert!(!encoded.contains("/home/alice"));
         assert!(!encoded.contains("workstation"));
         assert!(!encoded.contains("secret-value"));
+    }
+
+    #[test]
+    fn shareable_constructor_is_a_privacy_boundary_for_both_renderers() {
+        let mut report = redaction_fixture_report();
+        report.snapshot.journal = Section::available(JournalInfo {
+            model_version: 1,
+            window_minutes: 30,
+            max_entries: 80,
+            scanned_entry_count: 1,
+            ignored_entry_count: 0,
+            match_state: JournalMatchState::Matched,
+            entries: vec![JournalEntry {
+                unit: "xdg-desktop-portal.service".to_owned(),
+                priority: 3,
+                classification: JournalClassification::Portal,
+                message: "journal path=/home/alice token=journal-secret host=workstation"
+                    .to_owned(),
+            }],
+        });
+        report.snapshot.pipewire = Section::available(PipeWireInfo {
+            model_version: 1,
+            version: Some("1.6.2".to_owned()),
+            object_count: 3,
+            node_count: 1,
+            link_count: 1,
+            portal_client_count: 1,
+            screen_cast_source_count: 1,
+            nodes: Vec::new(),
+            links: Vec::new(),
+        });
+
+        let document = ShareableReport::from_report(&report, &fixture_options());
+        let json = ShareableJsonRenderer::render(&document);
+        let markdown = MarkdownRenderer::render(&document, true);
+
+        for sensitive in [
+            "/home/alice",
+            "workstation",
+            "secret-value",
+            "title-secret",
+            "summary-secret",
+            "impact-secret",
+            "recommend-secret",
+            "journal-secret",
+        ] {
+            assert!(!json.contains(sensitive), "JSON leaked {sensitive}");
+            assert!(!markdown.contains(sensitive), "Markdown leaked {sensitive}");
+        }
+
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let process = &value["snapshot"]["environment"]["value"]["process"];
+        assert!(process.get("PATH").is_none());
+        assert!(process.get("NOT_ALLOWED").is_none());
+        assert_eq!(value["privacy"]["raw_journal"], json!("excluded"));
+        assert_eq!(value["privacy"]["raw_pipewire"], json!("excluded"));
+        assert!(value["snapshot"]["journal"]["value"].get("raw").is_none());
+        assert!(value["snapshot"]["pipewire"]["value"].get("raw").is_none());
+        assert!(markdown.contains("| Privacy mode | redacted |"));
+        assert!(
+            markdown.contains("| Raw journal / PipeWire | excluded; normalized evidence only |")
+        );
+        assert!(markdown.contains("| Hostname | suppressed |"));
+    }
+
+    #[test]
+    fn shareable_home_normalization_and_rendering_are_deterministic() {
+        let first = ShareableReport::from_report(&redaction_fixture_report(), &fixture_options());
+        let second = ShareableReport::from_report(&redaction_fixture_report(), &fixture_options());
+
+        assert_eq!(
+            ShareableJsonRenderer::render(&first),
+            ShareableJsonRenderer::render(&second)
+        );
+        assert_eq!(
+            MarkdownRenderer::render(&first, true),
+            MarkdownRenderer::render(&second, true)
+        );
+        let value = serde_json::to_value(first).unwrap();
+        assert_eq!(
+            value["snapshot"]["environment"]["value"]["process"]["XDG_CONFIG_HOME"],
+            json!("$HOME/.config")
+        );
+    }
+
+    #[test]
+    fn shareable_privacy_metadata_matches_documented_contract() {
+        let options = RedactionOptions {
+            home: Some("/home/alice".to_owned()),
+            suppress_hostname: false,
+            hostname: None,
+        };
+        let document = ShareableReport::from_report(&redaction_fixture_report(), &options);
+        let runtime: serde_json::Value =
+            serde_json::from_str(&ShareableJsonRenderer::render(&document)).unwrap();
+
+        let markdown = include_str!("../../docs/json-schema.md");
+        let envelope = markdown
+            .split_once("## Shareable report envelope")
+            .map(|(_, section)| section)
+            .expect("docs must contain the shareable envelope");
+        let json_start = envelope
+            .find("```json")
+            .map(|offset| offset + "```json".len())
+            .expect("shareable envelope must contain a JSON example");
+        let after_fence = &envelope[json_start..];
+        let json_end = after_fence
+            .find("```")
+            .expect("shareable envelope JSON must be terminated");
+        let documented: serde_json::Value =
+            serde_json::from_str(after_fence[..json_end].trim()).unwrap();
+
+        assert_eq!(runtime["privacy"], documented["privacy"]);
+        assert!(runtime["privacy"]["redacted"].is_boolean());
+        assert!(runtime["privacy"]["home_normalized"].is_boolean());
+        assert!(runtime["privacy"]["hostname_suppressed"].is_boolean());
+        assert_eq!(runtime["privacy"]["raw_journal"], json!("excluded"));
+        assert_eq!(runtime["privacy"]["raw_pipewire"], json!("excluded"));
     }
 
     #[test]
@@ -428,6 +550,28 @@ mod tests {
         let mut report_mutation = document;
         report_mutation.report_version = SHAREABLE_REPORT_VERSION + 1;
         assert!(serde_json::to_value(report_mutation).is_err());
+    }
+
+    #[test]
+    fn shareable_serialization_rejects_mutated_privacy_metadata() {
+        let document =
+            ShareableReport::from_report(&redaction_fixture_report(), &fixture_options());
+
+        let mut redaction_mutation = document.clone();
+        redaction_mutation.privacy.redacted = false;
+        assert!(serde_json::to_value(redaction_mutation).is_err());
+
+        let mut journal_mutation = document.clone();
+        journal_mutation.privacy.redacted = false;
+        assert!(serde_json::to_value(journal_mutation).is_err());
+
+        let mut false_metadata = serde_json::to_value(&document).unwrap();
+        false_metadata["privacy"]["redacted"] = json!(false);
+        assert!(serde_json::from_value::<ShareableReport>(false_metadata).is_err());
+
+        let mut unknown_policy = serde_json::to_value(&document).unwrap();
+        unknown_policy["privacy"]["raw_pipewire"] = json!("included");
+        assert!(serde_json::from_value::<ShareableReport>(unknown_policy).is_err());
     }
 
     #[test]

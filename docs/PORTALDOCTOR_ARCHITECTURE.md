@@ -839,6 +839,19 @@ and states that raw journal/PipeWire dumps are excluded. Journal and PipeWire
 collectors already discard their raw streams, so the shareable layer cannot
 accidentally serialize them.
 
+### Shareable privacy contract hardening — Phase 13.4
+
+The shareable constructor applies redaction before it creates the envelope;
+an already-redacted caller is not trusted merely because it supplies
+`redacted=true`. The typed privacy metadata is a canonical invariant:
+`redacted` must remain true and both raw-stream policies must remain
+`excluded`. The JSON and Markdown renderers validate the same envelope before
+emitting output, and serde rejects missing or inconsistent privacy metadata.
+The test suite exercises the process-environment allowlist, deterministic
+`$HOME` normalization, hostname/secret/path redaction across finding text and
+normalized journal evidence, plus JSON/Markdown/docs parity. The legacy
+non-shareable diagnostic JSON path is unchanged.
+
 ---
 
 ## 18. CLI Architecture

@@ -16,6 +16,9 @@ impl ShareableJsonRenderer {
     /// Serialize the redacted report with its document and privacy metadata.
     #[must_use]
     pub fn render(report: &ShareableReport) -> String {
+        report
+            .validate_contract()
+            .expect("shareable report contract must be valid before JSON rendering");
         serde_json::to_string_pretty(report).expect("shareable report serialization cannot fail")
     }
 }

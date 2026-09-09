@@ -65,6 +65,13 @@ Shareable reports:
 - include explicit `report_version`, `schema_version` and `privacy` metadata,
   including the fact that raw journal/PipeWire dumps are excluded.
 
+The shareable constructor is itself a privacy boundary: it redacts the source
+report before attaching the metadata, so callers cannot mark an unredacted
+snapshot as safe by constructing the envelope directly. JSON and Markdown
+share the same typed, redacted document. Rendering fails closed if the
+metadata is mutated to disable redaction or to claim that raw journal or
+PipeWire data is included.
+
 There is intentionally no `--include-raw` switch in the shareable command:
 the collectors discard raw journal/PipeWire streams after their bounded parse,
 which is stricter than making a raw export merely opt-in.

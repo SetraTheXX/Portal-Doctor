@@ -30,6 +30,31 @@ pub struct ShareablePrivacy {
     pub raw_pipewire: RawDataPolicy,
 }
 
+impl ShareablePrivacy {
+    fn for_options(options: &RedactionOptions) -> Self {
+        Self {
+            redacted: true,
+            home_normalized: options.home.is_some(),
+            hostname_suppressed: options.suppress_hostname,
+            raw_journal: RawDataPolicy::Excluded,
+            raw_pipewire: RawDataPolicy::Excluded,
+        }
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if !self.redacted {
+            return Err("shareable privacy metadata must declare redacted=true".to_owned());
+        }
+        if self.raw_journal != RawDataPolicy::Excluded {
+            return Err("shareable reports cannot include raw journal data".to_owned());
+        }
+        if self.raw_pipewire != RawDataPolicy::Excluded {
+            return Err("shareable reports cannot include raw PipeWire data".to_owned());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct ShareableReportWire {
     report_version: u32,
@@ -49,6 +74,7 @@ pub struct ShareableReport {
     #[serde(serialize_with = "crate::model::snapshot::serialize_public_schema_version")]
     pub schema_version: u32,
     pub portaldoctor_version: String,
+    #[serde(serialize_with = "serialize_shareable_privacy")]
     pub privacy: ShareablePrivacy,
     pub snapshot: Snapshot,
     pub findings: Vec<Finding>,
@@ -67,6 +93,17 @@ where
     serializer.serialize_u32(*value)
 }
 
+fn serialize_shareable_privacy<S>(
+    value: &ShareablePrivacy,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    value.validate().map_err(serde::ser::Error::custom)?;
+    value.serialize(serializer)
+}
+
 impl TryFrom<ShareableReportWire> for ShareableReport {
     type Error = String;
 
@@ -83,6 +120,7 @@ impl TryFrom<ShareableReportWire> for ShareableReport {
                 wire.schema_version, PUBLIC_JSON_SCHEMA_VERSION
             ));
         }
+        wire.privacy.validate()?;
 
         Ok(Self {
             report_version: wire.report_version,
@@ -96,24 +134,40 @@ impl TryFrom<ShareableReportWire> for ShareableReport {
 }
 
 impl ShareableReport {
-    /// Wrap an already-redacted report with an explicit document version and
-    /// privacy declaration.
+    /// Apply the shareable redaction boundary and wrap the result with an
+    /// explicit document version and privacy declaration.
     #[must_use]
     pub fn from_report(report: &Report, options: &RedactionOptions) -> Self {
+        let redacted = redact_report(report, options);
+        Self::from_redacted_report(&redacted, options)
+    }
+
+    /// Wrap a report that has already crossed the redaction boundary.
+    pub(crate) fn from_redacted_report(report: &Report, options: &RedactionOptions) -> Self {
         Self {
             report_version: SHAREABLE_REPORT_VERSION,
             schema_version: report.schema_version,
             portaldoctor_version: report.portaldoctor_version.clone(),
-            privacy: ShareablePrivacy {
-                redacted: true,
-                home_normalized: options.home.is_some(),
-                hostname_suppressed: options.suppress_hostname,
-                raw_journal: RawDataPolicy::Excluded,
-                raw_pipewire: RawDataPolicy::Excluded,
-            },
+            privacy: ShareablePrivacy::for_options(options),
             snapshot: report.snapshot.clone(),
             findings: report.findings.clone(),
         }
+    }
+
+    pub(crate) fn validate_contract(&self) -> Result<(), String> {
+        if self.report_version != SHAREABLE_REPORT_VERSION {
+            return Err(format!(
+                "unsupported shareable report version {}; expected {}",
+                self.report_version, SHAREABLE_REPORT_VERSION
+            ));
+        }
+        if self.schema_version != PUBLIC_JSON_SCHEMA_VERSION {
+            return Err(format!(
+                "unsupported public JSON schema version {}; expected {}",
+                self.schema_version, PUBLIC_JSON_SCHEMA_VERSION
+            ));
+        }
+        self.privacy.validate()
     }
 }
 
