@@ -3,6 +3,12 @@
 `portaldoctor --json` emits a single, versioned document on stdout. Logs (if
 any) go to stderr; stdout is always valid JSON.
 
+The runtime canonical is `PUBLIC_JSON_SCHEMA_VERSION = 1`; the same value is
+serialized at the report envelope and normalized snapshot boundaries. Those
+typed boundaries require an unsigned integer `schema_version` equal to `1`:
+missing, wrong-type or unsupported versions are rejected, and an accidentally
+mutated in-memory version cannot be serialized as a public document.
+
 ## Top-level contract
 
 ```json
@@ -370,9 +376,14 @@ Each finding follows PRD §8:
 ## Versioning policy
 
 - Additive fields do not bump `schema_version` during the v0.x series;
-  consumers must ignore unknown keys.
+  consumers must ignore unknown keys. PortalDoctor's typed readers likewise
+  ignore unknown additive keys while still requiring every existing required
+  field.
 - Breaking changes bump `schema_version` and are documented here before any
-  tagged release.
+  tagged release; the runtime rejection test is the guard against silently
+  interpreting a breaking document as v1.
+- The shareable `report_version` is a separate envelope version and is
+  currently `1`; it is validated independently from `schema_version`.
 
 `portal_config.lower_priority_candidates` contains only existing lower-
 precedence candidates inspected as non-effective compatibility evidence. Its

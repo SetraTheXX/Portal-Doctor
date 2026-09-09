@@ -2,7 +2,7 @@
 
 **Last verified:** 2026-09-09
 **Current public release:** `v0.2.1`
-**Current development phase:** Phase 13 v1.0 Hardening — stable finding-semantics contract slice COMPLETE
+**Current development phase:** Phase 13 v1.0 Hardening — stable finding-semantics and versioned public JSON schema slices COMPLETE
 **Release gate under review:** Phase 8 / `v0.3.0` remains blocked
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
 
@@ -538,6 +538,25 @@ snapshot contains multiple independent affected interfaces; this is
 documented behavior, not semantic ID reuse. Phase 8 Screenshot/ScreenCast
 real-session gates and the `v0.3.0` blocker state are unchanged, and Phase 12
 production apply remains unauthorized.
+
+### Phase 13.2 versioned public JSON schema contract checkpoint — 2026-09-09
+
+The second bounded Phase 13 slice is **COMPLETE**. `PUBLIC_JSON_SCHEMA_VERSION
+= 1` is now the canonical runtime value shared by the legacy diagnostic JSON
+envelope and normalized snapshot. The docs heading and bounded top-level JSON
+example in `docs/json-schema.md` are checked against that constant.
+
+The passive `Report`, `Snapshot` and privacy-aware `ShareableReport` models now
+fail closed when a required `schema_version` is missing, has the wrong JSON
+type, or is not the current version. Serialization also refuses an invalid
+in-memory version. Required fields remain strict, while unknown additive keys
+remain accepted according to the existing v0.x compatibility policy. The
+shareable `report_version` remains a separate, independently validated
+envelope version.
+
+No public JSON meaning, finding ID, remediation, active probe or apply path
+was added. Phase 8 Screenshot/ScreenCast real-session gates and the `v0.3.0`
+blocker state are unchanged; Phase 12 production apply remains unauthorized.
 
 Implement and release-gate it in this order:
 

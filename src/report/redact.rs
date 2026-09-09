@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::collectors::environment::ALLOWLISTED_VARIABLES;
 use crate::model::finding::Finding;
-use crate::model::snapshot::Snapshot;
+use crate::model::snapshot::{PUBLIC_JSON_SCHEMA_VERSION, Snapshot};
 use crate::report::Report;
 
 /// Version of the explicit, privacy-aware report document.
@@ -30,15 +30,69 @@ pub struct ShareablePrivacy {
     pub raw_pipewire: RawDataPolicy,
 }
 
+#[derive(Debug, Deserialize)]
+struct ShareableReportWire {
+    report_version: u32,
+    schema_version: u32,
+    portaldoctor_version: String,
+    privacy: ShareablePrivacy,
+    snapshot: Snapshot,
+    findings: Vec<Finding>,
+}
+
 /// Explicit report document emitted by `portaldoctor report`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "ShareableReportWire")]
 pub struct ShareableReport {
+    #[serde(serialize_with = "serialize_shareable_report_version")]
     pub report_version: u32,
+    #[serde(serialize_with = "crate::model::snapshot::serialize_public_schema_version")]
     pub schema_version: u32,
     pub portaldoctor_version: String,
     pub privacy: ShareablePrivacy,
     pub snapshot: Snapshot,
     pub findings: Vec<Finding>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde's serialize_with callback receives &T
+fn serialize_shareable_report_version<S>(value: &u32, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    if *value != SHAREABLE_REPORT_VERSION {
+        return Err(serde::ser::Error::custom(format!(
+            "unsupported shareable report version {value}"
+        )));
+    }
+    serializer.serialize_u32(*value)
+}
+
+impl TryFrom<ShareableReportWire> for ShareableReport {
+    type Error = String;
+
+    fn try_from(wire: ShareableReportWire) -> Result<Self, Self::Error> {
+        if wire.report_version != SHAREABLE_REPORT_VERSION {
+            return Err(format!(
+                "unsupported shareable report version {}; expected {}",
+                wire.report_version, SHAREABLE_REPORT_VERSION
+            ));
+        }
+        if wire.schema_version != PUBLIC_JSON_SCHEMA_VERSION {
+            return Err(format!(
+                "unsupported public JSON schema version {}; expected {}",
+                wire.schema_version, PUBLIC_JSON_SCHEMA_VERSION
+            ));
+        }
+
+        Ok(Self {
+            report_version: wire.report_version,
+            schema_version: wire.schema_version,
+            portaldoctor_version: wire.portaldoctor_version,
+            privacy: wire.privacy,
+            snapshot: wire.snapshot,
+            findings: wire.findings,
+        })
+    }
 }
 
 impl ShareableReport {

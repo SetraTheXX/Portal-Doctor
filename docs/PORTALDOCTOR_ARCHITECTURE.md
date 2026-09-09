@@ -905,6 +905,14 @@ Exact defaults should be calibrated by testing rather than treated as fixed arch
 
 `schema_version` must be separate from application version.
 
+The public JSON v1 constant is `PUBLIC_JSON_SCHEMA_VERSION = 1`; it is the
+single runtime value used by the passive report envelope and normalized
+snapshot. Both serialization and typed deserialization fail closed for a
+missing, wrong-type or unsupported version. Required fields remain required,
+while unknown additive fields are ignored during v0.x reads. Therefore any
+breaking field removal, semantic reinterpretation or incompatible type change
+requires a schema-version bump before release.
+
 Example:
 
 ```json
