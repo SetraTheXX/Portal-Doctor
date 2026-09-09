@@ -900,6 +900,29 @@ behavior without changing the public CLI.
 
 ---
 
+### Diagnostic coverage contract — Phase 13.6
+
+The roadmap’s seven diagnostics capabilities are backed by one canonical
+inventory and a parity test. Each row binds its production collector or probe
+path to the normalized `Snapshot` (or standalone `ProbeResult v1`), the
+default/explicit entry point, and the finding/result contract. The test also
+serializes a representative report and checks that the expected Snapshot
+fields and high-level renderer surfaces are still present, so a silent model
+or renderer disconnect fails in CI.
+
+The inventory distinguishes implementation completeness and controlled test
+completeness from live qualification. The passive rows are live-qualified only
+for the published Ubuntu 26.04/GNOME/Wayland baseline; expanded desktop
+fixtures are controlled-only. FileChooser is the only live-qualified active
+probe. Screenshot remains blocked by the GNOME provider hang/crash and
+ScreenCast by the missing Window capability; neither controlled coverage nor
+the internal ScreenCast lifecycle is a live support claim.
+
+No new collector, active probe command, remediation/apply path or live
+provider test is part of this contract.
+
+---
+
 ## 19. Concurrency and Timeouts
 
 Independent passive collectors can run concurrently where doing so does not distort state.

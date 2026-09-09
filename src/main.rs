@@ -1,5 +1,6 @@
 mod cli;
 mod collectors;
+mod diagnostics;
 mod error;
 mod model;
 mod probes;

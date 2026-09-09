@@ -2,7 +2,7 @@
 
 **Last verified:** 2026-09-09
 **Current public release:** `v0.2.1`
-**Current development phase:** Phase 13 v1.0 Hardening — finding-semantics, versioned JSON schema, exit-code, shareable-report privacy and default-UX/scope contract slices COMPLETE
+**Current development phase:** Phase 13 v1.0 Hardening — finding-semantics, versioned JSON schema, exit-code, shareable-report privacy, default-UX/scope and diagnostic-coverage contract slices COMPLETE
 **Release gate under review:** Phase 8 / `v0.3.0` remains blocked
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
 
@@ -615,6 +615,27 @@ Ubuntu 26.04/GNOME/Wayland/systemd-user baseline, explicit/unreleased active
 probes, no default fixes, no GUI, and no universal Linux/desktop support
 claim. No public CLI behavior or scope claim was broadened. Phase 8/v0.3.0
 blockers remain unchanged; Phase 12 apply remains unauthorized.
+
+### Phase 13.6 diagnostic coverage contract checkpoint — 2026-09-10
+
+The sixth bounded Phase 13 slice is **COMPLETE**. The seven roadmap
+diagnostic gates now have a canonical inventory tied to the production
+collector chain, normalized Snapshot fields, entry points, finding or
+`ProbeResult v1` contracts, and controlled coverage. A docs-parity test fails
+if a capability row is added, removed or changed without updating the runtime
+inventory.
+
+Portal routing, environment/activation, D-Bus, systemd user services,
+PipeWire/WirePlumber and opt-in journal evidence are implementation- and
+controlled-complete. Their live qualification is limited to the published
+Ubuntu 26.04/GNOME/Wayland passive baseline; KDE, wlroots/Sway, Hyprland and
+Niri remain controlled-only compatibility coverage. Active core probes are
+implementation- and controlled-complete; FileChooser is live-qualified, while
+Screenshot and ScreenCast real-session qualification remain externally
+blocked. Controlled/fake results are not live support claims.
+
+No collector, public probe command, remediation/apply path or provider E2E was
+added. Phase 8 and the `v0.3.0` release blockers remain unchanged.
 
 Implement and release-gate it in this order:
 
