@@ -117,6 +117,12 @@ fn run_fix(args: &FixArgs, json: bool) -> Result<RunOutcome, Error> {
     let preview = match args.target {
         FixTarget::Env004 => remediation::preview_env004(&collected.snapshot, &findings),
     };
+    let verification = remediation::verify_env004_preview(&preview, &collected.snapshot, &findings);
+    if preview.proposal.is_some()
+        && !matches!(verification, remediation::Env004PreviewVerification::Valid)
+    {
+        return Err(Error::RemediationPreviewVerificationFailed);
+    }
     let rendered = if json {
         serde_json::to_string_pretty(&preview)
             .map_err(|error| Error::ProbeOutput(error.to_string()))?

@@ -1309,6 +1309,25 @@ verification and rollback/non-destructive semantics before it can exist.
 This binding is provenance metadata, not an apply mechanism. No file,
 environment or service is changed by this slice.
 
+## Third bounded `ENV004` preview-verification slice — 2026-09-09
+
+- [x] Add the pure `verify_env004_preview(stored_preview, fresh_snapshot,
+  fresh_findings)` verifier; do not add apply, `systemctl` or write behavior.
+- [x] Verify the stored proposal digest first, then enforce the supported
+  schema, finding/remediation/action/target/dry-run/apply and empty-side-effect
+  contract.
+- [x] Regenerate the fresh ENV004 preview and compare actionable evidence and
+  proposed environment updates without comparing `collected_at` directly.
+- [x] Return typed `valid`, `tampered`, `stale_evidence`, `not_applicable` and
+  `unsupported_schema` results, with the dry-run CLI retaining only an
+  internal fail-closed self-check.
+- [x] Test unchanged evidence, stored field/digest mutation, changed process
+  or activation evidence, disappearance of ENV004, unrelated snapshot
+  changes, schema mismatch and side-effect-list contract violations.
+
+This verifier is a read-only integrity/currentness boundary. It does not
+authorize or perform remediation.
+
 ## Prohibited behavior
 
 No silent:

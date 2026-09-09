@@ -124,6 +124,42 @@ pub enum ApplyStatus {
     NotImplemented,
 }
 
+/// Typed outcome of verifying a stored ENV004 preview against fresh evidence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum Env004PreviewVerification {
+    Valid,
+    Tampered { reason: VerificationTamperReason },
+    StaleEvidence { reason: StaleEvidenceReason },
+    NotApplicable { reason: NotApplicableReason },
+    UnsupportedSchema { reason: VerificationSchemaReason },
+}
+
+/// Reasons a stored preview cannot be trusted as the same proposal document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationTamperReason {
+    StoredProposalDigestMismatch,
+    ProposalContractMismatch,
+}
+
+/// Reasons a stored proposal is internally valid but no longer matches fresh
+/// actionable ENV004 evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StaleEvidenceReason {
+    EvidenceDigestMismatch,
+    EnvironmentUpdatesMismatch,
+}
+
+/// Schema boundaries checked before a fresh proposal can be compared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationSchemaReason {
+    PreviewSchemaMismatch,
+    SnapshotSchemaMismatch,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ActionableEvidence {
     key: String,
@@ -211,6 +247,119 @@ pub fn preview_env004(snapshot: &Snapshot, findings: &[Finding]) -> RemediationP
         applicability: RemediationApplicability::Applicable,
         proposal: Some(proposal),
     }
+}
+
+/// Verify a stored preview without applying it or invoking any write-capable
+/// command. The stored digest is checked before the contract and fresh
+/// evidence are evaluated; collection timestamps are provenance only and are
+/// intentionally not compared between the two previews.
+#[must_use]
+pub fn verify_env004_preview(
+    stored_preview: &RemediationPreview,
+    fresh_snapshot: &Snapshot,
+    fresh_findings: &[Finding],
+) -> Env004PreviewVerification {
+    let Some(stored_proposal) = stored_preview.proposal.as_ref() else {
+        return match stored_preview.applicability {
+            RemediationApplicability::NotApplicable { ref reason } => {
+                Env004PreviewVerification::NotApplicable { reason: *reason }
+            }
+            RemediationApplicability::Applicable => Env004PreviewVerification::Tampered {
+                reason: VerificationTamperReason::ProposalContractMismatch,
+            },
+        };
+    };
+
+    if digest_proposal(stored_proposal) != stored_proposal.binding.proposal_digest {
+        return Env004PreviewVerification::Tampered {
+            reason: VerificationTamperReason::StoredProposalDigestMismatch,
+        };
+    }
+
+    if stored_preview.schema_version != REMEDIATION_PREVIEW_SCHEMA_VERSION
+        || stored_proposal.binding.snapshot_schema_version != SNAPSHOT_SCHEMA_VERSION
+    {
+        return Env004PreviewVerification::UnsupportedSchema {
+            reason: if stored_preview.schema_version == REMEDIATION_PREVIEW_SCHEMA_VERSION {
+                VerificationSchemaReason::SnapshotSchemaMismatch
+            } else {
+                VerificationSchemaReason::PreviewSchemaMismatch
+            },
+        };
+    }
+
+    if !stored_preview_contract_is_valid(stored_preview, stored_proposal) {
+        return Env004PreviewVerification::Tampered {
+            reason: VerificationTamperReason::ProposalContractMismatch,
+        };
+    }
+
+    if fresh_snapshot.schema_version != SNAPSHOT_SCHEMA_VERSION {
+        return Env004PreviewVerification::UnsupportedSchema {
+            reason: VerificationSchemaReason::SnapshotSchemaMismatch,
+        };
+    }
+    let fresh_preview = preview_env004(fresh_snapshot, fresh_findings);
+    let RemediationApplicability::Applicable = fresh_preview.applicability else {
+        let RemediationApplicability::NotApplicable { reason } = fresh_preview.applicability else {
+            unreachable!("applicability was matched above");
+        };
+        return if reason == NotApplicableReason::SnapshotSchemaMismatch {
+            Env004PreviewVerification::UnsupportedSchema {
+                reason: VerificationSchemaReason::SnapshotSchemaMismatch,
+            }
+        } else {
+            Env004PreviewVerification::NotApplicable { reason }
+        };
+    };
+    let Some(fresh_proposal) = fresh_preview.proposal.as_ref() else {
+        unreachable!("applicable preview must carry a proposal");
+    };
+
+    if stored_proposal.binding.evidence_digest != fresh_proposal.binding.evidence_digest {
+        return Env004PreviewVerification::StaleEvidence {
+            reason: StaleEvidenceReason::EvidenceDigestMismatch,
+        };
+    }
+    if stored_proposal.environment_updates != fresh_proposal.environment_updates {
+        return Env004PreviewVerification::StaleEvidence {
+            reason: StaleEvidenceReason::EnvironmentUpdatesMismatch,
+        };
+    }
+
+    Env004PreviewVerification::Valid
+}
+
+fn stored_preview_contract_is_valid(
+    stored_preview: &RemediationPreview,
+    stored_proposal: &RemediationProposal,
+) -> bool {
+    stored_preview.finding_id == ENV004_FINDING_ID
+        && stored_preview.applicability == RemediationApplicability::Applicable
+        && stored_proposal.binding.finding_id == ENV004_FINDING_ID
+        && stored_proposal.binding.collected_at != 0
+        && is_hex_digest(&stored_proposal.binding.evidence_digest)
+        && stored_proposal.remediation_id == ENV004_REMEDIATION_ID
+        && stored_proposal.action == RemediationAction::ImportActivationEnvironment
+        && stored_proposal.target == RemediationTarget::SystemdUserActivationEnvironment
+        && stored_proposal.dry_run
+        && !stored_proposal.environment_updates.is_empty()
+        && stored_proposal.environment_updates.iter().all(|update| {
+            COMPARISON_KEYS.contains(&update.key.as_str()) && !update.value.is_empty()
+        })
+        && stored_proposal
+            .environment_updates
+            .windows(2)
+            .all(|updates| updates[0].key < updates[1].key)
+        && stored_proposal.files_modified.is_empty()
+        && stored_proposal.service_restarts.is_empty()
+        && stored_proposal.package_changes.is_empty()
+        && stored_proposal.configuration_changes.is_empty()
+        && stored_proposal.apply == ApplyStatus::NotImplemented
+}
+
+fn is_hex_digest(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 /// Render the standalone preview without invoking any write-capable command.
@@ -509,8 +658,9 @@ fn session_matches_process(
 #[cfg(test)]
 mod tests {
     use super::{
-        ApplyStatus, NotApplicableReason, RemediationAction, RemediationApplicability,
-        RemediationTarget, preview_env004, render_terminal,
+        ApplyStatus, Env004PreviewVerification, NotApplicableReason, RemediationAction,
+        RemediationApplicability, RemediationTarget, StaleEvidenceReason, VerificationSchemaReason,
+        VerificationTamperReason, preview_env004, render_terminal, verify_env004_preview,
     };
     use crate::collectors::environment::{environment_info, session_info};
     use crate::model::section::Section;
@@ -653,6 +803,203 @@ mod tests {
         for mutated in mutations {
             assert_ne!(base_digest, super::digest_proposal(&mutated));
         }
+    }
+
+    #[test]
+    fn untouched_preview_with_fresh_same_evidence_is_valid() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let stored_preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let mut fresh_snapshot = stored_snapshot.clone();
+        fresh_snapshot.collected_at = 2;
+
+        assert_eq!(
+            verify_env004_preview(&stored_preview, &fresh_snapshot, &evaluate(&fresh_snapshot),),
+            Env004PreviewVerification::Valid
+        );
+    }
+
+    #[test]
+    fn mutated_preview_or_digest_is_tampered() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let snapshot = snapshot(&process, &activation);
+        let stored_preview = preview_env004(&snapshot, &evaluate(&snapshot));
+
+        let mut changed_field = stored_preview.clone();
+        changed_field
+            .proposal
+            .as_mut()
+            .expect("proposal")
+            .configuration_changes
+            .push("unexpected-change".to_owned());
+        assert_eq!(
+            verify_env004_preview(&changed_field, &snapshot, &evaluate(&snapshot)),
+            Env004PreviewVerification::Tampered {
+                reason: VerificationTamperReason::StoredProposalDigestMismatch,
+            }
+        );
+
+        let mut changed_digest = stored_preview.clone();
+        changed_digest
+            .proposal
+            .as_mut()
+            .expect("proposal")
+            .binding
+            .proposal_digest = "tampered".to_owned();
+        assert_eq!(
+            verify_env004_preview(&changed_digest, &snapshot, &evaluate(&snapshot)),
+            Env004PreviewVerification::Tampered {
+                reason: VerificationTamperReason::StoredProposalDigestMismatch,
+            }
+        );
+    }
+
+    #[test]
+    fn recomputed_side_effect_mutation_is_rejected_by_contract() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let snapshot = snapshot(&process, &activation);
+        let mut changed = preview_env004(&snapshot, &evaluate(&snapshot));
+        let proposal = changed.proposal.as_mut().expect("proposal");
+        proposal
+            .configuration_changes
+            .push("unexpected-change".to_owned());
+        proposal.binding.proposal_digest = super::digest_proposal(proposal);
+
+        assert_eq!(
+            verify_env004_preview(&changed, &snapshot, &evaluate(&snapshot)),
+            Env004PreviewVerification::Tampered {
+                reason: VerificationTamperReason::ProposalContractMismatch,
+            }
+        );
+    }
+
+    #[test]
+    fn changed_process_or_activation_evidence_is_stale() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let stored_preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+
+        let changed_process = [
+            ("XDG_CURRENT_DESKTOP", "Hyprland"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+            ("WAYLAND_DISPLAY", "wayland-0"),
+        ];
+        let process_snapshot = snapshot(&changed_process, &activation);
+        assert_eq!(
+            verify_env004_preview(
+                &stored_preview,
+                &process_snapshot,
+                &evaluate(&process_snapshot),
+            ),
+            Env004PreviewVerification::StaleEvidence {
+                reason: StaleEvidenceReason::EvidenceDigestMismatch,
+            }
+        );
+
+        let changed_activation = [
+            ("XDG_CURRENT_DESKTOP", "Sway"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let activation_snapshot = snapshot(&process, &changed_activation);
+        assert_eq!(
+            verify_env004_preview(
+                &stored_preview,
+                &activation_snapshot,
+                &evaluate(&activation_snapshot),
+            ),
+            Env004PreviewVerification::StaleEvidence {
+                reason: StaleEvidenceReason::EvidenceDigestMismatch,
+            }
+        );
+    }
+
+    #[test]
+    fn missing_env004_is_not_applicable_for_verification() {
+        let process = healthy_process();
+        let stale_activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &stale_activation);
+        let stored_preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let fresh_snapshot = snapshot(&process, &process);
+
+        assert_eq!(
+            verify_env004_preview(&stored_preview, &fresh_snapshot, &evaluate(&fresh_snapshot),),
+            Env004PreviewVerification::NotApplicable {
+                reason: NotApplicableReason::FindingNotPresent,
+            }
+        );
+    }
+
+    #[test]
+    fn unrelated_fresh_snapshot_change_remains_valid() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let stored_preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let mut fresh_snapshot = stored_snapshot.clone();
+        fresh_snapshot.collected_at = 2;
+        fresh_snapshot
+            .environment
+            .value
+            .as_mut()
+            .expect("environment value")
+            .search_roots
+            .config_roots = vec!["/secret/private/config".to_owned()];
+
+        assert_eq!(
+            verify_env004_preview(&stored_preview, &fresh_snapshot, &evaluate(&fresh_snapshot),),
+            Env004PreviewVerification::Valid
+        );
+    }
+
+    #[test]
+    fn unsupported_fresh_schema_is_typed() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let snapshot = snapshot(&process, &activation);
+        let stored_preview = preview_env004(&snapshot, &evaluate(&snapshot));
+        let mut fresh_snapshot = snapshot.clone();
+        fresh_snapshot.schema_version += 1;
+
+        assert_eq!(
+            verify_env004_preview(&stored_preview, &fresh_snapshot, &evaluate(&fresh_snapshot),),
+            Env004PreviewVerification::UnsupportedSchema {
+                reason: VerificationSchemaReason::SnapshotSchemaMismatch,
+            }
+        );
     }
 
     #[test]
