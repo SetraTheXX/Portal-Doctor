@@ -2,7 +2,7 @@
 
 **Last verified:** 2026-09-09
 **Current public release:** `v0.2.1`
-**Current development phase:** Phase 11 controlled compatibility expansion
+**Current development phase:** Phase 12 bounded Safe Remediation Preview
 **Release gate under review:** Phase 8 / `v0.3.0` remains blocked
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
 
@@ -381,6 +381,24 @@ for either target. Phase 11 controlled static, runtime, activation and
 version-evidence coverage is complete; live Hyprland/Niri readiness and active
 Screenshot/ScreenCast validation remain open. No support or release claim
 follows from this checkpoint.
+
+### Phase 12 first bounded Safe Remediation Preview slice — 2026-09-09
+
+The first remediation slice is preview-only and targets `ENV004`. The explicit
+command is `portaldoctor fix ENV004 --dry-run`; it evaluates the current
+finding and the same in-memory snapshot that produced it, then emits a typed
+remediation-preview schema v1 document. When applicable, the proposal lists
+only non-empty process-side allowlisted values that differ from or are missing
+in the systemd user activation environment, in deterministic key order.
+
+The proposal is strictly non-destructive: `files_modified` is empty, service
+restarts, package changes and configuration changes are empty, and `apply` is
+`not_implemented`. No file is written and no `systemctl import-environment`
+or other write-capable command is invoked. If `ENV004` is absent, the required
+process value is missing, the snapshot schema/status/timestamp is unsupported,
+or the comparison evidence is inconsistent/unavailable, the preview contains
+no proposal and fails closed. This does not add an apply path, change the
+passive v0.2.1 contract, or unblock any Phase 8 release gate.
 
 Implement and release-gate it in this order:
 

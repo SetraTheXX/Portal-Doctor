@@ -14,4 +14,8 @@ pub enum Error {
     /// The standalone active-probe result could not be serialized for output.
     #[error("failed to serialize active probe output: {0}")]
     ProbeOutput(String),
+    /// Applying remediation is deliberately outside the current preview-only
+    /// contract.
+    #[error("only --dry-run remediation previews are supported; apply is not implemented")]
+    RemediationApplyUnsupported,
 }
