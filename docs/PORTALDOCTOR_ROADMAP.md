@@ -1173,6 +1173,29 @@ not validate a live Niri session, observe a real SettingsChanged conflict,
 install/update packages, run active probes, create a support claim or approve
 a release. Phase 8, KDE and Sway blocker state is unchanged.
 
+## Phase 11 live Hyprland/Niri readiness checkpoint — 2026-09-09
+
+- [x] Perform a read-only host preflight without changing the desktop,
+  packages or services. The host is `ubuntu:GNOME` on Wayland with healthy
+  PipeWire/WirePlumber and GNOME passive Screenshot/ScreenCast routing.
+- [x] Classify Hyprland separately as `BLOCKED / NOT AVAILABLE`: no real
+  Hyprland session, backend package/binary/descriptor, active user unit or
+  canonical D-Bus owner is present.
+- [x] Classify Niri separately as `BLOCKED / NOT AVAILABLE`: no real Niri
+  session, backend package/binary/descriptor, active user unit or canonical
+  D-Bus owner is present.
+- [x] Keep the current GNOME passive route and media-stack evidence separate
+  from target capability evidence; do not treat it as Hyprland/Niri validation.
+- [x] Leave active Screenshot/ScreenCast validation and support/release claims
+  open. Do not retry this checkpoint on the same GNOME host.
+
+Recheck trigger for either target: a real target Wayland session, the matching
+backend package/descriptor and healthy user service, canonical D-Bus ownership,
+the expected passive Screenshot/ScreenCast route, and the required advertised
+portal capability evidence. Controlled Phase 11 development coverage is
+complete, but these live/active gates are not release approval and do not alter
+the Phase 8, KDE or Sway blocker state.
+
 ## Tasks
 
 - Hyprland backend model/fixtures,
