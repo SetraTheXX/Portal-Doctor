@@ -349,6 +349,32 @@ installed is silent. This is controlled evidence/compatibility coverage, not
 live Niri validation, active-probe validation, a support claim or release
 approval; Phase 8, KDE and Sway blockers are unchanged.
 
+### Phase 11 Hyprland/Niri live-readiness checkpoint — 2026-09-09
+
+The current host is `ubuntu:GNOME` on Wayland (`wayland-0`), not a Hyprland or
+Niri session. PipeWire and WirePlumber are running, and the existing passive
+portal snapshot selects the installed GNOME backend for Screenshot, ScreenCast,
+FileChooser and Settings. That GNOME evidence is not target evidence for
+Hyprland or Niri.
+
+Hyprland is `BLOCKED / NOT AVAILABLE`: no Hyprland session identity,
+`xdg-desktop-portal-hyprland` package/binary/descriptor, active
+`xdg-desktop-portal-hyprland.service`, or canonical
+`org.freedesktop.impl.portal.desktop.hyprland` owner was found. Niri is
+`BLOCKED / NOT AVAILABLE` for the same reasons: no Niri session identity,
+Niri package/binary/descriptor, active Niri portal unit, or canonical
+`org.freedesktop.impl.portal.desktop.niri` owner was found. No provider was
+installed or started, and no active probe was run.
+
+Each target may be re-evaluated only after a real target Wayland session is
+available with the corresponding backend package/descriptor and healthy user
+unit, canonical D-Bus ownership, the correct target passive route, and the
+required Screenshot/ScreenCast capability evidence. The same GNOME host must
+not be forced to stand in for either target. Phase 11 controlled static,
+runtime, activation and version-evidence coverage is complete; live
+Hyprland/Niri readiness and active Screenshot/ScreenCast validation remain
+open. No support or release claim follows from this checkpoint.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility
