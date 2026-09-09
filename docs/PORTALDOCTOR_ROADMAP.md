@@ -1226,6 +1226,13 @@ Diagnose only evidence-backed conflicts or unusable routing.
 
 # Phase 12 — Safe Remediation Preview
 
+**Controlled contract/design status:** COMPLETE
+
+**Production ENV004 apply:** NOT AUTHORIZED / NOT SHIPPED
+
+**v0.3.0 release impact:** not a blocker; the separate Phase 8 real-session
+gates remain open.
+
 ## Objective
 
 Evaluate whether PortalDoctor should offer controlled fixes without becoming a destructive support script.
@@ -1455,6 +1462,33 @@ systemctl/subprocess access, environment mutation or CLI `--apply` path exists.
 This is controlled ambiguity/rollback semantics only. It does not add a
 production adapter, subprocess or systemctl access, environment mutation or
 CLI `--apply` path.
+
+## Phase 12 controlled completion checkpoint — 2026-09-09
+
+- [x] Deterministic applicability and a non-destructive dry-run proposal.
+- [x] Provenance binding and proposal-digest integrity.
+- [x] Fresh-evidence verification and post-apply effect verification
+  contracts.
+- [x] Explicit approval integrity and exact proposal/evidence binding.
+- [x] Opaque apply-admission capability that cannot be serialized or reused
+  across bindings.
+- [x] Deterministic pre-state/rollback planning, including restore versus
+  unset semantics.
+- [x] Controlled transaction execution with one-shot plan consumption and
+  typed rollback outcomes.
+- [x] Ambiguous apply-result semantics: an unknown current step is treated as
+  potentially applied and rolled back before earlier completed steps.
+
+Phase 12 controlled contract/design work is **COMPLETE**. This checkpoint does
+not authorize or ship production remediation: no systemctl adapter, environment
+write, subprocess mutation or CLI `--apply` exists. The public remediation
+surface remains `portaldoctor fix ENV004 --dry-run`.
+
+Phase 12 is not a `v0.3.0` blocker. `v0.3.0` approval remains blocked by the
+Phase 8 real-session gates: the external GNOME Screenshot provider
+success/cancellation blocker and the ScreenCast provider capability blocker
+(`AvailableSourceTypes=0`, Window bit `2` absent). Those gates are unchanged
+by this completion checkpoint.
 
 ## Prohibited behavior
 

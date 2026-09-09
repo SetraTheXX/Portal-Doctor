@@ -986,11 +986,13 @@ Later package channels can include distro/community packaging, but package-manag
 
 ---
 
-## 24. Safe Remediation Architecture — Preview-only boundary
+## 24. Safe Remediation Architecture — controlled contract complete; apply deferred
 
-Automatic apply remains intentionally deferred. Phase 12 currently implements
-only the typed, read-only `ENV004` preview; it does not execute any write or
-service operation.
+Phase 12 controlled contract/design work is complete: applicability, dry-run,
+provenance, verification, approval, opaque admission, rollback planning and
+controlled transaction semantics are all defined and tested. Production apply
+remains intentionally deferred; no typed contract in this phase executes a
+write or service operation.
 
 If introduced later, architecture should require:
 
@@ -1037,7 +1039,7 @@ digests before acting.
 
 ---
 
-The next preview-only boundary is a pure
+The completed preview-verification boundary is a pure
 `verify_env004_preview(stored_preview, fresh_snapshot, fresh_findings)`
 verifier. It first recomputes the stored proposal digest, then checks schema,
 finding, remediation, action, target, dry-run/apply and empty-side-effect-list
@@ -1117,6 +1119,14 @@ steps. Rollback failures remain separately typed and every attempted rollback
 is retained in order. Only a test fake implements the injected adapter in
 these slices. There is no production adapter, subprocess, systemctl call,
 environment mutation or public `--apply` path.
+
+The Phase 12 completion checkpoint is therefore a controlled contract/design
+completion only. It does not authorize production ENV004 remediation and does
+not add a systemctl adapter, environment write path or CLI `--apply`. Phase 12
+is not a `v0.3.0` blocker; that release remains gated independently by the
+Phase 8 real-session Screenshot success/cancellation blocker and the
+ScreenCast capability blocker (`AvailableSourceTypes=0`, Window bit `2`
+absent). Those Phase 8 gates remain open.
 
 ## 25. Architecture Decision Summary
 

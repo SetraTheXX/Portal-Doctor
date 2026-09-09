@@ -2,7 +2,7 @@
 
 **Last verified:** 2026-09-09
 **Current public release:** `v0.2.1`
-**Current development phase:** Phase 12 bounded Safe Remediation Preview
+**Current development phase:** Phase 12 bounded Safe Remediation Preview — controlled contract/design COMPLETE; production apply deferred
 **Release gate under review:** Phase 8 / `v0.3.0` remains blocked
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
 
@@ -492,6 +492,31 @@ and is rolled back before earlier completed steps. Rollback failures remain
 separately typed. Only a controlled fake adapter exists; there is no
 production systemctl/subprocess adapter, environment mutation or CLI
 `--apply` path.
+
+### Phase 12 completion checkpoint — 2026-09-09
+
+The Phase 12 controlled contract/design work is **COMPLETE**. Its exit
+criteria are covered by the typed implementation and controlled tests:
+
+- [x] deterministic ENV004 applicability and read-only dry-run representation;
+- [x] provenance binding and proposal integrity;
+- [x] fresh-evidence and post-apply effect verification contracts;
+- [x] explicit approval integrity and exact proposal/evidence binding;
+- [x] opaque apply-admission capability;
+- [x] deterministic pre-state and rollback plan;
+- [x] controlled transaction executor with one-shot plan consumption;
+- [x] explicit `Applied`, `DefinitelyNotApplied` and `OutcomeUnknown`
+  semantics, including fail-closed rollback-failure reporting.
+
+This is a design/contract completion, not production remediation
+authorization. The `systemctl` adapter, environment write path and CLI
+`--apply` remain unimplemented and unshipped; the only public remediation
+entry point remains `portaldoctor fix ENV004 --dry-run`. Phase 12 is **not a
+v0.3.0 release blocker**. The release remains blocked by the separate Phase 8
+real-session gates: Screenshot success/cancellation is blocked by the external
+GNOME provider failure, and ScreenCast success/cancellation is blocked because
+the current provider advertises `AvailableSourceTypes=0` without Window bit
+`2`.
 
 Implement and release-gate it in this order:
 
