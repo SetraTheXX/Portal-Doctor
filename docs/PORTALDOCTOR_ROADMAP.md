@@ -1284,6 +1284,27 @@ This is a read-only preview contract only. It does not modify files, call
 a release. A future apply slice must add explicit approval, post-apply
 verification and rollback/non-destructive semantics before it can exist.
 
+## Second bounded `ENV004` provenance-binding slice — 2026-09-09
+
+- [x] Bind each applicable proposal to the source snapshot schema version,
+  `collected_at` value and `ENV004` finding ID.
+- [x] Add a deterministic SHA-256 `evidence_digest` over only the sorted,
+  actionable environment comparison values: key, process value, activation
+  value and relation. Entry order and unrelated snapshot fields do not affect
+  this digest.
+- [x] Add a `proposal_digest` over the preview schema, provenance fields and
+  bounded proposal shape. A changed actionable value, relation or snapshot
+  timestamp therefore cannot silently reuse the old preview.
+- [x] Expose both digests and their provenance fields in JSON and terminal
+  output, while keeping `apply = not_implemented` and the CLI limited to
+  `portaldoctor fix ENV004 --dry-run`.
+- [x] Test identical evidence, reordered entries, changed values/relations,
+  changed collection timestamps, stale/inconsistent evidence and serialized
+  binding output.
+
+This binding is provenance metadata, not an apply mechanism. No file,
+environment or service is changed by this slice.
+
 ## Prohibited behavior
 
 No silent:

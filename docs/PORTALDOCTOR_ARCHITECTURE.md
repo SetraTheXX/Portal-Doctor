@@ -1017,6 +1017,17 @@ service/package/configuration changes, and fail closed when the finding or
 process-side evidence is unavailable. A future apply slice requires explicit
 approval, post-apply verification and rollback/non-destructive semantics.
 
+Every applicable preview also carries a provenance binding. The binding keeps
+the passive snapshot schema version, collection timestamp and finding ID, plus
+an `evidence_digest` and `proposal_digest`. The evidence digest is a SHA-256
+digest of only the sorted, actionable `ENV004` comparison entries (key,
+process-side value, activation-side value and relation); it excludes paths,
+secrets and unrelated snapshot sections. The proposal digest binds that
+evidence to the preview schema and its fixed, dry-run-only proposal shape.
+Entry order therefore cannot change a digest, while changed evidence or a
+different source snapshot timestamp invalidates the proposal binding. Any
+future apply path must recompute and verify both digests before acting.
+
 ---
 
 ## 25. Architecture Decision Summary
