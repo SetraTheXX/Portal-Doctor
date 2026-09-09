@@ -256,6 +256,27 @@ Code `3` takes precedence when the runtime context is incomplete. Successful
 
 ## Scope and limitations
 
+### Product boundary contract
+
+<!-- PORTALDOCTOR_SCOPE_CONTRACT_START -->
+```text
+default_behavior=passive;read-only;rootless;bounded
+default_portal_dialogs=none
+default_state_mutation=none
+validated_baseline=Ubuntu 26.04;GNOME;Wayland;systemd user session
+support_claim=baseline-only;other desktops require dedicated validation
+development_active_probes=explicit-only;unreleased;not-default
+automatic_fixes=not-default
+gui=out-of-scope
+```
+<!-- PORTALDOCTOR_SCOPE_CONTRACT_END -->
+
+This is the product boundary for the published passive line: the bare
+`portaldoctor` command is a bounded diagnostic, not a universal Linux health
+check, automatic fixer, or GUI workflow. Development active probes are
+explicit and unreleased until their separate acceptance and release gates
+pass.
+
 ### Validated baseline
 
 | Component | v0.2 baseline |

@@ -885,6 +885,19 @@ Global flags:
 
 Do not expose unstable/internal flags in public docs without reason.
 
+### Default diagnostic UX and scope contract — Phase 13.5
+
+The bare `portaldoctor` command resolves to the passive `check` path. It only
+runs collectors, snapshot normalization, rules and the stable terminal/JSON
+renderers; it does not dispatch `Probe` or `Fix`, open portal dialogs, or
+mutate state. The terminal renderer’s high-level order is stable: system,
+session, environment, runtime, media, journal and findings after the version
+header. README and PRD carry the same machine-checked scope contract:
+Ubuntu 26.04/GNOME/Wayland/systemd-user is the validated baseline; other
+desktop support, automatic fixes and GUI workflows are not claimed, and
+development active probes are explicit/unreleased. This hardens existing
+behavior without changing the public CLI.
+
 ---
 
 ## 19. Concurrency and Timeouts

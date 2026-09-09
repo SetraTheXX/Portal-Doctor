@@ -199,6 +199,26 @@ Default behavior:
 - concise terminal output,
 - non-sensitive information only.
 
+### Default and scope contract
+
+<!-- PORTALDOCTOR_SCOPE_CONTRACT_START -->
+```text
+default_behavior=passive;read-only;rootless;bounded
+default_portal_dialogs=none
+default_state_mutation=none
+validated_baseline=Ubuntu 26.04;GNOME;Wayland;systemd user session
+support_claim=baseline-only;other desktops require dedicated validation
+development_active_probes=explicit-only;unreleased;not-default
+automatic_fixes=not-default
+gui=out-of-scope
+```
+<!-- PORTALDOCTOR_SCOPE_CONTRACT_END -->
+
+This contract is shared with the README and is checked against the runtime
+default-command and terminal UX tests. It deliberately separates the
+published passive baseline from unreleased explicit active-probe development;
+PortalDoctor does not claim to fix every Linux or Wayland problem.
+
 Equivalent conceptually to:
 
 ```bash

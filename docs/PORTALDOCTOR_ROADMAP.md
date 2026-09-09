@@ -1522,6 +1522,8 @@ No remediation ships unless it has:
 
 **Phase 13.4 shareable-report privacy contract slice:** COMPLETE
 
+**Phase 13.5 default diagnostic UX + scope contract slice:** COMPLETE
+
 **Phase 13 overall:** in progress; v1.0 release gates remain open.
 
 ## Objective
@@ -1599,6 +1601,22 @@ This slice hardens the existing public privacy contract only. It does not add
 new findings, remediation, active probes or apply behavior. The legacy
 non-shareable diagnostic output is unchanged; Phase 8 and the `v0.3.0`
 external gates remain open.
+
+## Fifth bounded default diagnostic UX and scope slice — 2026-09-09
+
+- [x] Lock bare `portaldoctor` to the passive read-only `check` path; active
+  probes and remediation remain explicit.
+- [x] Lock deterministic high-level terminal section ordering and ensure the
+  default path has no dialog, active-request or mutation surface.
+- [x] Compare the README and PRD scope/non-goal contract (baseline,
+  unsupported desktop claims, explicit/unreleased probes, no default fixes,
+  no GUI).
+- [x] Preserve the published GNOME baseline and keep “fix all Linux”/
+  universal desktop support claims out of release-facing docs.
+
+This slice hardens existing UX and documentation only. It adds no feature,
+probe, remediation or support claim, and does not change Phase 8 or the
+`v0.3.0` external gates.
 
 ## Required v1.0 gates
 

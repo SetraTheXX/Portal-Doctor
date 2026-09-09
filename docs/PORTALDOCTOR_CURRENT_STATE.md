@@ -2,7 +2,7 @@
 
 **Last verified:** 2026-09-09
 **Current public release:** `v0.2.1`
-**Current development phase:** Phase 13 v1.0 Hardening — finding-semantics, versioned JSON schema, exit-code and shareable-report privacy contract slices COMPLETE
+**Current development phase:** Phase 13 v1.0 Hardening — finding-semantics, versioned JSON schema, exit-code, shareable-report privacy and default-UX/scope contract slices COMPLETE
 **Release gate under review:** Phase 8 / `v0.3.0` remains blocked
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
 
@@ -600,6 +600,21 @@ remaining v0.3.0 external work is still one real Screenshot success plus one
 portal-native cancellation and one real ScreenCast success plus one
 portal-native cancellation, followed by the locked release/public-command
 decision.
+
+### Phase 13.5 default diagnostic UX and scope checkpoint — 2026-09-09
+
+The fifth bounded Phase 13 slice is **COMPLETE**. Bare `portaldoctor` is
+locked to the passive `check` path: it performs read-only bounded collection,
+normalization, rules and rendering only; no active probe, remediation preview
+application, portal dialog or state mutation is dispatched by default. A
+terminal invariant test locks the version header and stable high-level
+section order.
+
+README and PRD now share a machine-checked scope contract for the validated
+Ubuntu 26.04/GNOME/Wayland/systemd-user baseline, explicit/unreleased active
+probes, no default fixes, no GUI, and no universal Linux/desktop support
+claim. No public CLI behavior or scope claim was broadened. Phase 8/v0.3.0
+blockers remain unchanged; Phase 12 apply remains unauthorized.
 
 Implement and release-gate it in this order:
 
