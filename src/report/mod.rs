@@ -7,7 +7,7 @@ pub mod terminal;
 use serde::{Deserialize, Serialize};
 
 use crate::model::finding::Finding;
-use crate::model::snapshot::{SNAPSHOT_SCHEMA_VERSION, Snapshot};
+use crate::model::snapshot::{PUBLIC_JSON_SCHEMA_VERSION, Snapshot};
 
 pub use json::{JsonRenderer, ShareableJsonRenderer};
 pub use markdown::MarkdownRenderer;
@@ -16,9 +16,19 @@ pub use redact::{RedactionOptions, ShareableReport, redact_report};
 pub use terminal::TerminalRenderer;
 
 /// Top-level run output; matches the v1 `JSON` contract (PRD §7.4).
+#[derive(Debug, Deserialize)]
+struct ReportWire {
+    schema_version: u32,
+    portaldoctor_version: String,
+    snapshot: Snapshot,
+    findings: Vec<Finding>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "ReportWire")]
 pub struct Report {
     /// Top-level JSON schema version.
+    #[serde(serialize_with = "crate::model::snapshot::serialize_public_schema_version")]
     pub schema_version: u32,
     /// `portaldoctor` version that produced this report.
     pub portaldoctor_version: String,
@@ -26,6 +36,26 @@ pub struct Report {
     pub snapshot: Snapshot,
     /// Deterministic findings of this run.
     pub findings: Vec<Finding>,
+}
+
+impl TryFrom<ReportWire> for Report {
+    type Error = String;
+
+    fn try_from(wire: ReportWire) -> Result<Self, Self::Error> {
+        if wire.schema_version != PUBLIC_JSON_SCHEMA_VERSION {
+            return Err(format!(
+                "unsupported public JSON schema version {}; expected {}",
+                wire.schema_version, PUBLIC_JSON_SCHEMA_VERSION
+            ));
+        }
+
+        Ok(Self {
+            schema_version: wire.schema_version,
+            portaldoctor_version: wire.portaldoctor_version,
+            snapshot: wire.snapshot,
+            findings: wire.findings,
+        })
+    }
 }
 
 impl Report {
@@ -37,7 +67,7 @@ impl Report {
         portaldoctor_version: impl Into<String>,
     ) -> Self {
         Self {
-            schema_version: SNAPSHOT_SCHEMA_VERSION,
+            schema_version: PUBLIC_JSON_SCHEMA_VERSION,
             portaldoctor_version: portaldoctor_version.into(),
             snapshot,
             findings,
@@ -54,7 +84,7 @@ pub trait Renderer {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
         JsonRenderer, MarkdownRenderer, RedactionOptions, Renderer, Report, ShareableJsonRenderer,
@@ -71,7 +101,8 @@ mod tests {
     };
     use crate::model::pipewire::{PipeWireInfo, WirePlumberInfo};
     use crate::model::section::Section;
-    use crate::model::snapshot::Snapshot;
+    use crate::model::snapshot::{PUBLIC_JSON_SCHEMA_VERSION, Snapshot};
+    use crate::report::redact::SHAREABLE_REPORT_VERSION;
     use serde_json::json;
 
     fn empty_snapshot() -> Snapshot {
@@ -83,13 +114,100 @@ mod tests {
     #[test]
     fn new_locks_top_level_schema_version() {
         let report = Report::new(empty_snapshot(), Vec::new(), "0.1.0");
-        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.schema_version, PUBLIC_JSON_SCHEMA_VERSION);
         let value = serde_json::to_value(&report).unwrap();
-        assert_eq!(value["schema_version"], json!(1));
+        assert_eq!(value["schema_version"], json!(PUBLIC_JSON_SCHEMA_VERSION));
+        assert!(value["schema_version"].is_u64());
         assert_eq!(value["portaldoctor_version"], json!("0.1.0"));
-        assert_eq!(value["snapshot"]["schema_version"], json!(1));
+        assert_eq!(
+            value["snapshot"]["schema_version"],
+            json!(PUBLIC_JSON_SCHEMA_VERSION)
+        );
         assert_eq!(value["findings"], json!([]));
         assert!(value.get("probes").is_none());
+
+        let fields = value
+            .as_object()
+            .expect("report serializes as an object")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let expected = [
+            "schema_version",
+            "portaldoctor_version",
+            "snapshot",
+            "findings",
+        ]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+        assert_eq!(fields, expected);
+    }
+
+    #[test]
+    fn documented_schema_version_matches_runtime_constant() {
+        let markdown = include_str!("../../docs/json-schema.md");
+        let heading_version = markdown
+            .lines()
+            .find_map(|line| line.strip_prefix("# JSON Schema v"))
+            .and_then(|value| value.trim().parse::<u32>().ok())
+            .expect("docs must declare a numeric JSON schema version");
+
+        let top_level = markdown
+            .split_once("## Top-level contract")
+            .map(|(_, section)| section)
+            .expect("docs must contain the top-level contract");
+        let json_start = top_level
+            .find("```json")
+            .map(|offset| offset + "```json".len())
+            .expect("top-level contract must contain a JSON example");
+        let after_fence = &top_level[json_start..];
+        let json_end = after_fence
+            .find("```")
+            .expect("top-level JSON example must be terminated");
+        let example: serde_json::Value =
+            serde_json::from_str(after_fence[..json_end].trim()).unwrap();
+        let example_version = u32::try_from(
+            example["schema_version"]
+                .as_u64()
+                .expect("top-level schema_version must be an integer"),
+        )
+        .expect("top-level schema_version must fit in u32");
+
+        assert_eq!(heading_version, PUBLIC_JSON_SCHEMA_VERSION);
+        assert_eq!(example_version, PUBLIC_JSON_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn report_schema_rejects_missing_wrong_type_and_wrong_version() {
+        let report = Report::new(empty_snapshot(), Vec::new(), "0.1.0");
+        let base = serde_json::to_value(report).unwrap();
+
+        let mut missing = base.clone();
+        missing.as_object_mut().unwrap().remove("schema_version");
+        assert!(serde_json::from_value::<Report>(missing).is_err());
+
+        let mut wrong_type = base.clone();
+        wrong_type["schema_version"] = json!("1");
+        assert!(serde_json::from_value::<Report>(wrong_type).is_err());
+
+        let mut wrong_version = base;
+        wrong_version["schema_version"] = json!(2);
+        assert!(serde_json::from_value::<Report>(wrong_version).is_err());
+    }
+
+    #[test]
+    fn report_serialization_rejects_mutated_schema_version() {
+        let mut report = Report::new(empty_snapshot(), Vec::new(), "0.1.0");
+        report.schema_version = PUBLIC_JSON_SCHEMA_VERSION + 1;
+        assert!(serde_json::to_value(report).is_err());
+    }
+
+    #[test]
+    fn report_schema_accepts_additive_unknown_fields() {
+        let report = Report::new(empty_snapshot(), Vec::new(), "0.1.0");
+        let mut value = serde_json::to_value(report).unwrap();
+        value["future_optional_field"] = json!(true);
+        assert!(serde_json::from_value::<Report>(value).is_ok());
     }
 
     #[test]
@@ -246,8 +364,10 @@ mod tests {
         let document = ShareableReport::from_report(&redacted, &options);
         let text = ShareableJsonRenderer::render(&document);
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(value["report_version"], json!(1));
-        assert_eq!(value["schema_version"], json!(1));
+        assert_eq!(value["report_version"], json!(SHAREABLE_REPORT_VERSION));
+        assert!(value["report_version"].is_u64());
+        assert_eq!(value["schema_version"], json!(PUBLIC_JSON_SCHEMA_VERSION));
+        assert!(value["schema_version"].is_u64());
         assert_eq!(value["privacy"]["redacted"], json!(true));
         assert_eq!(value["privacy"]["raw_journal"], json!("excluded"));
         assert!(
@@ -255,6 +375,59 @@ mod tests {
                 .get("NOT_ALLOWED")
                 .is_none()
         );
+
+        let fields = value
+            .as_object()
+            .expect("shareable report serializes as an object")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        let expected = [
+            "report_version",
+            "schema_version",
+            "portaldoctor_version",
+            "privacy",
+            "snapshot",
+            "findings",
+        ]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+        assert_eq!(fields, expected);
+    }
+
+    #[test]
+    fn shareable_schema_rejects_missing_wrong_type_and_wrong_version() {
+        let options = fixture_options();
+        let redacted = redact_report(&redaction_fixture_report(), &options);
+        let document = ShareableReport::from_report(&redacted, &options);
+        let base = serde_json::to_value(&document).unwrap();
+
+        let mut missing = base.clone();
+        missing.as_object_mut().unwrap().remove("schema_version");
+        assert!(serde_json::from_value::<ShareableReport>(missing).is_err());
+
+        let mut wrong_type = base.clone();
+        wrong_type["schema_version"] = json!("1");
+        assert!(serde_json::from_value::<ShareableReport>(wrong_type).is_err());
+
+        let mut wrong_version = base;
+        wrong_version["schema_version"] = json!(2);
+        assert!(serde_json::from_value::<ShareableReport>(wrong_version).is_err());
+    }
+
+    #[test]
+    fn shareable_serialization_rejects_mutated_schema_versions() {
+        let options = fixture_options();
+        let redacted = redact_report(&redaction_fixture_report(), &options);
+        let document = ShareableReport::from_report(&redacted, &options);
+
+        let mut schema_mutation = document.clone();
+        schema_mutation.schema_version = PUBLIC_JSON_SCHEMA_VERSION + 1;
+        assert!(serde_json::to_value(schema_mutation).is_err());
+
+        let mut report_mutation = document;
+        report_mutation.report_version = SHAREABLE_REPORT_VERSION + 1;
+        assert!(serde_json::to_value(report_mutation).is_err());
     }
 
     #[test]

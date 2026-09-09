@@ -1516,6 +1516,8 @@ No remediation ships unless it has:
 
 **Phase 13.1 stable finding-semantics slice:** COMPLETE
 
+**Phase 13.2 versioned public JSON schema contract slice:** COMPLETE
+
 **Phase 13 overall:** in progress; v1.0 release gates remain open.
 
 ## Objective
@@ -1538,6 +1540,24 @@ Stabilize PortalDoctor as a dependable open-source Linux diagnostic tool.
 This slice hardens the existing public contract only. It does not add a new
 finding, remediation, active probe or support/release claim. Phase 8 and
 `v0.3.0` external gates remain unchanged.
+
+## Second bounded versioned public JSON schema slice — 2026-09-09
+
+- [x] Establish `PUBLIC_JSON_SCHEMA_VERSION = 1` as the canonical runtime
+  value shared by the passive report envelope and normalized snapshot.
+- [x] Add docs-to-runtime parity coverage for the documented heading and
+  top-level JSON example in `docs/json-schema.md`.
+- [x] Require the current unsigned `schema_version` during typed reads and
+  reject missing, wrong-type, wrong-version and mutated in-memory versions at
+  the serialization boundary.
+- [x] Keep required fields strict while accepting unknown additive fields in
+  line with the existing v0.x policy.
+- [x] Cover the legacy `--json` envelope and privacy-aware shareable report
+  shape without changing their public meanings or the separate report version.
+
+This slice is contract hardening only. It does not add a finding, remediation,
+active probe or apply path. Phase 8 and the `v0.3.0` external gates remain
+unchanged.
 
 ## Required v1.0 gates
 
