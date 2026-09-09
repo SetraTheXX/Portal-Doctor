@@ -67,6 +67,14 @@ excluded rather than embedded; only bounded normalized evidence can appear.
 There is intentionally no raw-export flag in this shareable envelope because
 the collectors discard those streams after bounded parsing.
 
+The shareable boundary is fail-closed: `ShareableReport::from_report` applies
+the redaction step before constructing the envelope, and both JSON and
+Markdown renderers require `redacted=true` with `raw_journal` and
+`raw_pipewire` set to `excluded`. A mutated or inconsistent privacy envelope
+cannot be serialized or rendered. The privacy metadata is checked against the
+runtime output in the test suite so this documented field set and meaning do
+not drift.
+
 The legacy `portaldoctor --json` and `portaldoctor check --json` output keeps
 the original v1 top-level shape for machine compatibility. Treat that form as
 diagnostic data to review, not as the public-issue-safe report format.

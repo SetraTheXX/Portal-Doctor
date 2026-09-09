@@ -15,6 +15,9 @@ impl MarkdownRenderer {
     /// document supplied by the caller.
     #[must_use]
     pub fn render(report: &ShareableReport, verbose: bool) -> String {
+        report
+            .validate_contract()
+            .expect("shareable report contract must be valid before Markdown rendering");
         let mut out = String::new();
         writeln!(out, "# PortalDoctor diagnostic report").expect("String writes cannot fail");
         writeln!(

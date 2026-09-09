@@ -1520,6 +1520,8 @@ No remediation ships unless it has:
 
 **Phase 13.3 stable/documented exit-code contract slice:** COMPLETE
 
+**Phase 13.4 shareable-report privacy contract slice:** COMPLETE
+
 **Phase 13 overall:** in progress; v1.0 release gates remain open.
 
 ## Objective
@@ -1577,6 +1579,26 @@ unchanged.
 This slice preserves every public exit code and active-probe meaning. It adds
 only drift-prevention tests and documentation alignment; Phase 8 and the
 `v0.3.0` external gates remain unchanged.
+
+## Fourth bounded shareable-report privacy contract slice — 2026-09-09
+
+- [x] Make `ShareableReport::from_report` apply redaction before constructing
+  the shareable envelope; raw reports cannot be labeled as already safe.
+- [x] Enforce the canonical privacy metadata invariant: redaction is enabled
+  and raw journal/PipeWire policies are `excluded` at serde and renderer
+  boundaries.
+- [x] Keep JSON and Markdown on the same typed redacted document and reject
+  mutated or inconsistent privacy metadata fail-closed.
+- [x] Add regression coverage for environment allowlisting, deterministic
+  `$HOME` normalization, hostname/secret/path redaction, normalized journal
+  evidence and raw-stream exclusion metadata.
+- [x] Compare the documented privacy envelope in `docs/json-schema.md` with
+  runtime serialization.
+
+This slice hardens the existing public privacy contract only. It does not add
+new findings, remediation, active probes or apply behavior. The legacy
+non-shareable diagnostic output is unchanged; Phase 8 and the `v0.3.0`
+external gates remain open.
 
 ## Required v1.0 gates
 
