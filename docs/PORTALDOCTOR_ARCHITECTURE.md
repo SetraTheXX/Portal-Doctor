@@ -1095,6 +1095,15 @@ cannot accept or persist a raw approval document as authority. The permit
 factory performs no write, `systemctl` call or environment mutation; apply
 remains `not_implemented`.
 
+The eighth bounded Phase 12 slice consumes that permit into a deterministic
+`Env004ExecutionPlan`. Each plan step contains the allowlisted key, desired
+process-side value, exact activation-side pre-state and an explicit rollback
+action: restore the prior value or unset the key when the prior value was
+absent. The plan factory accepts only the opaque permit by value, sorts keys
+deterministically and rejects duplicate, unknown or missing pre-state. It has
+no file, package, configuration, service or environment side effect, and no
+`systemctl` or CLI apply path exists.
+
 ## 25. Architecture Decision Summary
 
 | Decision | Choice |
