@@ -1293,13 +1293,17 @@ verification and rollback/non-destructive semantics before it can exist.
   value and relation. Entry order and unrelated snapshot fields do not affect
   this digest.
 - [x] Add a `proposal_digest` over the preview schema, provenance fields and
-  bounded proposal shape. A changed actionable value, relation or snapshot
-  timestamp therefore cannot silently reuse the old preview.
+  every bounded proposal field, using explicit labels, lengths and values for
+  the binding metadata, action/target/remediation ID, dry-run/apply state,
+  environment updates and all side-effect lists. A changed actionable value,
+  relation, proposal field or snapshot timestamp therefore cannot silently
+  reuse the old preview.
 - [x] Expose both digests and their provenance fields in JSON and terminal
   output, while keeping `apply = not_implemented` and the CLI limited to
   `portaldoctor fix ENV004 --dry-run`.
 - [x] Test identical evidence, reordered entries, changed values/relations,
-  changed collection timestamps, stale/inconsistent evidence and serialized
+  changed collection timestamps, every mutable proposal field (including
+  `configuration_changes`), stale/inconsistent evidence and serialized
   binding output.
 
 This binding is provenance metadata, not an apply mechanism. No file,

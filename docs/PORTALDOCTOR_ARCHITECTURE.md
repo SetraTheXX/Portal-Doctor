@@ -1023,10 +1023,17 @@ an `evidence_digest` and `proposal_digest`. The evidence digest is a SHA-256
 digest of only the sorted, actionable `ENV004` comparison entries (key,
 process-side value, activation-side value and relation); it excludes paths,
 secrets and unrelated snapshot sections. The proposal digest binds that
-evidence to the preview schema and its fixed, dry-run-only proposal shape.
-Entry order therefore cannot change a digest, while changed evidence or a
-different source snapshot timestamp invalidates the proposal binding. Any
-future apply path must recompute and verify both digests before acting.
+evidence to the preview schema and its fixed, dry-run-only proposal shape. It
+uses explicit field labels, lengths and values for the binding metadata,
+action, target, remediation ID, dry-run/apply state, environment updates and
+every side-effect list (`files_modified`, `service_restarts`,
+`package_changes` and `configuration_changes`). The `proposal_digest` field
+itself is excluded from its own input to avoid a circular hash; a future apply
+path must clear/recompute that field and verify the resulting digest. Entry
+order therefore cannot change an evidence digest, while changed evidence,
+proposal fields or a different source snapshot timestamp invalidates the
+proposal binding. Any future apply path must recompute and verify both
+digests before acting.
 
 ---
 

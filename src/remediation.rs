@@ -184,37 +184,32 @@ pub fn preview_env004(snapshot: &Snapshot, findings: &[Finding]) -> RemediationP
         })
         .collect::<Vec<_>>();
     let evidence_digest = digest_actionable_evidence(&actionable_evidence);
-    let proposal_digest = digest_proposal(
-        snapshot.schema_version,
-        snapshot.collected_at,
-        ENV004_FINDING_ID,
-        &evidence_digest,
-        &updates,
-    );
+    let mut proposal = RemediationProposal {
+        binding: RemediationBinding {
+            snapshot_schema_version: snapshot.schema_version,
+            collected_at: snapshot.collected_at,
+            finding_id: ENV004_FINDING_ID.to_owned(),
+            evidence_digest,
+            proposal_digest: String::new(),
+        },
+        remediation_id: ENV004_REMEDIATION_ID.to_owned(),
+        action: RemediationAction::ImportActivationEnvironment,
+        target: RemediationTarget::SystemdUserActivationEnvironment,
+        dry_run: true,
+        environment_updates: updates,
+        files_modified: Vec::new(),
+        service_restarts: Vec::new(),
+        package_changes: Vec::new(),
+        configuration_changes: Vec::new(),
+        apply: ApplyStatus::NotImplemented,
+    };
+    proposal.binding.proposal_digest = digest_proposal(&proposal);
 
     RemediationPreview {
         schema_version: REMEDIATION_PREVIEW_SCHEMA_VERSION,
         finding_id: ENV004_FINDING_ID.to_owned(),
         applicability: RemediationApplicability::Applicable,
-        proposal: Some(RemediationProposal {
-            binding: RemediationBinding {
-                snapshot_schema_version: snapshot.schema_version,
-                collected_at: snapshot.collected_at,
-                finding_id: ENV004_FINDING_ID.to_owned(),
-                evidence_digest,
-                proposal_digest,
-            },
-            remediation_id: ENV004_REMEDIATION_ID.to_owned(),
-            action: RemediationAction::ImportActivationEnvironment,
-            target: RemediationTarget::SystemdUserActivationEnvironment,
-            dry_run: true,
-            environment_updates: updates,
-            files_modified: Vec::new(),
-            service_restarts: Vec::new(),
-            package_changes: Vec::new(),
-            configuration_changes: Vec::new(),
-            apply: ApplyStatus::NotImplemented,
-        }),
+        proposal: Some(proposal),
     }
 }
 
@@ -347,34 +342,104 @@ fn digest_actionable_evidence(evidence: &[ActionableEvidence]) -> String {
     hex_digest(&hasher.finalize())
 }
 
-fn digest_proposal(
-    snapshot_schema_version: u32,
-    collected_at: u64,
-    finding_id: &str,
-    evidence_digest: &str,
-    updates: &[EnvironmentUpdate],
-) -> String {
+fn digest_proposal(proposal: &RemediationProposal) -> String {
     let mut hasher = Sha256::new();
     hash_text(&mut hasher, "portaldoctor:env004:proposal:v1");
-    hash_u32(&mut hasher, REMEDIATION_PREVIEW_SCHEMA_VERSION);
-    hash_u32(&mut hasher, snapshot_schema_version);
-    hash_u64(&mut hasher, collected_at);
-    hash_text(&mut hasher, finding_id);
-    hash_text(&mut hasher, evidence_digest);
-    hash_text(&mut hasher, ENV004_REMEDIATION_ID);
-    hash_text(&mut hasher, "import_activation_environment");
-    hash_text(&mut hasher, "systemd_user_activation_environment");
-    hash_u8(&mut hasher, 1);
-    hash_u64(&mut hasher, updates.len() as u64);
-    for update in updates {
-        hash_text(&mut hasher, &update.key);
-        hash_text(&mut hasher, &update.value);
-    }
-    hash_u64(&mut hasher, 0);
-    hash_u64(&mut hasher, 0);
-    hash_u64(&mut hasher, 0);
-    hash_text(&mut hasher, "not_implemented");
+    hash_field_u32(
+        &mut hasher,
+        "preview_schema_version",
+        REMEDIATION_PREVIEW_SCHEMA_VERSION,
+    );
+    hash_field_u32(
+        &mut hasher,
+        "snapshot_schema_version",
+        proposal.binding.snapshot_schema_version,
+    );
+    hash_field_u64(&mut hasher, "collected_at", proposal.binding.collected_at);
+    hash_field_text(&mut hasher, "finding_id", &proposal.binding.finding_id);
+    hash_field_text(
+        &mut hasher,
+        "evidence_digest",
+        &proposal.binding.evidence_digest,
+    );
+    hash_field_text(&mut hasher, "remediation_id", &proposal.remediation_id);
+    hash_field_text(&mut hasher, "action", action_digest_label(proposal.action));
+    hash_field_text(&mut hasher, "target", target_digest_label(proposal.target));
+    hash_field_bool(&mut hasher, "dry_run", proposal.dry_run);
+    hash_field_updates(
+        &mut hasher,
+        "environment_updates",
+        &proposal.environment_updates,
+    );
+    hash_field_strings(&mut hasher, "files_modified", &proposal.files_modified);
+    hash_field_strings(&mut hasher, "service_restarts", &proposal.service_restarts);
+    hash_field_strings(&mut hasher, "package_changes", &proposal.package_changes);
+    hash_field_strings(
+        &mut hasher,
+        "configuration_changes",
+        &proposal.configuration_changes,
+    );
+    hash_field_text(&mut hasher, "apply", apply_digest_label(proposal.apply));
+    // `proposal_digest` itself is excluded because hashing it would be
+    // self-referential. The other binding metadata above is explicit.
     hex_digest(&hasher.finalize())
+}
+
+fn action_digest_label(action: RemediationAction) -> &'static str {
+    match action {
+        RemediationAction::ImportActivationEnvironment => "import_activation_environment",
+    }
+}
+
+fn target_digest_label(target: RemediationTarget) -> &'static str {
+    match target {
+        RemediationTarget::SystemdUserActivationEnvironment => {
+            "systemd_user_activation_environment"
+        }
+    }
+}
+
+fn apply_digest_label(apply: ApplyStatus) -> &'static str {
+    match apply {
+        ApplyStatus::NotImplemented => "not_implemented",
+    }
+}
+
+fn hash_field_text(hasher: &mut Sha256, label: &str, value: &str) {
+    hash_text(hasher, label);
+    hash_text(hasher, value);
+}
+
+fn hash_field_u32(hasher: &mut Sha256, label: &str, value: u32) {
+    hash_text(hasher, label);
+    hash_u32(hasher, value);
+}
+
+fn hash_field_u64(hasher: &mut Sha256, label: &str, value: u64) {
+    hash_text(hasher, label);
+    hash_u64(hasher, value);
+}
+
+fn hash_field_bool(hasher: &mut Sha256, label: &str, value: bool) {
+    hash_text(hasher, label);
+    hash_u8(hasher, u8::from(value));
+}
+
+fn hash_field_updates(hasher: &mut Sha256, label: &str, updates: &[EnvironmentUpdate]) {
+    hash_text(hasher, label);
+    hash_u64(hasher, updates.len() as u64);
+    for update in updates {
+        hash_field_text(hasher, "key", &update.key);
+        hash_field_text(hasher, "value", &update.value);
+    }
+}
+
+fn hash_field_strings(hasher: &mut Sha256, label: &str, values: &[String]) {
+    hash_text(hasher, label);
+    hash_u64(hasher, values.len() as u64);
+    for value in values {
+        hash_text(hasher, value);
+    }
 }
 
 fn hash_text(hasher: &mut Sha256, value: &str) {
@@ -532,6 +597,62 @@ mod tests {
         assert!(text.contains("Evidence digest:"));
         assert!(text.contains("Proposal digest:"));
         assert!(text.contains("Apply: not implemented"));
+    }
+
+    #[test]
+    fn every_mutable_proposal_field_changes_recomputed_digest() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let snapshot = snapshot(&process, &activation);
+        let base = preview_env004(&snapshot, &evaluate(&snapshot))
+            .proposal
+            .expect("applicable proposal");
+        let base_digest = super::digest_proposal(&base);
+        let mut mutations = Vec::new();
+
+        let mut changed = base.clone();
+        changed.binding.snapshot_schema_version += 1;
+        mutations.push(changed);
+        let mut changed = base.clone();
+        changed.binding.collected_at += 1;
+        mutations.push(changed);
+        let mut changed = base.clone();
+        changed.binding.finding_id = "ENV004.changed".to_owned();
+        mutations.push(changed);
+        let mut changed = base.clone();
+        changed.binding.evidence_digest = "changed-evidence".to_owned();
+        mutations.push(changed);
+        let mut changed = base.clone();
+        changed.remediation_id = "different-remediation".to_owned();
+        mutations.push(changed);
+        let mut changed = base.clone();
+        changed.dry_run = false;
+        mutations.push(changed);
+        let mut changed = base.clone();
+        changed.environment_updates[0].value = "changed-value".to_owned();
+        mutations.push(changed);
+        let mut changed = base.clone();
+        changed.files_modified.push("a-file".to_owned());
+        mutations.push(changed);
+        let mut changed = base.clone();
+        changed.service_restarts.push("a-service".to_owned());
+        mutations.push(changed);
+        let mut changed = base.clone();
+        changed.package_changes.push("a-package".to_owned());
+        mutations.push(changed);
+        let mut changed = base.clone();
+        changed
+            .configuration_changes
+            .push("a-configuration".to_owned());
+        mutations.push(changed);
+
+        for mutated in mutations {
+            assert_ne!(base_digest, super::digest_proposal(&mutated));
+        }
     }
 
     #[test]
