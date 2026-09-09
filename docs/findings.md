@@ -6,9 +6,13 @@ Every diagnostic rule produces a stable, structured finding (PRD §8): `id`,
 published in v0.1.0. The five media-stack IDs were added for v0.2.0; the
 bounded `XDP006` compatibility risk was added on the development line after
 typed frontend-version evidence was introduced. The rule-engine test suite
-asserts that the complete 21-ID registry is stable and unique. Bounded journal
-excerpts are supporting evidence only; they do not create a journal-only
-diagnosis.
+asserts that the complete 21-ID registry is stable, unique and matches this
+catalog exactly. `source_component` is the current category/producer boundary;
+there is no separate category field in the v1 JSON shape. A rule may emit
+multiple interface-scoped instances with the same rule ID (for example
+`XDP004`, `CFG003` or `CFG004`); these are the same stable semantic, not
+different meanings reusing one ID. Bounded journal excerpts are supporting
+evidence only; they do not create a journal-only diagnosis.
 
 ## Environment
 

@@ -1514,9 +1514,30 @@ No remediation ships unless it has:
 
 # Phase 13 — v1.0 Hardening
 
+**Phase 13.1 stable finding-semantics slice:** COMPLETE
+
+**Phase 13 overall:** in progress; v1.0 release gates remain open.
+
 ## Objective
 
 Stabilize PortalDoctor as a dependable open-source Linux diagnostic tool.
+
+## First bounded stable finding-semantics contract slice — 2026-09-09
+
+- [x] Establish a canonical 21-ID runtime finding catalog with deterministic,
+  unique, well-formed rule identifiers and registry parity checks.
+- [x] Check the catalog against `docs/findings.md` so missing, extra and
+  duplicate documented IDs fail closed in tests.
+- [x] Enforce exact Finding JSON field/type parity and cross-check the runtime
+  shape against `docs/json-schema.md`; keep schema version `1`.
+- [x] Preserve the existing severity, confidence, source-component and finding
+  meanings without adding a category field or renaming any public ID.
+- [x] Document that interface-scoped multi-instance findings may repeat one
+  stable rule ID without representing semantic ID reuse.
+
+This slice hardens the existing public contract only. It does not add a new
+finding, remediation, active probe or support/release claim. Phase 8 and
+`v0.3.0` external gates remain unchanged.
 
 ## Required v1.0 gates
 

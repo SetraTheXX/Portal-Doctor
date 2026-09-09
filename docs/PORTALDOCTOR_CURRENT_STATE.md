@@ -2,7 +2,7 @@
 
 **Last verified:** 2026-09-09
 **Current public release:** `v0.2.1`
-**Current development phase:** Phase 12 bounded Safe Remediation Preview — controlled contract/design COMPLETE; production apply deferred
+**Current development phase:** Phase 13 v1.0 Hardening — stable finding-semantics contract slice COMPLETE
 **Release gate under review:** Phase 8 / `v0.3.0` remains blocked
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
 
@@ -517,6 +517,27 @@ real-session gates: Screenshot success/cancellation is blocked by the external
 GNOME provider failure, and ScreenCast success/cancellation is blocked because
 the current provider advertises `AvailableSourceTypes=0` without Window bit
 `2`.
+
+### Phase 13.1 stable finding-semantics contract checkpoint — 2026-09-09
+
+The first bounded Phase 13 slice is **COMPLETE**. The canonical runtime
+catalog now owns the 21 stable finding IDs and debug/test validation checks
+that registered rules are deterministic, unique and well formed. The catalog
+is checked against `docs/findings.md`, so missing, extra or duplicate public
+IDs fail the test suite.
+
+The v1 finding JSON shape also has an exact runtime parity test for field set
+and serialized types, cross-checked against `docs/json-schema.md`. Severity
+and confidence remain the existing stable enums; `source_component` is the
+current category/producer boundary and no separate category field was added.
+No finding ID, severity, meaning or top-level schema version changed.
+
+The rule registry contract is unique by semantic rule ID. Individual rules
+may still emit multiple interface-scoped instances with the same ID when a
+snapshot contains multiple independent affected interfaces; this is
+documented behavior, not semantic ID reuse. Phase 8 Screenshot/ScreenCast
+real-session gates and the `v0.3.0` blocker state are unchanged, and Phase 12
+production apply remains unauthorized.
 
 Implement and release-gate it in this order:
 
