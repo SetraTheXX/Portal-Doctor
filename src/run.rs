@@ -106,10 +106,7 @@ fn minimum_runtime_context_available(snapshot: &Snapshot) -> bool {
 ///
 /// Returns [`Error::Write`] when writing the rendered report fails.
 pub fn run(cli: &Cli) -> Result<RunOutcome, Error> {
-    let command = cli
-        .command
-        .clone()
-        .unwrap_or(crate::cli::Command::Check(CheckArgs::default()));
+    let command = effective_command(cli);
     tracing::info!(?command, "starting portaldoctor");
     match command {
         crate::cli::Command::Check(args) => run_check(&args, cli.json, cli.verbose, cli.journal),
@@ -118,6 +115,12 @@ pub fn run(cli: &Cli) -> Result<RunOutcome, Error> {
         crate::cli::Command::Fix(args) => run_fix(&args, cli.json),
         crate::cli::Command::Probe(args) => run_probe(&args, cli.json),
     }
+}
+
+fn effective_command(cli: &Cli) -> crate::cli::Command {
+    cli.command
+        .clone()
+        .unwrap_or(crate::cli::Command::Check(CheckArgs::default()))
 }
 
 fn run_fix(args: &FixArgs, json: bool) -> Result<RunOutcome, Error> {
@@ -443,8 +446,9 @@ mod tests {
     use super::{
         CLEAN_EXIT_CODE, CLI_USAGE_EXIT_CODE, INTERNAL_ERROR_EXIT_CODE,
         RUNTIME_CONTEXT_UNAVAILABLE_EXIT_CODE, RunOutcome, SEVERE_FINDINGS_EXIT_CODE,
-        minimum_runtime_context_available, selected_backend_dbus_names,
+        effective_command, minimum_runtime_context_available, selected_backend_dbus_names,
     };
+    use crate::cli::{Cli, Command};
     use crate::model::dbus::{DbusCheck, DbusInfo, DbusOutcome, PORTAL_FRONTEND_NAME};
     use crate::model::environment::{SessionInfo, SessionType};
     use crate::model::finding::{Confidence, Finding, Severity};
@@ -456,8 +460,9 @@ mod tests {
     use crate::model::section::Section;
     use crate::model::service::{ServiceInfo, UnitState, UnitStatus};
     use crate::model::snapshot::Snapshot;
-    use crate::report::Report;
+    use crate::report::{Renderer, Report, TerminalRenderer};
     use crate::rules::engine::evaluate;
+    use clap::Parser;
     use std::collections::{BTreeMap, BTreeSet};
 
     fn runtime_ready_snapshot() -> Snapshot {
@@ -512,6 +517,83 @@ mod tests {
                 Some((code, columns[2].to_owned()))
             })
             .collect()
+    }
+
+    fn documented_scope_contract(markdown: &str) -> Vec<String> {
+        const START: &str = "<!-- PORTALDOCTOR_SCOPE_CONTRACT_START -->";
+        const END: &str = "<!-- PORTALDOCTOR_SCOPE_CONTRACT_END -->";
+        let contract = markdown
+            .split_once(START)
+            .and_then(|(_, remainder)| remainder.split_once(END).map(|(body, _)| body))
+            .expect("scope contract markers must exist");
+        contract
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.contains('='))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn bare_cli_resolves_to_passive_check_only() {
+        let cli = Cli::parse_from(["portaldoctor"]);
+        assert!(cli.command.is_none());
+        assert!(matches!(effective_command(&cli), Command::Check(_)));
+    }
+
+    #[test]
+    fn default_terminal_sections_keep_stable_read_only_order() {
+        let report = Report::new(runtime_ready_snapshot(), Vec::new(), "0.2.1");
+        let rendered = TerminalRenderer.render(&report, false);
+        let sections = [
+            "PortalDoctor 0.2.1",
+            "Snapshot schema v1",
+            "System:",
+            "Session:",
+            "D-Bus:",
+            "PipeWire:",
+            "WirePlumber:",
+            "Journal:",
+            "Findings: none detected.",
+        ];
+        let mut search_from = 0;
+        for section in sections {
+            let position = rendered[search_from..].find(section).map_or_else(
+                || panic!("missing terminal section: {section}"),
+                |offset| search_from + offset,
+            );
+            search_from = position + section.len();
+        }
+        assert!(!rendered.contains("portal dialog"));
+        assert!(!rendered.contains("Request.Close"));
+        assert!(!rendered.contains("remediation applied"));
+    }
+
+    #[test]
+    fn readme_and_prd_scope_contracts_match_without_overclaiming() {
+        let readme = include_str!("../README.md");
+        let prd = include_str!("../docs/PORTALDOCTOR_PRD.md");
+        let expected = vec![
+            "default_behavior=passive;read-only;rootless;bounded".to_owned(),
+            "default_portal_dialogs=none".to_owned(),
+            "default_state_mutation=none".to_owned(),
+            "validated_baseline=Ubuntu 26.04;GNOME;Wayland;systemd user session".to_owned(),
+            "support_claim=baseline-only;other desktops require dedicated validation".to_owned(),
+            "development_active_probes=explicit-only;unreleased;not-default".to_owned(),
+            "automatic_fixes=not-default".to_owned(),
+            "gui=out-of-scope".to_owned(),
+        ];
+        assert_eq!(documented_scope_contract(readme), expected);
+        assert_eq!(documented_scope_contract(prd), expected);
+        assert!(readme.contains(
+            "Other distributions and desktops may work, but they are not support claims"
+        ));
+        assert!(prd.contains("no exaggerated claims such as"));
+        assert!(prd.contains("fixes every Wayland problem"));
+        for misleading_claim in ["fix all Linux", "supports every Linux desktop"] {
+            assert!(!readme.contains(misleading_claim));
+            assert!(!prd.contains(misleading_claim));
+        }
     }
 
     #[test]
