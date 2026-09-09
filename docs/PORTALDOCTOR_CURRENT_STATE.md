@@ -407,10 +407,14 @@ applicable proposal. It records the source snapshot schema version,
 `ENV004` comparison entries (key, process value, activation value and
 relation); it excludes paths, secrets and unrelated snapshot sections. The
 proposal digest binds that evidence to the preview schema and bounded
-proposal shape. Reordered entries produce the same digest, while changed
-actionable evidence or a different collection timestamp changes the binding.
-JSON and terminal output expose the binding for a future apply verifier, but
-`apply` remains `not_implemented` and no write-capable operation is added.
+proposal shape using explicit labels, lengths and values for binding metadata,
+action, target, remediation ID, dry-run/apply state, environment updates and
+all side-effect lists. The `proposal_digest` field is excluded from its own
+input to avoid a circular hash and must be cleared/recomputed by any future
+apply verifier. Reordered entries produce the same evidence digest, while
+changed actionable evidence, proposal fields or a different collection
+timestamp changes the binding. JSON and terminal output expose the binding,
+but `apply` remains `not_implemented` and no write-capable operation is added.
 
 Implement and release-gate it in this order:
 
