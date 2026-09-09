@@ -428,6 +428,21 @@ ENV004 returns `not_applicable`; schema mismatches return
 so an otherwise unchanged fresh snapshot can verify as `valid`. The CLI only
 self-checks generated dry-run previews; no apply or write path exists.
 
+The fourth Phase 12 slice adds the pure
+`verify_env004_effect(proposal, fresh_snapshot, fresh_findings)` post-apply
+verification contract. It checks the stored proposal digest and fixed
+preview-only contract first, then requires an available fresh environment
+section with a performed comparison. Every proposed key must have one
+consistent comparison entry, retain the expected process-side value, and show
+that value on the activation side before the result can be `converged`.
+Remaining or additional `ENV004` findings produce typed
+`still_mismatched`; changed expected process values or non-converged evidence
+without `ENV004` produce `no_longer_applicable`; malformed/unavailable fresh
+evidence produces `unavailable`; integrity failures produce `tampered`.
+Unrelated snapshot fields and collection timestamps do not affect this
+decision. The verifier is not wired to apply, `systemctl` or any write path;
+`apply` remains `not_implemented`.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility

@@ -160,12 +160,66 @@ pub enum VerificationSchemaReason {
     SnapshotSchemaMismatch,
 }
 
+/// Typed outcome of checking whether a future `ENV004` apply operation
+/// produced the expected activation-environment effect. This contract is
+/// pure and intentionally remains separate from the not-yet-implemented
+/// apply path.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum Env004EffectVerification {
+    Converged,
+    StillMismatched { reason: EffectMismatchReason },
+    NoLongerApplicable { reason: EffectApplicabilityReason },
+    Tampered { reason: VerificationTamperReason },
+    Unavailable { reason: EffectUnavailableReason },
+}
+
+/// Why fresh evidence still represents an unresolved mismatch.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectMismatchReason {
+    RequestedValueNotConverged,
+    ExpectedProcessValueChanged,
+    AdditionalEnv004Finding,
+}
+
+/// Why a stored proposal no longer has an applicable effect to verify.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectApplicabilityReason {
+    ExpectedProcessValueChanged,
+    ExpectedValueNotConverged,
+}
+
+/// Why the fresh snapshot cannot safely establish the post-apply effect.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectUnavailableReason {
+    SnapshotSchemaMismatch,
+    SnapshotUnavailable,
+    ComparisonNotPerformed,
+    ProcessValueMissing,
+    ComparisonEntryMissing,
+    InconsistentComparison,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ActionableEvidence {
     key: String,
     process_value: String,
     activation_value: Option<String>,
     relation: EnvironmentRelation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EffectUpdateStatus {
+    Converged,
+    ActivationNotConverged,
+    ExpectedProcessChanged,
 }
 
 /// Build the only currently supported remediation preview from the evaluated
@@ -330,32 +384,164 @@ pub fn verify_env004_preview(
     Env004PreviewVerification::Valid
 }
 
+/// Verify the observable effect that a future `ENV004` apply operation was
+/// expected to produce. This function never writes, invokes `systemctl`, or
+/// compares unrelated snapshot fields. Proposal integrity and contract checks
+/// happen before any fresh snapshot interpretation.
+#[allow(dead_code)]
+#[must_use]
+pub fn verify_env004_effect(
+    proposal: &RemediationProposal,
+    fresh_snapshot: &Snapshot,
+    fresh_findings: &[Finding],
+) -> Env004EffectVerification {
+    let tamper_reason = if digest_proposal(proposal) != proposal.binding.proposal_digest {
+        Some(VerificationTamperReason::StoredProposalDigestMismatch)
+    } else if !proposal_contract_is_valid(proposal) {
+        Some(VerificationTamperReason::ProposalContractMismatch)
+    } else {
+        None
+    };
+    if let Some(reason) = tamper_reason {
+        return Env004EffectVerification::Tampered { reason };
+    }
+
+    if fresh_snapshot.schema_version != SNAPSHOT_SCHEMA_VERSION {
+        return Env004EffectVerification::Unavailable {
+            reason: EffectUnavailableReason::SnapshotSchemaMismatch,
+        };
+    }
+    if fresh_snapshot.environment.status != CollectorState::Available
+        || fresh_snapshot.environment.value.is_none()
+    {
+        return Env004EffectVerification::Unavailable {
+            reason: EffectUnavailableReason::SnapshotUnavailable,
+        };
+    }
+    let environment = fresh_snapshot
+        .environment
+        .value
+        .as_ref()
+        .expect("available environment section has a value");
+    if !environment.activation_comparison.performed {
+        return Env004EffectVerification::Unavailable {
+            reason: EffectUnavailableReason::ComparisonNotPerformed,
+        };
+    }
+
+    let has_env004 = fresh_findings
+        .iter()
+        .any(|finding| finding.id == ENV004_FINDING_ID);
+    let mut all_converged = true;
+    for update in &proposal.environment_updates {
+        let update_status = match verify_effect_update(environment, update) {
+            Ok(status) => status,
+            Err(reason) => return Env004EffectVerification::Unavailable { reason },
+        };
+        if update_status == EffectUpdateStatus::ExpectedProcessChanged {
+            return if has_env004 {
+                Env004EffectVerification::StillMismatched {
+                    reason: EffectMismatchReason::ExpectedProcessValueChanged,
+                }
+            } else {
+                Env004EffectVerification::NoLongerApplicable {
+                    reason: EffectApplicabilityReason::ExpectedProcessValueChanged,
+                }
+            };
+        }
+        if update_status == EffectUpdateStatus::ActivationNotConverged {
+            all_converged = false;
+        }
+    }
+
+    if all_converged && !has_env004 {
+        Env004EffectVerification::Converged
+    } else if has_env004 {
+        Env004EffectVerification::StillMismatched {
+            reason: if all_converged {
+                EffectMismatchReason::AdditionalEnv004Finding
+            } else {
+                EffectMismatchReason::RequestedValueNotConverged
+            },
+        }
+    } else {
+        Env004EffectVerification::NoLongerApplicable {
+            reason: EffectApplicabilityReason::ExpectedValueNotConverged,
+        }
+    }
+}
+
+fn verify_effect_update(
+    environment: &EnvironmentInfo,
+    update: &EnvironmentUpdate,
+) -> Result<EffectUpdateStatus, EffectUnavailableReason> {
+    let Some(process_value) = environment.process.get(&update.key) else {
+        return Err(EffectUnavailableReason::ProcessValueMissing);
+    };
+    if process_value.is_empty() {
+        return Err(EffectUnavailableReason::ProcessValueMissing);
+    }
+
+    let mut matching_entries = environment
+        .activation_comparison
+        .entries
+        .iter()
+        .filter(|entry| entry.key == update.key);
+    let Some(entry) = matching_entries.next() else {
+        return Err(EffectUnavailableReason::ComparisonEntryMissing);
+    };
+    if matching_entries.next().is_some() {
+        return Err(EffectUnavailableReason::InconsistentComparison);
+    }
+    if entry.process_value.as_deref() != Some(process_value.as_str())
+        || expected_relation(
+            entry.process_value.as_deref(),
+            entry.activation_value.as_deref(),
+        ) != Some(entry.relation)
+    {
+        return Err(EffectUnavailableReason::InconsistentComparison);
+    }
+
+    if process_value != &update.value {
+        return Ok(EffectUpdateStatus::ExpectedProcessChanged);
+    }
+    if entry.activation_value.as_deref() != Some(update.value.as_str()) {
+        return Ok(EffectUpdateStatus::ActivationNotConverged);
+    }
+    Ok(EffectUpdateStatus::Converged)
+}
+
 fn stored_preview_contract_is_valid(
     stored_preview: &RemediationPreview,
     stored_proposal: &RemediationProposal,
 ) -> bool {
     stored_preview.finding_id == ENV004_FINDING_ID
         && stored_preview.applicability == RemediationApplicability::Applicable
-        && stored_proposal.binding.finding_id == ENV004_FINDING_ID
-        && stored_proposal.binding.collected_at != 0
-        && is_hex_digest(&stored_proposal.binding.evidence_digest)
-        && stored_proposal.remediation_id == ENV004_REMEDIATION_ID
-        && stored_proposal.action == RemediationAction::ImportActivationEnvironment
-        && stored_proposal.target == RemediationTarget::SystemdUserActivationEnvironment
-        && stored_proposal.dry_run
-        && !stored_proposal.environment_updates.is_empty()
-        && stored_proposal.environment_updates.iter().all(|update| {
+        && proposal_contract_is_valid(stored_proposal)
+}
+
+fn proposal_contract_is_valid(proposal: &RemediationProposal) -> bool {
+    proposal.binding.snapshot_schema_version == SNAPSHOT_SCHEMA_VERSION
+        && proposal.binding.finding_id == ENV004_FINDING_ID
+        && proposal.binding.collected_at != 0
+        && is_hex_digest(&proposal.binding.evidence_digest)
+        && proposal.remediation_id == ENV004_REMEDIATION_ID
+        && proposal.action == RemediationAction::ImportActivationEnvironment
+        && proposal.target == RemediationTarget::SystemdUserActivationEnvironment
+        && proposal.dry_run
+        && !proposal.environment_updates.is_empty()
+        && proposal.environment_updates.iter().all(|update| {
             COMPARISON_KEYS.contains(&update.key.as_str()) && !update.value.is_empty()
         })
-        && stored_proposal
+        && proposal
             .environment_updates
             .windows(2)
             .all(|updates| updates[0].key < updates[1].key)
-        && stored_proposal.files_modified.is_empty()
-        && stored_proposal.service_restarts.is_empty()
-        && stored_proposal.package_changes.is_empty()
-        && stored_proposal.configuration_changes.is_empty()
-        && stored_proposal.apply == ApplyStatus::NotImplemented
+        && proposal.files_modified.is_empty()
+        && proposal.service_restarts.is_empty()
+        && proposal.package_changes.is_empty()
+        && proposal.configuration_changes.is_empty()
+        && proposal.apply == ApplyStatus::NotImplemented
 }
 
 fn is_hex_digest(value: &str) -> bool {
@@ -658,9 +844,11 @@ fn session_matches_process(
 #[cfg(test)]
 mod tests {
     use super::{
-        ApplyStatus, Env004PreviewVerification, NotApplicableReason, RemediationAction,
-        RemediationApplicability, RemediationTarget, StaleEvidenceReason, VerificationSchemaReason,
-        VerificationTamperReason, preview_env004, render_terminal, verify_env004_preview,
+        ApplyStatus, EffectApplicabilityReason, EffectMismatchReason, EffectUnavailableReason,
+        Env004EffectVerification, Env004PreviewVerification, NotApplicableReason,
+        RemediationAction, RemediationApplicability, RemediationTarget, StaleEvidenceReason,
+        VerificationSchemaReason, VerificationTamperReason, preview_env004, render_terminal,
+        verify_env004_effect, verify_env004_preview,
     };
     use crate::collectors::environment::{environment_info, session_info};
     use crate::model::section::Section;
@@ -978,6 +1166,228 @@ mod tests {
         assert_eq!(
             verify_env004_preview(&stored_preview, &fresh_snapshot, &evaluate(&fresh_snapshot),),
             Env004PreviewVerification::Valid
+        );
+    }
+
+    #[test]
+    fn post_apply_converges_when_values_match_and_finding_disappears() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let stored_preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let fresh_snapshot = snapshot(&process, &process);
+        let proposal = stored_preview.proposal.as_ref().expect("proposal");
+
+        assert_eq!(
+            verify_env004_effect(proposal, &fresh_snapshot, &evaluate(&fresh_snapshot)),
+            Env004EffectVerification::Converged
+        );
+    }
+
+    #[test]
+    fn post_apply_stays_mismatched_when_env004_remains() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let stored_preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let proposal = stored_preview.proposal.as_ref().expect("proposal");
+
+        assert_eq!(
+            verify_env004_effect(proposal, &stored_snapshot, &evaluate(&stored_snapshot)),
+            Env004EffectVerification::StillMismatched {
+                reason: EffectMismatchReason::RequestedValueNotConverged,
+            }
+        );
+    }
+
+    #[test]
+    fn post_apply_detects_an_additional_env004_finding() {
+        let process = healthy_process();
+        let stored_activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &stored_activation);
+        let stored_preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let fresh_activation = [
+            ("XDG_CURRENT_DESKTOP", "GNOME"),
+            ("XDG_SESSION_DESKTOP", "other"),
+            ("XDG_SESSION_TYPE", "wayland"),
+            ("WAYLAND_DISPLAY", "wayland-0"),
+        ];
+        let fresh_snapshot = snapshot(&process, &fresh_activation);
+        let proposal = stored_preview.proposal.as_ref().expect("proposal");
+
+        assert_eq!(
+            verify_env004_effect(proposal, &fresh_snapshot, &evaluate(&fresh_snapshot)),
+            Env004EffectVerification::StillMismatched {
+                reason: EffectMismatchReason::AdditionalEnv004Finding,
+            }
+        );
+    }
+
+    #[test]
+    fn post_apply_becomes_no_longer_applicable_when_expected_process_changes() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let stored_preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let changed_process = [
+            ("XDG_CURRENT_DESKTOP", "Hyprland"),
+            ("XDG_SESSION_DESKTOP", "hyprland"),
+            ("XDG_SESSION_TYPE", "wayland"),
+            ("WAYLAND_DISPLAY", "wayland-0"),
+        ];
+        let fresh_snapshot = snapshot(&changed_process, &changed_process);
+        let proposal = stored_preview.proposal.as_ref().expect("proposal");
+
+        assert_eq!(
+            verify_env004_effect(proposal, &fresh_snapshot, &evaluate(&fresh_snapshot)),
+            Env004EffectVerification::NoLongerApplicable {
+                reason: EffectApplicabilityReason::ExpectedProcessValueChanged,
+            }
+        );
+    }
+
+    #[test]
+    fn post_apply_tampered_proposal_is_rejected_before_fresh_evidence() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let mut proposal = preview.proposal.expect("proposal");
+        proposal
+            .configuration_changes
+            .push("unexpected-change".to_owned());
+
+        assert_eq!(
+            verify_env004_effect(
+                &proposal,
+                &snapshot(&process, &process),
+                &evaluate(&snapshot(&process, &process)),
+            ),
+            Env004EffectVerification::Tampered {
+                reason: VerificationTamperReason::StoredProposalDigestMismatch,
+            }
+        );
+    }
+
+    #[test]
+    fn post_apply_unavailable_snapshot_is_typed() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let proposal = preview.proposal.as_ref().expect("proposal");
+        let mut fresh_snapshot = snapshot(&process, &process);
+        fresh_snapshot.environment = Section::unavailable("activation unavailable");
+
+        assert_eq!(
+            verify_env004_effect(proposal, &fresh_snapshot, &[]),
+            Env004EffectVerification::Unavailable {
+                reason: EffectUnavailableReason::SnapshotUnavailable,
+            }
+        );
+    }
+
+    #[test]
+    fn post_apply_requires_a_performed_comparison() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let proposal = preview.proposal.as_ref().expect("proposal");
+        let mut fresh_snapshot = snapshot(&process, &process);
+        let comparison = &mut fresh_snapshot
+            .environment
+            .value
+            .as_mut()
+            .expect("environment value")
+            .activation_comparison;
+        comparison.performed = false;
+        comparison.entries.clear();
+
+        assert_eq!(
+            verify_env004_effect(proposal, &fresh_snapshot, &[]),
+            Env004EffectVerification::Unavailable {
+                reason: EffectUnavailableReason::ComparisonNotPerformed,
+            }
+        );
+    }
+
+    #[test]
+    fn post_apply_recomputed_invalid_contract_is_rejected() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let mut proposal = preview.proposal.expect("proposal");
+        proposal
+            .configuration_changes
+            .push("unexpected-change".to_owned());
+        proposal.binding.proposal_digest = super::digest_proposal(&proposal);
+
+        assert_eq!(
+            verify_env004_effect(&proposal, &snapshot(&process, &process), &[],),
+            Env004EffectVerification::Tampered {
+                reason: VerificationTamperReason::ProposalContractMismatch,
+            }
+        );
+    }
+
+    #[test]
+    fn post_apply_ignores_unrelated_snapshot_fields() {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stored_snapshot = snapshot(&process, &activation);
+        let preview = preview_env004(&stored_snapshot, &evaluate(&stored_snapshot));
+        let proposal = preview.proposal.as_ref().expect("proposal");
+        let mut fresh_snapshot = snapshot(&process, &process);
+        fresh_snapshot.collected_at = 2;
+        fresh_snapshot
+            .environment
+            .value
+            .as_mut()
+            .expect("environment value")
+            .search_roots
+            .config_roots = vec!["/secret/private/config".to_owned()];
+
+        assert_eq!(
+            verify_env004_effect(proposal, &fresh_snapshot, &evaluate(&fresh_snapshot)),
+            Env004EffectVerification::Converged
         );
     }
 

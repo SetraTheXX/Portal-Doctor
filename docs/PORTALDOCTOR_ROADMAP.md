@@ -1328,6 +1328,28 @@ environment or service is changed by this slice.
 This verifier is a read-only integrity/currentness boundary. It does not
 authorize or perform remediation.
 
+## Fourth bounded `ENV004` post-apply verification slice — 2026-09-09
+
+- [x] Add the pure `verify_env004_effect(proposal, fresh_snapshot,
+  fresh_findings)` contract without adding apply, `systemctl` or write
+  behavior.
+- [x] Verify proposal integrity and the fixed preview-only contract before
+  interpreting fresh evidence.
+- [x] Require a supported/available fresh environment section with a performed
+  activation comparison, one consistent comparison entry per proposed key,
+  and activation-side values equal to the expected process-side values.
+- [x] Return typed `converged`, `still_mismatched`,
+  `no_longer_applicable`, `tampered` and `unavailable` outcomes. Remaining or
+  additional `ENV004` findings never become success.
+- [x] Cover convergence, remaining/additional mismatch, changed expected
+  process values, tampering, unavailable evidence and unrelated snapshot
+  fields. Keep `apply = not_implemented` and the CLI limited to
+  `portaldoctor fix ENV004 --dry-run`.
+
+This is a pure future post-apply verification contract only. It does not
+authorize or perform remediation and does not change the passive v0.2.1
+contract.
+
 ## Prohibited behavior
 
 No silent:

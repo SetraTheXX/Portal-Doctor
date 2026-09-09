@@ -1047,6 +1047,22 @@ while the fresh actionable evidence digest and proposed update list prove
 current applicability. Its typed outcomes are `valid`, `tampered`,
 `stale_evidence`, `not_applicable` and `unsupported_schema`.
 
+The fourth bounded Phase 12 slice adds the pure
+`verify_env004_effect(proposal, fresh_snapshot, fresh_findings)` contract for
+future post-apply verification. It checks proposal integrity and the same
+dry-run/no-side-effects contract first, then requires a supported, available
+fresh environment section with a performed activation comparison. Every
+proposed process-side value must be present in the fresh process environment,
+have one internally consistent comparison entry, and match the activation-side
+value before the effect can be `converged`. The typed outcomes are
+`converged`, `still_mismatched`, `no_longer_applicable`, `tampered` and
+`unavailable`; a remaining or additional `ENV004` keeps the result
+`still_mismatched`, while a changed expected process value or an otherwise
+non-converged case without `ENV004` is not treated as success. `collected_at`
+and unrelated snapshot fields do not affect this effect decision. The function
+is not connected to an apply, `systemctl` or write path, and `apply` remains
+`not_implemented`.
+
 ## 25. Architecture Decision Summary
 
 | Decision | Choice |
