@@ -138,6 +138,7 @@ pub enum PortalCmd {
 #[cfg(test)]
 mod tests {
     use super::{CheckDomain, Cli, Command, FixTarget, ProbeCmd, ReportFormat};
+    use crate::run::{CLEAN_EXIT_CODE, CLI_USAGE_EXIT_CODE};
     use clap::Parser;
 
     #[test]
@@ -212,5 +213,18 @@ mod tests {
     #[test]
     fn remediation_preview_requires_dry_run() {
         assert!(Cli::try_parse_from(["portaldoctor", "fix", "ENV004"]).is_err());
+    }
+
+    #[test]
+    fn parser_error_uses_the_public_usage_exit_code() {
+        let error = Cli::try_parse_from(["portaldoctor", "--definitely-invalid"]).unwrap_err();
+        assert_eq!(error.exit_code(), i32::from(CLI_USAGE_EXIT_CODE));
+    }
+
+    #[test]
+    fn help_uses_the_clean_exit_code() {
+        let error = Cli::try_parse_from(["portaldoctor", "--help"]).unwrap_err();
+        assert_eq!(error.exit_code(), i32::from(CLEAN_EXIT_CODE));
+        assert!(error.to_string().contains("Usage:"));
     }
 }

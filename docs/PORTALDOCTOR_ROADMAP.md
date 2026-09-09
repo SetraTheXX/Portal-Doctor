@@ -1518,6 +1518,8 @@ No remediation ships unless it has:
 
 **Phase 13.2 versioned public JSON schema contract slice:** COMPLETE
 
+**Phase 13.3 stable/documented exit-code contract slice:** COMPLETE
+
 **Phase 13 overall:** in progress; v1.0 release gates remain open.
 
 ## Objective
@@ -1558,6 +1560,23 @@ finding, remediation, active probe or support/release claim. Phase 8 and
 This slice is contract hardening only. It does not add a finding, remediation,
 active probe or apply path. Phase 8 and the `v0.3.0` external gates remain
 unchanged.
+
+## Third bounded stable exit-code contract slice — 2026-09-09
+
+- [x] Centralize the passive exit-code constants: `0` clean/warning-info,
+  `1` severe finding, `2` parser usage error, `3` unavailable minimum runtime
+  context and `4` output/internal incomplete run.
+- [x] Keep runtime-context-unavailable precedence over ERROR/CRITICAL findings
+  and keep generic `main` output/internal errors mapped to `4`.
+- [x] Add `RunOutcome` parity coverage without merging standalone active-probe
+  results into the passive contract.
+- [x] Lock `clap` parser error=`2` and successful help=`0` behavior.
+- [x] Compare the README and PRD exit-code tables against the same five-row
+  runtime contract.
+
+This slice preserves every public exit code and active-probe meaning. It adds
+only drift-prevention tests and documentation alignment; Phase 8 and the
+`v0.3.0` external gates remain unchanged.
 
 ## Required v1.0 gates
 

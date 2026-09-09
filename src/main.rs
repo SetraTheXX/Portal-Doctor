@@ -17,7 +17,15 @@ use crate::cli::Cli;
 
 fn main() -> ExitCode {
     init_tracing();
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error) => {
+            debug_assert!(
+                error.exit_code() == 0 || error.exit_code() == i32::from(run::CLI_USAGE_EXIT_CODE)
+            );
+            error.exit();
+        }
+    };
     match run::run(&cli) {
         Ok(outcome) => ExitCode::from(outcome.exit_code()),
         Err(err) => {
