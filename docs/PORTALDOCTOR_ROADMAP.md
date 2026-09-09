@@ -1408,6 +1408,22 @@ This is an admission-capability contract only. It does not invoke `systemctl`,
 write activation environment state or add an apply path; `apply` remains
 `not_implemented`.
 
+## Eighth bounded `ENV004` transaction and rollback plan slice — 2026-09-09
+
+- [x] Consume only the opaque `Env004ApplyPermit` into a deterministic
+  `Env004ExecutionPlan`; raw approval, proposal or snapshot inputs are not
+  accepted by the plan factory.
+- [x] Bind every allowlisted key to its desired process-side value and the
+  fresh activation-side pre-state captured when the permit was minted.
+- [x] Represent a present prior value as an explicit restore action and an
+  absent prior value as an explicit unset action.
+- [x] Sort multi-key plans deterministically and reject duplicate, unknown or
+  missing pre-state; keep all file/package/configuration/service side-effect
+  lists empty and `apply` `not_implemented`.
+
+This is a transaction/rollback contract only. It does not invoke `systemctl`,
+set or unset an environment variable, add `--apply` or perform any real write.
+
 ## Prohibited behavior
 
 No silent:

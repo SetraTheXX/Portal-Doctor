@@ -473,6 +473,14 @@ cannot be constructed from a raw approval outside the module. No apply,
 `systemctl` or environment-write path exists; `apply` remains
 `not_implemented`.
 
+The eighth Phase 12 slice consumes only that permit into a deterministic
+`Env004ExecutionPlan`. Every allowlisted ENV004 key carries its desired
+process-side value, fresh activation-side pre-state and explicit rollback:
+restore a present prior value or unset an absent one. Key order is
+deterministic; duplicate, unknown or missing pre-state fails closed. The plan
+factory accepts no raw approval, proposal or snapshot and performs no
+`systemctl`, file, package, configuration, service or environment write.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};
@@ -244,6 +244,7 @@ pub struct Env004ApplyPermit {
     approval_digest: String,
     fresh_evidence_digest: String,
     environment_updates: Vec<EnvironmentUpdate>,
+    prior_activation_values: Vec<PermitActivationState>,
 }
 
 impl Env004ApplyPermit {
@@ -260,6 +261,50 @@ impl Env004ApplyPermit {
             && self.fresh_evidence_digest == fresh_evidence_digest
             && self.environment_updates == environment_updates
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PermitActivationState {
+    key: String,
+    value: Option<String>,
+}
+
+/// The desired value and the exact activation-side pre-state for one bounded
+/// ENV004 key. `Absent` is explicit so rollback never has to infer whether an
+/// empty string was a real value.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Env004PriorActivation {
+    Present(String),
+    Absent,
+}
+
+/// The inverse operation that a future apply implementation would perform.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Env004RollbackAction {
+    Restore(String),
+    Unset,
+}
+
+/// One deterministic, side-effect-free ENV004 execution step.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Env004ExecutionStep {
+    pub key: String,
+    pub desired_process_value: String,
+    pub prior_activation: Env004PriorActivation,
+    pub rollback: Env004RollbackAction,
+}
+
+/// A deterministic transaction/rollback plan admitted only from an opaque
+/// apply permit. It has no execution method and does not invoke any command.
+#[allow(dead_code)]
+pub struct Env004ExecutionPlan {
+    proposal_digest: String,
+    approval_digest: String,
+    fresh_evidence_digest: String,
+    steps: Vec<Env004ExecutionStep>,
 }
 
 /// Typed reasons why an approval or its bound proposal cannot be trusted.
@@ -641,12 +686,117 @@ pub fn create_env004_apply_permit(
     {
         return None;
     }
+    let environment = fresh_snapshot.environment.value.as_ref()?;
+    let prior_activation_values =
+        capture_permit_activation_state(environment, &fresh_proposal.environment_updates)?;
 
     Some(Env004ApplyPermit {
         proposal_digest: proposal.binding.proposal_digest.clone(),
         approval_digest: approval.approval_digest.clone(),
         fresh_evidence_digest: fresh_proposal.binding.evidence_digest,
         environment_updates: fresh_proposal.environment_updates,
+        prior_activation_values,
+    })
+}
+
+fn capture_permit_activation_state(
+    environment: &EnvironmentInfo,
+    updates: &[EnvironmentUpdate],
+) -> Option<Vec<PermitActivationState>> {
+    let mut seen_keys = BTreeSet::new();
+    let mut states = Vec::with_capacity(updates.len());
+    for update in updates {
+        if !COMPARISON_KEYS.contains(&update.key.as_str()) || !seen_keys.insert(&update.key) {
+            return None;
+        }
+        let mut matching_entries = environment
+            .activation_comparison
+            .entries
+            .iter()
+            .filter(|entry| entry.key == update.key);
+        let entry = matching_entries.next()?;
+        if matching_entries.next().is_some()
+            || entry.process_value.as_deref() != Some(update.value.as_str())
+            || expected_relation(
+                entry.process_value.as_deref(),
+                entry.activation_value.as_deref(),
+            ) != Some(entry.relation)
+        {
+            return None;
+        }
+        if !matches!(
+            entry.relation,
+            EnvironmentRelation::Different | EnvironmentRelation::MissingActivation
+        ) {
+            return None;
+        }
+        states.push(PermitActivationState {
+            key: update.key.clone(),
+            value: entry.activation_value.clone(),
+        });
+    }
+    states.sort_by(|left, right| left.key.cmp(&right.key));
+    Some(states)
+}
+
+/// Consume an opaque permit into a deterministic transaction/rollback plan.
+/// Raw approvals, proposals or snapshots are deliberately not accepted here.
+#[allow(dead_code)]
+#[must_use]
+pub fn create_env004_execution_plan(permit: Env004ApplyPermit) -> Option<Env004ExecutionPlan> {
+    let mut seen_update_keys = BTreeSet::new();
+    for update in &permit.environment_updates {
+        if !COMPARISON_KEYS.contains(&update.key.as_str())
+            || update.value.is_empty()
+            || !seen_update_keys.insert(&update.key)
+        {
+            return None;
+        }
+    }
+
+    let mut prior_by_key = BTreeMap::new();
+    for state in &permit.prior_activation_values {
+        if !seen_update_keys.contains(&state.key)
+            || prior_by_key
+                .insert(state.key.as_str(), state.value.clone())
+                .is_some()
+        {
+            return None;
+        }
+    }
+    if prior_by_key.len() != seen_update_keys.len() || permit.environment_updates.is_empty() {
+        return None;
+    }
+
+    let mut updates = permit.environment_updates.clone();
+    updates.sort_by(|left, right| left.key.cmp(&right.key));
+    let steps = updates
+        .into_iter()
+        .map(|update| {
+            let prior_value = prior_by_key
+                .get(update.key.as_str())
+                .expect("validated permit pre-state has every update key");
+            let (prior_activation, rollback) = match prior_value {
+                Some(value) => (
+                    Env004PriorActivation::Present(value.clone()),
+                    Env004RollbackAction::Restore(value.clone()),
+                ),
+                None => (Env004PriorActivation::Absent, Env004RollbackAction::Unset),
+            };
+            Env004ExecutionStep {
+                key: update.key,
+                desired_process_value: update.value,
+                prior_activation,
+                rollback,
+            }
+        })
+        .collect();
+
+    Some(Env004ExecutionPlan {
+        proposal_digest: permit.proposal_digest,
+        approval_digest: permit.approval_digest,
+        fresh_evidence_digest: permit.fresh_evidence_digest,
+        steps,
     })
 }
 
@@ -1239,12 +1389,13 @@ mod tests {
     use super::{
         ApplyStatus, ApprovalStaleEvidenceReason, ApprovalTamperReason, EffectApplicabilityReason,
         EffectMismatchReason, EffectUnavailableReason, Env004ApplyPermit,
-        Env004ApprovalVerification, Env004EffectVerification, Env004PreviewVerification,
+        Env004ApprovalVerification, Env004EffectVerification, Env004ExecutionPlan,
+        Env004PreviewVerification, Env004PriorActivation, Env004RollbackAction,
         NotApplicableReason, RemediationAction, RemediationApplicability, RemediationApproval,
         RemediationApprovalState, RemediationProposal, RemediationTarget, StaleEvidenceReason,
         VerificationSchemaReason, VerificationTamperReason, create_env004_apply_permit,
-        create_env004_approval, preview_env004, render_terminal, verify_env004_approval,
-        verify_env004_effect, verify_env004_preview,
+        create_env004_approval, create_env004_execution_plan, preview_env004, render_terminal,
+        verify_env004_approval, verify_env004_effect, verify_env004_preview,
     };
     use crate::collectors::environment::{environment_info, session_info};
     use crate::model::section::Section;
@@ -1994,6 +2145,75 @@ mod tests {
             &proposal.binding.evidence_digest,
             &different_updates,
         ));
+    }
+
+    #[test]
+    fn execution_plan_restores_different_and_unsets_missing_activation() {
+        let (snapshot, proposal, approval) = approved_fixture();
+        let permit =
+            create_env004_apply_permit(&proposal, &approval, &snapshot, &evaluate(&snapshot))
+                .expect("verified approval admits a permit");
+        let plan: Env004ExecutionPlan = create_env004_execution_plan(permit)
+            .expect("well-formed permit admits an execution plan");
+
+        assert_eq!(plan.steps.len(), 2);
+        let current_desktop = plan
+            .steps
+            .iter()
+            .find(|step| step.key == "XDG_CURRENT_DESKTOP")
+            .expect("desktop step");
+        assert_eq!(
+            current_desktop.prior_activation,
+            Env004PriorActivation::Present("KDE".to_owned())
+        );
+        assert_eq!(
+            current_desktop.rollback,
+            Env004RollbackAction::Restore("KDE".to_owned())
+        );
+
+        let wayland_display = plan
+            .steps
+            .iter()
+            .find(|step| step.key == "WAYLAND_DISPLAY")
+            .expect("Wayland display step");
+        assert_eq!(
+            wayland_display.prior_activation,
+            Env004PriorActivation::Absent
+        );
+        assert_eq!(wayland_display.rollback, Env004RollbackAction::Unset);
+    }
+
+    #[test]
+    fn execution_plan_is_deterministically_sorted_for_multiple_keys() {
+        let (snapshot, proposal, approval) = approved_fixture();
+        let mut permit =
+            create_env004_apply_permit(&proposal, &approval, &snapshot, &evaluate(&snapshot))
+                .expect("verified approval admits a permit");
+        permit.environment_updates.reverse();
+
+        let plan = create_env004_execution_plan(permit).expect("plan remains deterministic");
+        let keys = plan
+            .steps
+            .iter()
+            .map(|step| step.key.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(keys, vec!["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP"]);
+    }
+
+    #[test]
+    fn malformed_or_out_of_scope_permit_pre_state_fails_closed() {
+        let (snapshot, proposal, approval) = approved_fixture();
+        let mut missing_state =
+            create_env004_apply_permit(&proposal, &approval, &snapshot, &evaluate(&snapshot))
+                .expect("verified approval admits a permit");
+        missing_state.prior_activation_values.pop();
+        assert!(create_env004_execution_plan(missing_state).is_none());
+
+        let mut unknown_key =
+            create_env004_apply_permit(&proposal, &approval, &snapshot, &evaluate(&snapshot))
+                .expect("verified approval admits a permit");
+        unknown_key.environment_updates[0].key = "UNEXPECTED_KEY".to_owned();
+        assert!(create_env004_execution_plan(unknown_key).is_none());
     }
 
     #[test]
