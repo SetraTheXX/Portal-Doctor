@@ -448,6 +448,18 @@ Unrelated snapshot fields and collection timestamps do not affect this
 decision. The verifier is not wired to apply, `systemctl` or any write path;
 `apply` remains `not_implemented`.
 
+The fifth Phase 12 slice adds the typed `RemediationApproval` contract for
+ENV004. `create_env004_approval` can create a record only from an
+integrity-checked, contract-valid proposal and binds the approval-contract
+version, remediation ID, proposal digest, evidence digest, action, target and
+explicit user-approval state. `verify_env004_approval(...)` checks that exact
+binding before fresh evidence, rejects `NotApproved`, cross-proposal reuse and
+mutations, and returns `valid` only when fresh comparison/findings are
+consistent and the actionable evidence still matches. Its other typed results
+are `tampered`, `stale_evidence` and `not_applicable`. This is an approval and
+verification boundary only; no apply authority, `systemctl` invocation or
+write-capable CLI path exists.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility

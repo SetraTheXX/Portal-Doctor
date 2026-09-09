@@ -1353,6 +1353,25 @@ This is a pure future post-apply verification contract only. It does not
 authorize or perform remediation and does not change the passive v0.2.1
 contract.
 
+## Fifth bounded `ENV004` explicit approval slice — 2026-09-09
+
+- [x] Add a typed `RemediationApproval` record with an approval-contract
+  version, remediation ID, exact proposal/evidence digests, action, target and
+  explicit user-approval state.
+- [x] Allow approval creation only from an integrity-checked, contract-valid
+  ENV004 proposal; keep approval state separate from apply implementation.
+- [x] Add pure `verify_env004_approval(approval, proposal, fresh_snapshot,
+  fresh_findings)` verification with typed `valid`, `tampered`,
+  `stale_evidence`, `not_approved` and `not_applicable` outcomes.
+- [x] Reject proposal/digest mutation, cross-proposal or cross-remediation
+  reuse, stale/inconsistent fresh evidence and non-approved state before any
+  future apply authority could be considered.
+- [x] Keep the CLI limited to `portaldoctor fix ENV004 --dry-run`; no apply,
+  `systemctl` or write-capable path exists.
+
+This is an explicit approval/verification contract only. It does not authorize
+or perform remediation and does not change the passive v0.2.1 contract.
+
 ## Prohibited behavior
 
 No silent:

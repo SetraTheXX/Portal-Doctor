@@ -12,6 +12,8 @@ use crate::model::status::CollectorState;
 
 /// Version of the standalone remediation-preview contract.
 pub const REMEDIATION_PREVIEW_SCHEMA_VERSION: u32 = 1;
+/// Version of the explicit approval binding contract.
+pub const REMEDIATION_APPROVAL_SCHEMA_VERSION: u32 = 1;
 /// Stable remediation identifier for the first bounded preview.
 pub const ENV004_REMEDIATION_ID: &str = "ENV004.activation_environment_import";
 const ENV004_FINDING_ID: &str = "ENV004";
@@ -205,6 +207,66 @@ pub enum EffectUnavailableReason {
     ComparisonEntryMissing,
     InconsistentComparison,
     InconsistentFindings,
+}
+
+/// Explicit user decision carried by an approval record.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RemediationApprovalState {
+    Approved,
+    NotApproved,
+}
+
+/// Approval bound to one exact, integrity-checked ENV004 proposal.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemediationApproval {
+    pub approval_contract_version: u32,
+    pub remediation_id: String,
+    pub proposal_digest: String,
+    pub evidence_digest: String,
+    pub action: RemediationAction,
+    pub target: RemediationTarget,
+    pub user_approval: RemediationApprovalState,
+}
+
+/// Typed reasons why an approval or its bound proposal cannot be trusted.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalTamperReason {
+    ApprovalContractVersion,
+    ProposalDigest,
+    ProposalContract,
+    ApprovalBinding,
+}
+
+/// Typed reasons why an otherwise valid approval cannot authorize a fresh run.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalStaleEvidenceReason {
+    FreshSchemaMismatch,
+    FreshSnapshotUnavailable,
+    FreshComparisonUnavailable,
+    InconsistentFindings,
+    EvidenceDigestMismatch,
+    EnvironmentUpdatesMismatch,
+}
+
+/// Typed outcome of verifying explicit approval against a proposal and fresh
+/// evidence. `Valid` is the only outcome that could authorize a future apply
+/// path; this slice does not implement that path.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum Env004ApprovalVerification {
+    Valid,
+    Tampered { reason: ApprovalTamperReason },
+    StaleEvidence { reason: ApprovalStaleEvidenceReason },
+    NotApproved,
+    NotApplicable { reason: NotApplicableReason },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -429,25 +491,10 @@ pub fn verify_env004_effect(
         };
     }
 
-    let comparison_has_env004 = match fresh_comparison_has_env004(environment) {
+    let has_env004 = match fresh_env004_consistency(environment, fresh_findings) {
         Ok(has_mismatch) => has_mismatch,
         Err(reason) => return Env004EffectVerification::Unavailable { reason },
     };
-    let env004_finding_count = fresh_findings
-        .iter()
-        .filter(|finding| finding.id == ENV004_FINDING_ID)
-        .count();
-    let findings_are_consistent = if comparison_has_env004 {
-        env004_finding_count == 1
-    } else {
-        env004_finding_count == 0
-    };
-    if !findings_are_consistent {
-        return Env004EffectVerification::Unavailable {
-            reason: EffectUnavailableReason::InconsistentFindings,
-        };
-    }
-    let has_env004 = comparison_has_env004;
     let mut all_converged = true;
     for update in &proposal.environment_updates {
         let update_status = match verify_effect_update(environment, update) {
@@ -483,8 +530,192 @@ pub fn verify_env004_effect(
     }
 }
 
-fn fresh_comparison_has_env004(
+/// Create an approval record only from an intact, contract-valid ENV004
+/// proposal. The caller supplies the explicit user decision; this function
+/// never performs an apply or any other side effect.
+#[allow(dead_code)]
+#[must_use]
+pub fn create_env004_approval(
+    proposal: &RemediationProposal,
+    user_approval: RemediationApprovalState,
+) -> Option<RemediationApproval> {
+    if digest_proposal(proposal) != proposal.binding.proposal_digest
+        || !proposal_contract_is_valid(proposal)
+    {
+        return None;
+    }
+    Some(RemediationApproval {
+        approval_contract_version: REMEDIATION_APPROVAL_SCHEMA_VERSION,
+        remediation_id: proposal.remediation_id.clone(),
+        proposal_digest: proposal.binding.proposal_digest.clone(),
+        evidence_digest: proposal.binding.evidence_digest.clone(),
+        action: proposal.action,
+        target: proposal.target,
+        user_approval,
+    })
+}
+
+/// Verify an explicit approval against one exact proposal and fresh ENV004
+/// evidence. `Valid` only means that a future apply boundary may consider the
+/// approval authoritative; no write-capable operation exists here.
+#[allow(dead_code)]
+#[must_use]
+pub fn verify_env004_approval(
+    approval: &RemediationApproval,
+    proposal: &RemediationProposal,
+    fresh_snapshot: &Snapshot,
+    fresh_findings: &[Finding],
+) -> Env004ApprovalVerification {
+    if let Err(reason) = verify_approval_integrity(approval, proposal) {
+        return Env004ApprovalVerification::Tampered { reason };
+    }
+    if approval.user_approval != RemediationApprovalState::Approved {
+        return Env004ApprovalVerification::NotApproved;
+    }
+
+    verify_approval_fresh_evidence(proposal, fresh_snapshot, fresh_findings)
+}
+
+fn verify_approval_integrity(
+    approval: &RemediationApproval,
+    proposal: &RemediationProposal,
+) -> Result<(), ApprovalTamperReason> {
+    if digest_proposal(proposal) != proposal.binding.proposal_digest {
+        return Err(ApprovalTamperReason::ProposalDigest);
+    }
+    if !proposal_contract_is_valid(proposal) {
+        return Err(ApprovalTamperReason::ProposalContract);
+    }
+    if approval.approval_contract_version != REMEDIATION_APPROVAL_SCHEMA_VERSION {
+        return Err(ApprovalTamperReason::ApprovalContractVersion);
+    }
+    if !approval_binds_to_proposal(approval, proposal) {
+        return Err(ApprovalTamperReason::ApprovalBinding);
+    }
+    Ok(())
+}
+
+fn verify_approval_fresh_evidence(
+    proposal: &RemediationProposal,
+    fresh_snapshot: &Snapshot,
+    fresh_findings: &[Finding],
+) -> Env004ApprovalVerification {
+    if fresh_snapshot.schema_version != SNAPSHOT_SCHEMA_VERSION {
+        return Env004ApprovalVerification::StaleEvidence {
+            reason: ApprovalStaleEvidenceReason::FreshSchemaMismatch,
+        };
+    }
+    if fresh_snapshot.environment.status != CollectorState::Available
+        || fresh_snapshot.environment.value.is_none()
+    {
+        return Env004ApprovalVerification::StaleEvidence {
+            reason: ApprovalStaleEvidenceReason::FreshSnapshotUnavailable,
+        };
+    }
+    let environment = fresh_snapshot
+        .environment
+        .value
+        .as_ref()
+        .expect("available environment section has a value");
+    if !environment.activation_comparison.performed {
+        return Env004ApprovalVerification::StaleEvidence {
+            reason: ApprovalStaleEvidenceReason::FreshComparisonUnavailable,
+        };
+    }
+    let has_env004 = match fresh_env004_consistency(environment, fresh_findings) {
+        Ok(has_mismatch) => has_mismatch,
+        Err(reason) => {
+            return Env004ApprovalVerification::StaleEvidence {
+                reason: approval_stale_reason(reason),
+            };
+        }
+    };
+    if !has_env004 {
+        return Env004ApprovalVerification::NotApplicable {
+            reason: NotApplicableReason::FindingNotPresent,
+        };
+    }
+
+    let stored_preview = RemediationPreview {
+        schema_version: REMEDIATION_PREVIEW_SCHEMA_VERSION,
+        finding_id: ENV004_FINDING_ID.to_owned(),
+        applicability: RemediationApplicability::Applicable,
+        proposal: Some(proposal.clone()),
+    };
+    match verify_env004_preview(&stored_preview, fresh_snapshot, fresh_findings) {
+        Env004PreviewVerification::Valid => Env004ApprovalVerification::Valid,
+        Env004PreviewVerification::StaleEvidence { reason } => {
+            Env004ApprovalVerification::StaleEvidence {
+                reason: match reason {
+                    StaleEvidenceReason::EvidenceDigestMismatch => {
+                        ApprovalStaleEvidenceReason::EvidenceDigestMismatch
+                    }
+                    StaleEvidenceReason::EnvironmentUpdatesMismatch => {
+                        ApprovalStaleEvidenceReason::EnvironmentUpdatesMismatch
+                    }
+                },
+            }
+        }
+        Env004PreviewVerification::NotApplicable { reason } => {
+            Env004ApprovalVerification::NotApplicable { reason }
+        }
+        Env004PreviewVerification::UnsupportedSchema { reason } => {
+            Env004ApprovalVerification::StaleEvidence {
+                reason: match reason {
+                    VerificationSchemaReason::PreviewSchemaMismatch
+                    | VerificationSchemaReason::SnapshotSchemaMismatch => {
+                        ApprovalStaleEvidenceReason::FreshSchemaMismatch
+                    }
+                },
+            }
+        }
+        Env004PreviewVerification::Tampered { reason } => Env004ApprovalVerification::Tampered {
+            reason: match reason {
+                VerificationTamperReason::StoredProposalDigestMismatch => {
+                    ApprovalTamperReason::ProposalDigest
+                }
+                VerificationTamperReason::ProposalContractMismatch => {
+                    ApprovalTamperReason::ProposalContract
+                }
+            },
+        },
+    }
+}
+
+fn approval_binds_to_proposal(
+    approval: &RemediationApproval,
+    proposal: &RemediationProposal,
+) -> bool {
+    approval.remediation_id == proposal.remediation_id
+        && approval.proposal_digest == proposal.binding.proposal_digest
+        && approval.evidence_digest == proposal.binding.evidence_digest
+        && approval.action == proposal.action
+        && approval.target == proposal.target
+}
+
+fn approval_stale_reason(reason: EffectUnavailableReason) -> ApprovalStaleEvidenceReason {
+    match reason {
+        EffectUnavailableReason::SnapshotSchemaMismatch => {
+            ApprovalStaleEvidenceReason::FreshSchemaMismatch
+        }
+        EffectUnavailableReason::SnapshotUnavailable => {
+            ApprovalStaleEvidenceReason::FreshSnapshotUnavailable
+        }
+        EffectUnavailableReason::ComparisonNotPerformed
+        | EffectUnavailableReason::ProcessValueMissing
+        | EffectUnavailableReason::ComparisonEntryMissing
+        | EffectUnavailableReason::InconsistentComparison => {
+            ApprovalStaleEvidenceReason::FreshComparisonUnavailable
+        }
+        EffectUnavailableReason::InconsistentFindings => {
+            ApprovalStaleEvidenceReason::InconsistentFindings
+        }
+    }
+}
+
+fn fresh_env004_consistency(
     environment: &EnvironmentInfo,
+    fresh_findings: &[Finding],
 ) -> Result<bool, EffectUnavailableReason> {
     let mut seen_keys = BTreeSet::new();
     for entry in &environment.activation_comparison.entries {
@@ -509,11 +740,24 @@ fn fresh_comparison_has_env004(
         return Err(EffectUnavailableReason::InconsistentComparison);
     }
 
-    Ok(environment
+    let comparison_has_env004 = environment
         .activation_comparison
         .entries
         .iter()
-        .any(|entry| entry.relation != EnvironmentRelation::Equal))
+        .any(|entry| entry.relation != EnvironmentRelation::Equal);
+    let env004_finding_count = fresh_findings
+        .iter()
+        .filter(|finding| finding.id == ENV004_FINDING_ID)
+        .count();
+    let findings_are_consistent = if comparison_has_env004 {
+        env004_finding_count == 1
+    } else {
+        env004_finding_count == 0
+    };
+    if !findings_are_consistent {
+        return Err(EffectUnavailableReason::InconsistentFindings);
+    }
+    Ok(comparison_has_env004)
 }
 
 fn verify_effect_update(
@@ -889,11 +1133,13 @@ fn session_matches_process(
 #[cfg(test)]
 mod tests {
     use super::{
-        ApplyStatus, EffectApplicabilityReason, EffectMismatchReason, EffectUnavailableReason,
+        ApplyStatus, ApprovalStaleEvidenceReason, ApprovalTamperReason, EffectApplicabilityReason,
+        EffectMismatchReason, EffectUnavailableReason, Env004ApprovalVerification,
         Env004EffectVerification, Env004PreviewVerification, NotApplicableReason,
-        RemediationAction, RemediationApplicability, RemediationTarget, StaleEvidenceReason,
-        VerificationSchemaReason, VerificationTamperReason, preview_env004, render_terminal,
-        verify_env004_effect, verify_env004_preview,
+        RemediationAction, RemediationApplicability, RemediationApproval, RemediationApprovalState,
+        RemediationProposal, RemediationTarget, StaleEvidenceReason, VerificationSchemaReason,
+        VerificationTamperReason, create_env004_approval, preview_env004, render_terminal,
+        verify_env004_approval, verify_env004_effect, verify_env004_preview,
     };
     use crate::collectors::environment::{environment_info, session_info};
     use crate::model::section::Section;
@@ -925,6 +1171,21 @@ mod tests {
             ("XDG_SESSION_TYPE", "wayland"),
             ("WAYLAND_DISPLAY", "wayland-0"),
         ]
+    }
+
+    fn approved_fixture() -> (Snapshot, RemediationProposal, RemediationApproval) {
+        let process = healthy_process();
+        let activation = [
+            ("XDG_CURRENT_DESKTOP", "KDE"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let snapshot = snapshot(&process, &activation);
+        let preview = preview_env004(&snapshot, &evaluate(&snapshot));
+        let proposal = preview.proposal.expect("applicable proposal");
+        let approval = create_env004_approval(&proposal, RemediationApprovalState::Approved)
+            .expect("integrity-checked approval");
+        (snapshot, proposal, approval)
     }
 
     #[test]
@@ -1475,6 +1736,152 @@ mod tests {
         assert_eq!(
             verify_env004_effect(proposal, &fresh_snapshot, &evaluate(&fresh_snapshot)),
             Env004EffectVerification::Converged
+        );
+    }
+
+    #[test]
+    fn approved_proposal_produces_a_bound_approval_record() {
+        let (_snapshot, proposal, approval) = approved_fixture();
+
+        assert_eq!(approval.approval_contract_version, 1);
+        assert_eq!(approval.remediation_id, proposal.remediation_id);
+        assert_eq!(approval.proposal_digest, proposal.binding.proposal_digest);
+        assert_eq!(approval.evidence_digest, proposal.binding.evidence_digest);
+        assert_eq!(approval.action, proposal.action);
+        assert_eq!(approval.target, proposal.target);
+        assert_eq!(approval.user_approval, RemediationApprovalState::Approved);
+    }
+
+    #[test]
+    fn invalid_proposal_cannot_create_an_approval() {
+        let (_snapshot, mut proposal, _approval) = approved_fixture();
+        proposal.binding.proposal_digest = "tampered".to_owned();
+
+        assert!(create_env004_approval(&proposal, RemediationApprovalState::Approved).is_none());
+    }
+
+    #[test]
+    fn approved_matching_evidence_is_valid() {
+        let (snapshot, proposal, approval) = approved_fixture();
+
+        assert_eq!(
+            verify_env004_approval(&approval, &proposal, &snapshot, &evaluate(&snapshot)),
+            Env004ApprovalVerification::Valid
+        );
+    }
+
+    #[test]
+    fn not_approved_state_never_becomes_valid() {
+        let (snapshot, proposal, _) = approved_fixture();
+        let approval = create_env004_approval(&proposal, RemediationApprovalState::NotApproved)
+            .expect("integrity-checked approval");
+
+        assert_eq!(
+            verify_env004_approval(&approval, &proposal, &snapshot, &evaluate(&snapshot)),
+            Env004ApprovalVerification::NotApproved
+        );
+    }
+
+    #[test]
+    fn proposal_or_approval_binding_mutation_is_tampered() {
+        let (snapshot, proposal, approval) = approved_fixture();
+        let mut changed_proposal = proposal.clone();
+        changed_proposal.environment_updates[0].value = "changed".to_owned();
+        assert_eq!(
+            verify_env004_approval(
+                &approval,
+                &changed_proposal,
+                &snapshot,
+                &evaluate(&snapshot),
+            ),
+            Env004ApprovalVerification::Tampered {
+                reason: ApprovalTamperReason::ProposalDigest,
+            }
+        );
+
+        let mut changed_approval = approval;
+        changed_approval.evidence_digest = "different-evidence".to_owned();
+        assert_eq!(
+            verify_env004_approval(
+                &changed_approval,
+                &proposal,
+                &snapshot,
+                &evaluate(&snapshot),
+            ),
+            Env004ApprovalVerification::Tampered {
+                reason: ApprovalTamperReason::ApprovalBinding,
+            }
+        );
+    }
+
+    #[test]
+    fn approval_contract_version_mutation_is_tampered() {
+        let (snapshot, proposal, mut approval) = approved_fixture();
+        approval.approval_contract_version += 1;
+
+        assert_eq!(
+            verify_env004_approval(&approval, &proposal, &snapshot, &evaluate(&snapshot)),
+            Env004ApprovalVerification::Tampered {
+                reason: ApprovalTamperReason::ApprovalContractVersion,
+            }
+        );
+    }
+
+    #[test]
+    fn stale_fresh_evidence_cannot_authorize_approval() {
+        let (_stored_snapshot, proposal, approval) = approved_fixture();
+        let process = healthy_process();
+        let changed_activation = [
+            ("XDG_CURRENT_DESKTOP", "Sway"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let fresh_snapshot = snapshot(&process, &changed_activation);
+
+        assert_eq!(
+            verify_env004_approval(
+                &approval,
+                &proposal,
+                &fresh_snapshot,
+                &evaluate(&fresh_snapshot),
+            ),
+            Env004ApprovalVerification::StaleEvidence {
+                reason: ApprovalStaleEvidenceReason::EvidenceDigestMismatch,
+            }
+        );
+    }
+
+    #[test]
+    fn converged_fresh_evidence_is_not_applicable_for_old_approval() {
+        let (_snapshot, proposal, approval) = approved_fixture();
+        let process = healthy_process();
+        let fresh_snapshot = snapshot(&process, &process);
+
+        assert_eq!(
+            verify_env004_approval(
+                &approval,
+                &proposal,
+                &fresh_snapshot,
+                &evaluate(&fresh_snapshot),
+            ),
+            Env004ApprovalVerification::NotApplicable {
+                reason: NotApplicableReason::FindingNotPresent,
+            }
+        );
+    }
+
+    #[test]
+    fn inconsistent_fresh_findings_cannot_authorize_approval() {
+        let (stored_snapshot, proposal, approval) = approved_fixture();
+        let process = healthy_process();
+        let fresh_snapshot = snapshot(&process, &process);
+        let fake_findings = evaluate(&stored_snapshot);
+
+        assert_eq!(
+            verify_env004_approval(&approval, &proposal, &fresh_snapshot, &fake_findings,),
+            Env004ApprovalVerification::StaleEvidence {
+                reason: ApprovalStaleEvidenceReason::InconsistentFindings,
+            }
         );
     }
 
