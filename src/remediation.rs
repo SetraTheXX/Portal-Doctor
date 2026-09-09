@@ -233,6 +233,35 @@ pub struct RemediationApproval {
     pub approval_digest: String,
 }
 
+/// Opaque capability admitted by the verified ENV004 approval boundary.
+///
+/// The fields stay private and the type is intentionally not serializable or
+/// cloneable. A future apply implementation must consume a permit produced by
+/// `create_env004_apply_permit` instead of accepting a raw approval document.
+#[allow(dead_code)]
+pub struct Env004ApplyPermit {
+    proposal_digest: String,
+    approval_digest: String,
+    fresh_evidence_digest: String,
+    environment_updates: Vec<EnvironmentUpdate>,
+}
+
+impl Env004ApplyPermit {
+    #[allow(dead_code)]
+    fn binds_to(
+        &self,
+        proposal: &RemediationProposal,
+        approval: &RemediationApproval,
+        fresh_evidence_digest: &str,
+        environment_updates: &[EnvironmentUpdate],
+    ) -> bool {
+        self.proposal_digest == proposal.binding.proposal_digest
+            && self.approval_digest == approval.approval_digest
+            && self.fresh_evidence_digest == fresh_evidence_digest
+            && self.environment_updates == environment_updates
+    }
+}
+
 /// Typed reasons why an approval or its bound proposal cannot be trusted.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -585,6 +614,40 @@ pub fn verify_env004_approval(
     }
 
     verify_approval_fresh_evidence(proposal, fresh_snapshot, fresh_findings)
+}
+
+/// Admit a future ENV004 apply operation only after the approval and fresh
+/// evidence have passed every existing verification boundary. The returned
+/// capability is opaque, non-serializable and non-cloneable; this function
+/// never invokes `systemctl`, writes a file or changes the environment.
+#[allow(dead_code)]
+#[must_use]
+pub fn create_env004_apply_permit(
+    proposal: &RemediationProposal,
+    approval: &RemediationApproval,
+    fresh_snapshot: &Snapshot,
+    fresh_findings: &[Finding],
+) -> Option<Env004ApplyPermit> {
+    if verify_env004_approval(approval, proposal, fresh_snapshot, fresh_findings)
+        != Env004ApprovalVerification::Valid
+    {
+        return None;
+    }
+
+    let fresh_preview = preview_env004(fresh_snapshot, fresh_findings);
+    let fresh_proposal = fresh_preview.proposal?;
+    if fresh_proposal.binding.evidence_digest != proposal.binding.evidence_digest
+        || fresh_proposal.environment_updates != proposal.environment_updates
+    {
+        return None;
+    }
+
+    Some(Env004ApplyPermit {
+        proposal_digest: proposal.binding.proposal_digest.clone(),
+        approval_digest: approval.approval_digest.clone(),
+        fresh_evidence_digest: fresh_proposal.binding.evidence_digest,
+        environment_updates: fresh_proposal.environment_updates,
+    })
 }
 
 fn verify_approval_integrity(
@@ -1175,12 +1238,13 @@ fn session_matches_process(
 mod tests {
     use super::{
         ApplyStatus, ApprovalStaleEvidenceReason, ApprovalTamperReason, EffectApplicabilityReason,
-        EffectMismatchReason, EffectUnavailableReason, Env004ApprovalVerification,
-        Env004EffectVerification, Env004PreviewVerification, NotApplicableReason,
-        RemediationAction, RemediationApplicability, RemediationApproval, RemediationApprovalState,
-        RemediationProposal, RemediationTarget, StaleEvidenceReason, VerificationSchemaReason,
-        VerificationTamperReason, create_env004_approval, preview_env004, render_terminal,
-        verify_env004_approval, verify_env004_effect, verify_env004_preview,
+        EffectMismatchReason, EffectUnavailableReason, Env004ApplyPermit,
+        Env004ApprovalVerification, Env004EffectVerification, Env004PreviewVerification,
+        NotApplicableReason, RemediationAction, RemediationApplicability, RemediationApproval,
+        RemediationApprovalState, RemediationProposal, RemediationTarget, StaleEvidenceReason,
+        VerificationSchemaReason, VerificationTamperReason, create_env004_apply_permit,
+        create_env004_approval, preview_env004, render_terminal, verify_env004_approval,
+        verify_env004_effect, verify_env004_preview,
     };
     use crate::collectors::environment::{environment_info, session_info};
     use crate::model::section::Section;
@@ -1814,6 +1878,122 @@ mod tests {
             verify_env004_approval(&approval, &proposal, &snapshot, &evaluate(&snapshot)),
             Env004ApprovalVerification::Valid
         );
+    }
+
+    #[test]
+    fn approved_matching_evidence_admits_an_opaque_apply_permit() {
+        let (snapshot, proposal, approval) = approved_fixture();
+        let permit: Env004ApplyPermit =
+            create_env004_apply_permit(&proposal, &approval, &snapshot, &evaluate(&snapshot))
+                .expect("verified approval admits a permit");
+
+        assert!(permit.binds_to(
+            &proposal,
+            &approval,
+            &proposal.binding.evidence_digest,
+            &proposal.environment_updates,
+        ));
+    }
+
+    #[test]
+    fn apply_permit_factory_rejects_unapproved_or_tampered_inputs() {
+        let (snapshot, proposal, approval) = approved_fixture();
+        let not_approved = create_env004_approval(&proposal, RemediationApprovalState::NotApproved)
+            .expect("integrity-checked approval");
+        assert!(
+            create_env004_apply_permit(&proposal, &not_approved, &snapshot, &evaluate(&snapshot),)
+                .is_none()
+        );
+
+        let mut tampered_approval = approval.clone();
+        tampered_approval.user_approval = RemediationApprovalState::NotApproved;
+        assert!(
+            create_env004_apply_permit(
+                &proposal,
+                &tampered_approval,
+                &snapshot,
+                &evaluate(&snapshot),
+            )
+            .is_none()
+        );
+
+        let mut tampered_proposal = proposal.clone();
+        tampered_proposal.environment_updates[0].value = "tampered".to_owned();
+        assert!(
+            create_env004_apply_permit(
+                &tampered_proposal,
+                &approval,
+                &snapshot,
+                &evaluate(&snapshot),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn apply_permit_factory_rejects_stale_or_not_applicable_evidence() {
+        let (_stored_snapshot, proposal, approval) = approved_fixture();
+        let process = healthy_process();
+        let changed_activation = [
+            ("XDG_CURRENT_DESKTOP", "Sway"),
+            ("XDG_SESSION_DESKTOP", "gnome"),
+            ("XDG_SESSION_TYPE", "wayland"),
+        ];
+        let stale_snapshot = snapshot(&process, &changed_activation);
+        assert!(
+            create_env004_apply_permit(
+                &proposal,
+                &approval,
+                &stale_snapshot,
+                &evaluate(&stale_snapshot),
+            )
+            .is_none()
+        );
+
+        let converged_snapshot = snapshot(&process, &process);
+        assert!(
+            create_env004_apply_permit(
+                &proposal,
+                &approval,
+                &converged_snapshot,
+                &evaluate(&converged_snapshot),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn apply_permit_cannot_match_different_bindings() {
+        let (snapshot, proposal, approval) = approved_fixture();
+        let permit =
+            create_env004_apply_permit(&proposal, &approval, &snapshot, &evaluate(&snapshot))
+                .expect("verified approval admits a permit");
+
+        let mut different_proposal = proposal.clone();
+        different_proposal.binding.proposal_digest = "other-proposal".to_owned();
+        let mut different_approval = approval.clone();
+        different_approval.approval_digest = "other-approval".to_owned();
+        let mut different_updates = proposal.environment_updates.clone();
+        different_updates[0].value = "other-value".to_owned();
+
+        assert!(!permit.binds_to(
+            &different_proposal,
+            &approval,
+            &proposal.binding.evidence_digest,
+            &proposal.environment_updates,
+        ));
+        assert!(!permit.binds_to(
+            &proposal,
+            &different_approval,
+            &proposal.binding.evidence_digest,
+            &proposal.environment_updates,
+        ));
+        assert!(!permit.binds_to(
+            &proposal,
+            &approval,
+            &proposal.binding.evidence_digest,
+            &different_updates,
+        ));
     }
 
     #[test]

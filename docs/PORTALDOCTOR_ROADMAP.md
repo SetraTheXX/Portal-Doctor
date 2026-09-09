@@ -1390,6 +1390,24 @@ or perform remediation and does not change the passive v0.2.1 contract.
 This slice hardens the approval record only. It does not authorize or perform
 remediation and does not change the passive v0.2.1 contract.
 
+## Seventh bounded `ENV004` apply-admission capability slice — 2026-09-09
+
+- [x] Add an opaque `Env004ApplyPermit` with private fields for the exact
+  proposal digest, approval digest, fresh evidence digest and environment
+  updates.
+- [x] Allow the module-owned factory to produce a permit only when the full
+  approval verifier returns `valid` and regenerated fresh evidence still
+  matches the proposal-bound digest and updates.
+- [x] Keep the permit non-serializable and non-cloneable so future apply code
+  must consume a verified capability rather than trust raw/serialized
+  approval data or reuse it with another proposal/approval.
+- [x] Reject not-approved, tampered, stale and no-longer-applicable inputs;
+  keep the CLI limited to `portaldoctor fix ENV004 --dry-run`.
+
+This is an admission-capability contract only. It does not invoke `systemctl`,
+write activation environment state or add an apply path; `apply` remains
+`not_implemented`.
+
 ## Prohibited behavior
 
 No silent:

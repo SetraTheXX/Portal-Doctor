@@ -1084,6 +1084,17 @@ typed `valid`, `tampered`, `stale_evidence`, `not_approved` or
 the same actionable evidence digest. No apply authority is connected to the
 CLI, `systemctl` or a write path, and `apply` remains `not_implemented`.
 
+The seventh bounded Phase 12 slice adds an opaque `Env004ApplyPermit`
+capability. `create_env004_apply_permit(...)` admits a permit only when
+`verify_env004_approval(...)` returns `valid` and the regenerated fresh preview
+still has the exact actionable evidence digest and environment updates bound
+to the proposal. The permit privately carries the proposal digest, approval
+digest, fresh evidence digest and update list; it has no `Serialize` or
+`Deserialize` implementation and is not cloneable, so a future apply boundary
+cannot accept or persist a raw approval document as authority. The permit
+factory performs no write, `systemctl` call or environment mutation; apply
+remains `not_implemented`.
+
 ## 25. Architecture Decision Summary
 
 | Decision | Choice |

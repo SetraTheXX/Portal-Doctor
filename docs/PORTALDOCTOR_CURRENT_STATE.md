@@ -463,6 +463,16 @@ authorization result. Its other typed results are `stale_evidence`,
 boundary only; no apply authority, `systemctl` invocation or write-capable CLI
 path exists.
 
+The seventh Phase 12 slice adds the opaque `Env004ApplyPermit` admission
+boundary. Its module-owned factory accepts a permit only after
+`verify_env004_approval(...)` returns `valid` and a fresh preview reproduces
+the exact proposal-bound evidence digest and environment updates. The permit
+privately binds the proposal digest, approval digest, fresh evidence digest and
+update list; it is neither serializable nor cloneable, and its private binding
+cannot be constructed from a raw approval outside the module. No apply,
+`systemctl` or environment-write path exists; `apply` remains
+`not_implemented`.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility
