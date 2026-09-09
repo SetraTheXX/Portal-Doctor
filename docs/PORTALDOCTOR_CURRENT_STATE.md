@@ -400,6 +400,18 @@ or the comparison evidence is inconsistent/unavailable, the preview contains
 no proposal and fails closed. This does not add an apply path, change the
 passive v0.2.1 contract, or unblock any Phase 8 release gate.
 
+The follow-up provenance-binding slice adds a typed `binding` to every
+applicable proposal. It records the source snapshot schema version,
+`collected_at`, finding ID, a deterministic `evidence_digest`, and a
+`proposal_digest`. The evidence digest is SHA-256 over only sorted actionable
+`ENV004` comparison entries (key, process value, activation value and
+relation); it excludes paths, secrets and unrelated snapshot sections. The
+proposal digest binds that evidence to the preview schema and bounded
+proposal shape. Reordered entries produce the same digest, while changed
+actionable evidence or a different collection timestamp changes the binding.
+JSON and terminal output expose the binding for a future apply verifier, but
+`apply` remains `not_implemented` and no write-capable operation is added.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility
