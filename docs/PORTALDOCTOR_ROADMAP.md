@@ -1524,6 +1524,8 @@ No remediation ships unless it has:
 
 **Phase 13.5 default diagnostic UX + scope contract slice:** COMPLETE
 
+**Phase 13.6 diagnostic coverage contract slice:** COMPLETE
+
 **Phase 13 overall:** in progress; v1.0 release gates remain open.
 
 ## Objective
@@ -1617,6 +1619,36 @@ external gates remain open.
 This slice hardens existing UX and documentation only. It adds no feature,
 probe, remediation or support claim, and does not change Phase 8 or the
 `v0.3.0` external gates.
+
+## Sixth bounded diagnostic coverage contract slice — 2026-09-10
+
+The Phase 13 diagnostics gate is now mapped to the runtime/model/report
+surfaces below. `implementation=complete` means the production path exists;
+`controlled=complete` means the corresponding fixtures or controlled lifecycle
+matrices pass. `qualification` is deliberately narrower: `baseline_live`
+refers only to the published Ubuntu 26.04/GNOME/Wayland passive baseline,
+while expanded desktop fixtures remain controlled-only. Controlled coverage is
+never treated as live support.
+
+<!-- PORTALDOCTOR_DIAGNOSTIC_CONTRACT_START -->
+```text
+portal_routing|runtime=portal_config+portal_files+resolver_portal_routes|snapshot=portal_config+portal_backends+portal_routes|entry_point=default_check+check_portal+portal_list_routes_explain|contract=CFG_XDP_findings|implementation=complete|controlled=complete|qualification=baseline_live;expanded_desktops_controlled_only|blocker=none
+environment_activation|runtime=environment+activation_environment|snapshot=session+environment|entry_point=default_check+check_environment|contract=ENV001_ENV004_findings|implementation=complete|controlled=complete|qualification=baseline_live;expanded_desktops_controlled_only|blocker=none
+dbus_runtime|runtime=dbus+rules_dbus|snapshot=dbus|entry_point=default_check+check_portal|contract=DBUS001_DBUS002_XDP001_XDP002_findings|implementation=complete|controlled=complete|qualification=baseline_live;expanded_desktops_controlled_only|blocker=none
+systemd_user_services|runtime=systemd_user+rules_dbus|snapshot=services|entry_point=default_check+check_portal+verbose_runtime|contract=DBUS002_XDP002_findings|implementation=complete|controlled=complete|qualification=baseline_live;expanded_desktops_controlled_only|blocker=none
+pipewire_wireplumber|runtime=pipewire+rules_pipewire|snapshot=pipewire+wireplumber|entry_point=default_check+check_pipewire+report|contract=PW001_PW003_SC001_SC002_findings|implementation=complete|controlled=complete|qualification=baseline_live;expanded_desktops_controlled_only|blocker=none
+journal_evidence|runtime=journal+report_redaction|snapshot=journal|entry_point=journal_opt_in+report|contract=sanitized_supporting_evidence_for_PW_SC|implementation=complete|controlled=complete|qualification=baseline_live_opt_in;not_a_provider_gate|blocker=none
+active_core_probes|runtime=filechooser+screenshot+screencast_internal|snapshot=standalone_ProbeResult_v1|entry_point=explicit_filechooser_screenshot;internal_screencast|contract=ProbeResult_v1|implementation=complete|controlled=complete|qualification=FileChooser_live;Screenshot_ScreenCast_external|blocker=GNOME_Screenshot_provider;ScreenCast_Window_capability
+```
+<!-- PORTALDOCTOR_DIAGNOSTIC_CONTRACT_END -->
+
+The inventory is checked against the runtime bindings and this roadmap block.
+The first six rows are implementation- and controlled-complete passive
+diagnostics; only the published GNOME baseline carries a live qualification.
+The active-probe row is implementation- and controlled-complete, with
+FileChooser live-qualified and Screenshot/ScreenCast externally blocked by
+their existing provider/capability gates. No new collector, probe command or
+live provider validation is introduced by this slice.
 
 ## Required v1.0 gates
 

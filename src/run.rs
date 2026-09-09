@@ -449,20 +449,25 @@ mod tests {
         effective_command, minimum_runtime_context_available, selected_backend_dbus_names,
     };
     use crate::cli::{Cli, Command};
+    use crate::diagnostics::DIAGNOSTIC_CAPABILITIES;
     use crate::model::dbus::{DbusCheck, DbusInfo, DbusOutcome, PORTAL_FRONTEND_NAME};
-    use crate::model::environment::{SessionInfo, SessionType};
+    use crate::model::environment::{
+        EnvironmentComparison, EnvironmentInfo, SearchRoots, SessionInfo, SessionType,
+    };
     use crate::model::finding::{Confidence, Finding, Severity};
     use crate::model::pipewire::{PipeWireInfo, WirePlumberInfo};
     use crate::model::portal::{PortalBackend, PortalConfigInfo, PortalRoute, RouteStatus};
     use crate::model::portal_frontend::{
         PORTAL_FRONTEND_COMPONENT, PortalFrontendInfo, SemanticVersion, VersionEvidenceSource,
     };
+    use crate::model::probe::{PROBE_RESULT_SCHEMA_VERSION, ProbeKind};
     use crate::model::section::Section;
     use crate::model::service::{ServiceInfo, UnitState, UnitStatus};
     use crate::model::snapshot::Snapshot;
-    use crate::report::{Renderer, Report, TerminalRenderer};
+    use crate::report::{JsonRenderer, PortalRoutesRenderer, Renderer, Report, TerminalRenderer};
     use crate::rules::engine::evaluate;
     use clap::Parser;
+    use serde_json::Value;
     use std::collections::{BTreeMap, BTreeSet};
 
     fn runtime_ready_snapshot() -> Snapshot {
@@ -532,6 +537,118 @@ mod tests {
             .filter(|line| line.contains('='))
             .map(str::to_owned)
             .collect()
+    }
+
+    fn documented_diagnostic_contract(markdown: &str) -> Vec<String> {
+        const START: &str = "<!-- PORTALDOCTOR_DIAGNOSTIC_CONTRACT_START -->";
+        const END: &str = "<!-- PORTALDOCTOR_DIAGNOSTIC_CONTRACT_END -->";
+        let contract = markdown
+            .split_once(START)
+            .and_then(|(_, remainder)| remainder.split_once(END).map(|(body, _)| body))
+            .expect("diagnostic capability markers must exist");
+        contract
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with("```"))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn roadmap_diagnostic_inventory_matches_runtime_inventory() {
+        let roadmap = include_str!("../docs/PORTALDOCTOR_ROADMAP.md");
+        let expected = DIAGNOSTIC_CAPABILITIES
+            .iter()
+            .copied()
+            .map(crate::diagnostics::DiagnosticCapability::doc_row)
+            .collect::<Vec<_>>();
+        assert_eq!(documented_diagnostic_contract(roadmap), expected);
+    }
+
+    #[test]
+    fn diagnostic_inventory_binds_snapshot_json_and_entry_points() {
+        let mut snapshot = runtime_ready_snapshot();
+        snapshot.environment = Section::available(EnvironmentInfo {
+            process: BTreeMap::new(),
+            search_roots: SearchRoots {
+                config_roots: Vec::new(),
+                data_roots: Vec::new(),
+            },
+            activation_comparison: EnvironmentComparison {
+                performed: true,
+                entries: Vec::new(),
+            },
+        });
+        snapshot.portal_routes = Section::available(Vec::new());
+
+        let snapshot_bindings = [
+            snapshot.system.status,
+            snapshot.session.status,
+            snapshot.environment.status,
+            snapshot.portal_config.status,
+            snapshot.portal_backends.status,
+            snapshot.portal_routes.status,
+            snapshot.portal_frontend.status,
+            snapshot.dbus.status,
+            snapshot.services.status,
+            snapshot.pipewire.status,
+            snapshot.wireplumber.status,
+            snapshot.journal.status,
+        ];
+        assert_eq!(snapshot_bindings.len(), 12);
+
+        let report = Report::new(snapshot, Vec::new(), "0.2.1");
+        let json: Value = serde_json::from_str(&JsonRenderer.render(&report, false)).unwrap();
+        for field in [
+            "system",
+            "session",
+            "environment",
+            "portal_config",
+            "portal_backends",
+            "portal_routes",
+            "portal_frontend",
+            "dbus",
+            "services",
+            "pipewire",
+            "wireplumber",
+            "journal",
+        ] {
+            assert!(json["snapshot"].get(field).is_some(), "missing {field}");
+        }
+
+        let terminal = TerminalRenderer.render(&report, false);
+        for section in [
+            "System:",
+            "Session:",
+            "Activation environment:",
+            "D-Bus:",
+            "PipeWire:",
+            "WirePlumber:",
+            "Findings:",
+        ] {
+            assert!(terminal.contains(section), "terminal lacks {section}");
+        }
+        assert!(
+            PortalRoutesRenderer
+                .render(&report, false)
+                .contains("Portal routes:")
+        );
+
+        assert!(matches!(
+            effective_command(&Cli::parse_from(["portaldoctor"])),
+            Command::Check(_)
+        ));
+        assert!(Cli::try_parse_from(["portaldoctor", "probe", "screencast"]).is_err());
+        assert_eq!(PROBE_RESULT_SCHEMA_VERSION, 1);
+        assert_eq!(
+            [
+                ProbeKind::FileChooser,
+                ProbeKind::Screenshot,
+                ProbeKind::ScreenCast
+            ]
+            .len(),
+            3
+        );
     }
 
     #[test]
