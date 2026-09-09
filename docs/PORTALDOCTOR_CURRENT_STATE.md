@@ -436,9 +436,14 @@ section with a performed comparison. Every proposed key must have one
 consistent comparison entry, retain the expected process-side value, and show
 that value on the activation side before the result can be `converged`.
 Remaining or additional `ENV004` findings produce typed
-`still_mismatched`; changed expected process values or non-converged evidence
-without `ENV004` produce `no_longer_applicable`; malformed/unavailable fresh
-evidence produces `unavailable`; integrity failures produce `tampered`.
+`still_mismatched`; a changed expected process value with no current `ENV004`
+produces `no_longer_applicable`. Unresolved comparison mismatches require
+matching `ENV004` evidence and produce `still_mismatched`.
+Malformed/unavailable fresh evidence produces `unavailable`; integrity
+failures produce `tampered`.
+The verifier independently derives mismatch state from the fresh comparison
+and requires it to agree exactly with the supplied `ENV004` findings, so
+missing or fabricated findings fail closed as inconsistent evidence.
 Unrelated snapshot fields and collection timestamps do not affect this
 decision. The verifier is not wired to apply, `systemctl` or any write path;
 `apply` remains `not_implemented`.

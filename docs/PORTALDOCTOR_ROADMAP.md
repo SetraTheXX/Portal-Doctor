@@ -1338,6 +1338,9 @@ authorize or perform remediation.
 - [x] Require a supported/available fresh environment section with a performed
   activation comparison, one consistent comparison entry per proposed key,
   and activation-side values equal to the expected process-side values.
+- [x] Derive the fresh mismatch state from the comparison and require exact
+  agreement with the supplied fresh `ENV004` findings; missing or fabricated
+  findings fail closed as `unavailable/inconsistent_findings`.
 - [x] Return typed `converged`, `still_mismatched`,
   `no_longer_applicable`, `tampered` and `unavailable` outcomes. Remaining or
   additional `ENV004` findings never become success.

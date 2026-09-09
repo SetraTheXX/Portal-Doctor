@@ -1058,9 +1058,13 @@ value before the effect can be `converged`. The typed outcomes are
 `converged`, `still_mismatched`, `no_longer_applicable`, `tampered` and
 `unavailable`; a remaining or additional `ENV004` keeps the result
 `still_mismatched`, while a changed expected process value or an otherwise
-non-converged case without `ENV004` is not treated as success. `collected_at`
-and unrelated snapshot fields do not affect this effect decision. The function
-is not connected to an apply, `systemctl` or write path, and `apply` remains
+non-converged case without `ENV004` is not treated as success. A changed
+expected process value with no current `ENV004` is `no_longer_applicable`.
+The comparison-derived mismatch state must agree with the supplied fresh
+findings exactly; missing or fabricated `ENV004` evidence returns
+`unavailable` with an inconsistent-findings reason. `collected_at` and
+unrelated snapshot fields do not affect this effect decision. The function is
+not connected to an apply, `systemctl` or write path, and `apply` remains
 `not_implemented`.
 
 ## 25. Architecture Decision Summary
