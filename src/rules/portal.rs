@@ -420,6 +420,7 @@ mod tests {
             selected_file: selected.map(str::to_owned),
             preferences,
             parse_errors: errors,
+            lower_priority_candidates: Vec::new(),
         })
     }
 
@@ -934,6 +935,7 @@ mod tests {
                 selected_file: Some(config_path.to_owned()),
                 preferences: preferences.clone(),
                 parse_errors: parse_errors.clone(),
+                lower_priority_candidates: Vec::new(),
             },
             &backends,
         );

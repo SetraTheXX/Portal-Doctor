@@ -1156,9 +1156,13 @@ release approval. It does not change the Phase 8, KDE or Sway blocker state.
   frontend executable, so it is not an affected exact-version match. The
   `dpkg-query` fallback preserves distro revisions in its raw evidence.
 - [x] Add `XDP006` only for exact normalized `1.22.0` plus pure Niri, effective
-  selected `Settings=gtk`, and both GNOME/GTK Settings-capable descriptors.
-  The finding says known compatibility risk and never claims an observed
-  duplicate SettingsChanged conflict.
+  selected `Settings=gtk`, a valid lower-priority candidate whose effective
+  Settings behavior includes GNOME, and both GNOME/GTK Settings-capable
+  descriptors. Lower candidates are typed non-effective metadata and are
+  never merged into resolver preferences. The finding says known compatibility
+  risk and never claims an observed duplicate SettingsChanged conflict.
+- [x] Add negative coverage for absent, non-GNOME, malformed and unreadable
+  lower candidates; all fail closed without changing generic `CFG004`.
 - [x] Cover silent negative cases for missing/uncomparable/non-affected
   versions, other desktops, canonical default routing, single descriptors and
   GNOME+GTK installation without the explicit effective override. Existing

@@ -53,7 +53,8 @@ pub fn resolve_routes(
     );
 
     // `PortalConfigInfo.preferences` is already the effective selected file;
-    // lower-precedence candidate files are intentionally not represented here.
+    // lower-precedence candidate metadata is intentionally excluded from route
+    // resolution.
     let preferences: BTreeMap<&str, &PortalPreference> = config
         .preferences
         .iter()
@@ -257,6 +258,7 @@ mod tests {
             selected_file: Some("/cfg/xdg-desktop-portal/portals.conf".to_owned()),
             preferences,
             parse_errors: Vec::new(),
+            lower_priority_candidates: Vec::new(),
         }
     }
 
@@ -760,6 +762,7 @@ mod tests {
             // lower generic file remains a candidate but is not merged here.
             preferences: override_prefs,
             parse_errors: Vec::new(),
+            lower_priority_candidates: Vec::new(),
         };
         let backends = vec![
             parse_portal_file(
