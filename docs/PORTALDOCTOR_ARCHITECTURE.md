@@ -1070,15 +1070,19 @@ not connected to an apply, `systemctl` or write path, and `apply` remains
 The fifth bounded Phase 12 slice adds an explicit
 `RemediationApproval` binding for ENV004. `create_env004_approval` only emits
 an approval record after the proposal digest and fixed proposal contract pass;
-the record carries its approval-contract version, remediation ID, proposal and
-evidence digests, action, target and explicit user-approval state. The pure
-`verify_env004_approval(approval, proposal, fresh_snapshot, fresh_findings)`
-verifier rejects proposal or binding mutations, cross-remediation reuse and
-non-approved state before considering fresh evidence. It returns typed
-`valid`, `tampered`, `stale_evidence`, `not_approved` or `not_applicable`;
-`valid` requires the fresh comparison/findings consistency and the same
-actionable evidence digest. No apply authority is connected to the CLI,
-`systemctl` or a write path, and `apply` remains `not_implemented`.
+the record carries approval-contract version 2, remediation ID, proposal and
+evidence digests, action, target, explicit user-approval state and an
+`approval_digest`. That digest uses explicit field labels, length-prefixed
+values and a versioned domain, while excluding itself from the input. The
+pure `verify_env004_approval(approval, proposal, fresh_snapshot,
+fresh_findings)` verifier checks approval-digest integrity first, then the
+proposal digest/contract, approval-to-proposal binding, explicit `Approved`
+state and finally fresh evidence. Thus approval-state and binding mutations
+cannot be reinterpreted as `not_approved` or as valid authority. It returns
+typed `valid`, `tampered`, `stale_evidence`, `not_approved` or
+`not_applicable`; `valid` requires fresh comparison/findings consistency and
+the same actionable evidence digest. No apply authority is connected to the
+CLI, `systemctl` or a write path, and `apply` remains `not_implemented`.
 
 ## 25. Architecture Decision Summary
 

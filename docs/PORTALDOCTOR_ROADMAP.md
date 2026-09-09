@@ -1355,8 +1355,8 @@ contract.
 
 ## Fifth bounded `ENV004` explicit approval slice — 2026-09-09
 
-- [x] Add a typed `RemediationApproval` record with an approval-contract
-  version, remediation ID, exact proposal/evidence digests, action, target and
+- [x] Add a typed `RemediationApproval` record with approval-contract version
+  2, remediation ID, exact proposal/evidence digests, action, target and
   explicit user-approval state.
 - [x] Allow approval creation only from an integrity-checked, contract-valid
   ENV004 proposal; keep approval state separate from apply implementation.
@@ -1371,6 +1371,24 @@ contract.
 
 This is an explicit approval/verification contract only. It does not authorize
 or perform remediation and does not change the passive v0.2.1 contract.
+
+## Sixth bounded `ENV004` approval-state integrity slice — 2026-09-09
+
+- [x] Add a deterministic `approval_digest` to every approval record. It binds
+  the approval contract version, remediation ID, proposal/evidence digests,
+  action, target and user-approval state with explicit field labels and
+  length-prefixed values; `approval_digest` itself is excluded from its input.
+- [x] Make `verify_env004_approval(...)` verify approval-digest integrity
+  before proposal digest/contract, approval-to-proposal binding, explicit
+  `Approved` state and fresh evidence.
+- [x] Cover direct approval-state mutation, binding mutation, digest mutation,
+  untouched `NotApproved` and untouched approved/fresh-evidence outcomes;
+  keep approval and apply contracts fail-closed.
+- [x] Keep the CLI limited to `portaldoctor fix ENV004 --dry-run`; no apply,
+  `systemctl` or write-capable path exists.
+
+This slice hardens the approval record only. It does not authorize or perform
+remediation and does not change the passive v0.2.1 contract.
 
 ## Prohibited behavior
 
