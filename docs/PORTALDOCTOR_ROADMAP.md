@@ -1650,6 +1650,28 @@ FileChooser live-qualified and Screenshot/ScreenCast externally blocked by
 their existing provider/capability gates. No new collector, probe command or
 live provider validation is introduced by this slice.
 
+### Phase 13.7 compatibility qualification matrix — 2026-09-10
+
+The compatibility matrix below is the canonical desktop qualification boundary.
+It is intentionally separate from the Phase 13.6 diagnostics inventory:
+controlled compatibility evidence does not promote a desktop to live support.
+
+<!-- PORTALDOCTOR_COMPATIBILITY_MATRIX_START -->
+```text
+gnome|desktop=GNOME|implementation=complete|controlled=complete|live=live_qualified|prerequisite=Ubuntu_26.04+GNOME+Wayland+systemd_user+portal_frontend|provider_model=GNOME_capture+GTK_fallback+standard_portal_descriptors|support_claim=passive_baseline_only;active_probes_unreleased|active_gate=externally_blocked_Screenshot_and_ScreenCast|blocker=Screenshot_GNOME_provider_hang_crash;ScreenCast_AvailableSourceTypes_Window_bit_2_missing
+kde_plasma|desktop=KDE_Plasma|implementation=complete|controlled=complete|live=controlled_only|prerequisite=real_Plasma_Wayland+selected_kde_route+healthy_kde_backend_service+canonical_KDE_DBus_owner+capability_evidence+PipeWire_WirePlumber|provider_model=KDE_backend_selected_by_standard_portals_conf_and_portal_descriptor|support_claim=no_live_support_claim|active_gate=not_started|blocker=current_host_GNOME;KDE_package_service_owner_absent
+sway_wlroots|desktop=Sway_wlroots|implementation=complete|controlled=complete|live=controlled_only|prerequisite=real_Sway_Wayland+wlr_backend_package_service+canonical_WLR_DBus_owner+WLR_passive_routes+Window_capability_evidence+PipeWire_WirePlumber|provider_model=WLR_for_Screenshot_ScreenCast+GTK_fallback_for_FileChooser_Settings|support_claim=no_live_support_claim|active_gate=not_started|blocker=current_host_GNOME;WLR_package_service_owner_absent
+hyprland|desktop=Hyprland|implementation=complete|controlled=complete|live=controlled_only|prerequisite=real_Hyprland_Wayland+Hyprland_backend_package_service+canonical_Hyprland_DBus_owner+Hyprland_passive_routes+capability_evidence+PipeWire_WirePlumber|provider_model=Hyprland_for_Screenshot_ScreenCast+GTK_fallback_for_FileChooser_Settings|support_claim=no_live_support_claim|active_gate=not_started|blocker=current_host_GNOME;Hyprland_session_package_service_owner_absent
+niri|desktop=Niri|implementation=complete|controlled=complete|live=controlled_only|prerequisite=real_Niri_Wayland+upstream_shaped_effective_niri_portals_conf+healthy_GNOME_GTK_services+canonical_GNOME_GTK_DBus_owners+expected_mixed_routes+capability_evidence+PipeWire_WirePlumber|provider_model=GNOME_capture+GTK_fallback;no_Niri_specific_backend|support_claim=no_live_support_claim|active_gate=not_started|blocker=current_host_GNOME;real_Niri_session_absent
+```
+<!-- PORTALDOCTOR_COMPATIBILITY_MATRIX_END -->
+
+GNOME is live-qualified only for the published passive baseline; its active
+Screenshot and ScreenCast rows remain external release gates. KDE, Sway/
+wlroots, Hyprland and Niri are controlled-only and require their listed live
+preflight before any support claim. Niri keeps the mixed GNOME/GTK model and
+does not acquire a Niri-specific backend.
+
 ## Required v1.0 gates
 
 ### Product

@@ -13,9 +13,29 @@ PortalDoctor v0.2 is developed and validated against exactly one target:
 | Portal frontend | `org.freedesktop.portal.Desktop` |
 | Backends | `xdg-desktop-portal-gnome`, `-gtk` and other descriptors discovered through the standard `.portal` mechanism |
 
+## Phase 13.7 compatibility qualification matrix
+
+The matrix separates implementation, controlled fixture qualification and
+live desktop qualification. A controlled PASS is never a live support claim.
+The GNOME row is live-qualified only for the published passive baseline; its
+active Screenshot and ScreenCast gates remain externally blocked. The other
+rows are controlled-only until their exact live prerequisites are met.
+
+<!-- PORTALDOCTOR_COMPATIBILITY_MATRIX_START -->
+```text
+gnome|desktop=GNOME|implementation=complete|controlled=complete|live=live_qualified|prerequisite=Ubuntu_26.04+GNOME+Wayland+systemd_user+portal_frontend|provider_model=GNOME_capture+GTK_fallback+standard_portal_descriptors|support_claim=passive_baseline_only;active_probes_unreleased|active_gate=externally_blocked_Screenshot_and_ScreenCast|blocker=Screenshot_GNOME_provider_hang_crash;ScreenCast_AvailableSourceTypes_Window_bit_2_missing
+kde_plasma|desktop=KDE_Plasma|implementation=complete|controlled=complete|live=controlled_only|prerequisite=real_Plasma_Wayland+selected_kde_route+healthy_kde_backend_service+canonical_KDE_DBus_owner+capability_evidence+PipeWire_WirePlumber|provider_model=KDE_backend_selected_by_standard_portals_conf_and_portal_descriptor|support_claim=no_live_support_claim|active_gate=not_started|blocker=current_host_GNOME;KDE_package_service_owner_absent
+sway_wlroots|desktop=Sway_wlroots|implementation=complete|controlled=complete|live=controlled_only|prerequisite=real_Sway_Wayland+wlr_backend_package_service+canonical_WLR_DBus_owner+WLR_passive_routes+Window_capability_evidence+PipeWire_WirePlumber|provider_model=WLR_for_Screenshot_ScreenCast+GTK_fallback_for_FileChooser_Settings|support_claim=no_live_support_claim|active_gate=not_started|blocker=current_host_GNOME;WLR_package_service_owner_absent
+hyprland|desktop=Hyprland|implementation=complete|controlled=complete|live=controlled_only|prerequisite=real_Hyprland_Wayland+Hyprland_backend_package_service+canonical_Hyprland_DBus_owner+Hyprland_passive_routes+capability_evidence+PipeWire_WirePlumber|provider_model=Hyprland_for_Screenshot_ScreenCast+GTK_fallback_for_FileChooser_Settings|support_claim=no_live_support_claim|active_gate=not_started|blocker=current_host_GNOME;Hyprland_session_package_service_owner_absent
+niri|desktop=Niri|implementation=complete|controlled=complete|live=controlled_only|prerequisite=real_Niri_Wayland+upstream_shaped_effective_niri_portals_conf+healthy_GNOME_GTK_services+canonical_GNOME_GTK_DBus_owners+expected_mixed_routes+capability_evidence+PipeWire_WirePlumber|provider_model=GNOME_capture+GTK_fallback;no_Niri_specific_backend|support_claim=no_live_support_claim|active_gate=not_started|blocker=current_host_GNOME;real_Niri_session_absent
+```
+<!-- PORTALDOCTOR_COMPATIBILITY_MATRIX_END -->
+
 Other distributions, desktops and sessions may work — the resolver follows
 upstream `xdg-desktop-portal` semantics rather than hard-coding GNOME — but
-they are untested in v0.2 and no support is claimed.
+the published support claim remains limited to the GNOME passive baseline.
+The matrix records controlled compatibility evidence separately and does not
+promote it to live support.
 
 ## What the published v0.2 line does NOT cover
 
@@ -37,8 +57,9 @@ they are untested in v0.2 and no support is claimed.
   The real gate is **BLOCKED** because the frontend reports
   `AvailableSourceTypes=0` and lacks Window bit `2`; no PipeWire
   media/handshake/capture is implemented.
-- **KDE / wlroots / Hyprland / Niri** — no support claims; route resolution
-  may work but is unvalidated. Phase 9 now has static KDE config/metadata and
+- **KDE / wlroots / Hyprland / Niri** — no support claims; the matrix records
+  controlled route/runtime/activation coverage but live qualification remains
+  open. Phase 9 now has static KDE config/metadata and
   routing fixtures plus controlled KDE runtime-correlation tests for generic
   service/D-Bus finding semantics and KDE/Plasma Wayland environment/session
   fixtures, including a healthy/degraded passive snapshot aggregate and an
