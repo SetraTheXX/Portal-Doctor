@@ -637,6 +637,26 @@ blocked. Controlled/fake results are not live support claims.
 No collector, public probe command, remediation/apply path or provider E2E was
 added. Phase 8 and the `v0.3.0` release blockers remain unchanged.
 
+### Phase 13.7 compatibility qualification matrix checkpoint — 2026-09-10
+
+The seventh bounded Phase 13 slice is **COMPLETE**. The canonical matrix now
+separates implementation-complete, controlled-complete and live/support
+qualification for GNOME, KDE Plasma, Sway/wlroots, Hyprland and Niri.
+
+GNOME is live-qualified only for the published passive Ubuntu 26.04/GNOME/
+Wayland/systemd-user baseline. Its active Screenshot and ScreenCast gates are
+separately externally blocked. KDE Plasma, Sway/wlroots, Hyprland and Niri
+remain controlled-only: their static/runtime/activation evidence does not
+claim live support, and each row records the exact session, backend, D-Bus,
+route, capability and PipeWire prerequisites required for re-evaluation.
+Niri retains the mixed GNOME/GTK portal model; no Niri-specific backend is
+invented.
+
+The matrix and runtime inventory reject duplicate desktop keys, blank live
+prerequisites/blockers and any direct controlled-or-blocked to live
+qualification transition. No new provider/compositor E2E, collector, probe,
+remediation or public command was added.
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility

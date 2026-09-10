@@ -923,6 +923,24 @@ provider test is part of this contract.
 
 ---
 
+### Compatibility qualification matrix — Phase 13.7
+
+Desktop compatibility uses a separate qualification matrix. The generic
+resolver/runtime implementation and controlled fixture evidence are complete
+for GNOME, KDE Plasma, Sway/wlroots, Hyprland and Niri, but only the published
+Ubuntu 26.04/GNOME/Wayland passive baseline is live-qualified. The matrix
+requires a concrete live prerequisite and blocker for every non-live row and
+rejects direct promotion from controlled-only or externally-blocked evidence
+to live qualification. GNOME remains the mixed provider baseline for its
+active gates, while Niri explicitly uses GNOME capture plus GTK fallback and
+does not imply a Niri-specific backend.
+
+The roadmap and `compatibility.md` rows are compared with the same runtime
+inventory in tests. No controlled fixture, current GNOME host observation or
+provider absence is treated as a live desktop support claim.
+
+---
+
 ## 19. Concurrency and Timeouts
 
 Independent passive collectors can run concurrently where doing so does not distort state.
