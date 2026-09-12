@@ -4,6 +4,11 @@ Read-only diagnostics for the Linux desktop portal stack.
 
 [![CI](https://github.com/SetraTheXX/Portal-Doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/SetraTheXX/Portal-Doctor/actions/workflows/ci.yml) [![Crates.io](https://img.shields.io/crates/v/portaldoctor.svg)](https://crates.io/crates/portaldoctor) [![Release](https://img.shields.io/github/v/release/SetraTheXX/Portal-Doctor?sort=semver)](https://github.com/SetraTheXX/Portal-Doctor/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+> **Branch notice:** GitHub `main` is the development branch and contains
+> unreleased experimental probe work. For the stable published product, use
+> [v0.2.1 on crates.io](https://crates.io/crates/portaldoctor) or the
+> [v0.2.1 GitHub release](https://github.com/SetraTheXX/Portal-Doctor/releases/tag/v0.2.1).
+
 <p align="center">
   <img src="./docs/assets/portaldoctor-demo.gif" alt="PortalDoctor diagnosing Linux desktop portal health and routing" width="100%">
 </p>
