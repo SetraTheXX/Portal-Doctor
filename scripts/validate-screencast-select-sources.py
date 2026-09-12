@@ -574,11 +574,15 @@ class FakePortal:
             )
             return
         if self.mode == "open-late-transport":
-            GLib.timeout_add(70, self._return_open_transport_error, invocation)
+            # Keep the reply after the controlled 200 ms direct-call budget,
+            # while still inside the 400 ms bounded recovery window.
+            GLib.timeout_add(250, self._return_open_transport_error, invocation)
             return
 
         if self.mode == "open-late-fd":
-            GLib.timeout_add(70, self._return_open_fd, invocation)
+            # Keep the FD reply after the controlled 200 ms direct-call budget,
+            # while still inside the 400 ms bounded recovery window.
+            GLib.timeout_add(250, self._return_open_fd, invocation)
             return
         self._return_open_fd(invocation)
 

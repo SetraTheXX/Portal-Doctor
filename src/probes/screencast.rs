@@ -57,9 +57,12 @@ impl CreateSessionTimeouts {
     #[cfg(test)]
     const fn controlled() -> Self {
         Self {
-            request: Duration::from_millis(40),
-            recovery: Duration::from_millis(100),
-            response: Duration::from_millis(120),
+            // The controlled fake still uses short, bounded delays, but the
+            // request budget must leave room for an isolated CI session bus
+            // to dispatch the initial CreateSession call under load.
+            request: Duration::from_millis(200),
+            recovery: Duration::from_millis(400),
+            response: Duration::from_millis(300),
         }
     }
 }
