@@ -1526,6 +1526,10 @@ No remediation ships unless it has:
 
 **Phase 13.6 diagnostic coverage contract slice:** COMPLETE
 
+**Phase 13.7 compatibility qualification matrix slice:** COMPLETE
+
+**Phase 13.8 x86_64 Linux release artifact + checksum contract slice:** COMPLETE
+
 **Phase 13 overall:** in progress; v1.0 release gates remain open.
 
 ## Objective
@@ -1672,6 +1676,26 @@ wlroots, Hyprland and Niri are controlled-only and require their listed live
 preflight before any support claim. Niri keeps the mixed GNOME/GTK model and
 does not acquire a Niri-specific backend.
 
+### Phase 13.8 x86_64 Linux release artifact + checksum contract — 2026-09-12
+
+- [x] Build the x86_64 Linux release binary with the existing locked release
+  build flow.
+- [x] Stage exactly one executable PortalDoctor payload with the deterministic
+  name `portaldoctor-<Cargo version>-<Rust target>` and no unrelated payload
+  files.
+- [x] Generate a SHA-256 sidecar, verify it with `sha256sum -c`, and verify
+  that the staged binary's `--version` exactly matches the Cargo package
+  version.
+- [x] Preserve executable/installability semantics and repeat the artifact
+  name, target, version, entry-set and checksum assertions in CI.
+- [ ] Produce an ARM64 Linux artifact; it remains outside this slice.
+
+This is a controlled engineering gate for a future release asset. It does not
+upload a GitHub release, create a tag or publish to crates.io, and it does not
+change the Phase 8 Screenshot/ScreenCast provider gates or the `v0.3.0`
+release decision. The existing locked package/install smoke remains part of
+the CI path; `.deb` packaging is still a later v1.0 engineering gate.
+
 ## Required v1.0 gates
 
 ### Product
@@ -1711,9 +1735,9 @@ Validated matrix includes at least:
 - broad fixture suite,
 - release tests,
 - dependency/security review,
-- x86_64 Linux release artifact,
-- ARM64 Linux release artifact,
-- checksum generation,
+- [x] x86_64 Linux release artifact,
+- [ ] ARM64 Linux release artifact,
+- [x] x86_64 checksum generation and verification,
 - `.deb` packaging or equivalent documented install path.
 
 ## Release

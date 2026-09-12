@@ -1,8 +1,8 @@
 # PortalDoctor — Current State and Handoff
 
-**Last verified:** 2026-09-09
+**Last verified:** 2026-09-12
 **Current public release:** `v0.2.1`
-**Current development phase:** Phase 13 v1.0 Hardening — finding-semantics, versioned JSON schema, exit-code, shareable-report privacy, default-UX/scope and diagnostic-coverage contract slices COMPLETE
+**Current development phase:** Phase 13 v1.0 Hardening — finding-semantics, versioned JSON schema, exit-code, shareable-report privacy, default-UX/scope, diagnostic-coverage and x86_64 artifact/checksum contract slices COMPLETE
 **Release gate under review:** Phase 8 / `v0.3.0` remains blocked
 **Primary next issue:** [#3 — Active FileChooser, Screenshot and ScreenCast probes](https://github.com/SetraTheXX/Portal-Doctor/issues/3)
 
@@ -657,6 +657,28 @@ prerequisites/blockers and any direct controlled-or-blocked to live
 qualification transition. No new provider/compositor E2E, collector, probe,
 remediation or public command was added.
 
+### Phase 13.8 x86_64 Linux release artifact and checksum checkpoint — 2026-09-12
+
+The x86_64 Linux release-artifact engineering slice is **COMPLETE at
+controlled CI level**. The bounded
+[`build-release-artifact.sh`](../scripts/build-release-artifact.sh) helper
+builds the locked release binary, derives the Cargo package version and Rust
+host target, and stages exactly one executable PortalDoctor payload plus its
+SHA-256 sidecar under the deterministic name
+`portaldoctor-<version>-<target>`. It verifies the checksum, exact
+`--version` output and executable/installability contract; the CI step repeats
+the name, target, version, payload-entry and `sha256sum -c` checks independently.
+
+This gate validates a future release asset; it does not upload a GitHub
+release, create a tag or publish to crates.io. The existing locked
+package/install smoke remains required. ARM64 artifact generation is **not
+complete**, `.deb` packaging remains a later engineering gate, and no Phase 8
+provider state or v0.3.0 release decision changes here. The exact two
+v0.3.0 external gates remain Screenshot real success plus portal-native
+cancellation (GNOME provider hang/crash blocker) and ScreenCast real success
+plus portal-native cancellation (`AvailableSourceTypes=0`, Window bit `2`
+absent).
+
 Implement and release-gate it in this order:
 
 1. [x] Evaluate and record the ASHPD integration strategy and its compatibility
@@ -974,6 +996,8 @@ cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked --all-features
 cargo build --locked --release
 cargo package --locked
+artifact_dir="$(mktemp -d -t portaldoctor-artifact.XXXXXX)"
+./scripts/build-release-artifact.sh "$artifact_dir"
 install_root="$(mktemp -d -t portaldoctor-smoke.XXXXXX)"
 cargo install --path . --locked --root "$install_root"
 "$install_root/bin/portaldoctor" --version

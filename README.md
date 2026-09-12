@@ -364,6 +364,8 @@ cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked --all-features
 cargo build --locked --release
 cargo package --locked
+artifact_dir="$(mktemp -d -t portaldoctor-artifact.XXXXXX)"
+./scripts/build-release-artifact.sh "$artifact_dir"
 install_root="$(mktemp -d -t portaldoctor-smoke.XXXXXX)"
 cargo install --path . --locked --root "$install_root"
 "$install_root/bin/portaldoctor" --version
@@ -374,6 +376,12 @@ PORTALDOCTOR_BIN=target/release/portaldoctor \
 ```
 
 The package and install commands verify the artifact before publication. The
+release-artifact helper additionally stages one deterministic x86_64 Linux
+PortalDoctor binary named `portaldoctor-<version>-<target>` with a SHA-256
+sidecar, rechecks the checksum and exact `--version` output, and preserves
+executable/installability semantics. This controlled gate does not upload a
+GitHub release, create a tag or publish to crates.io; ARM64 remains a separate
+future artifact gate. The
 fault-injection harness exercises the v0.1-compatible finding contract and
 stable parser/runtime exit codes without modifying the host system. See the
 [fault-injection harness](scripts/validate-v0.1-faults.py) for the fixture
