@@ -1054,9 +1054,9 @@ cargo test --all-features
 Later:
 
 - dependency audit,
-- release artifact smoke tests,
+- x86_64 release artifact and checksum smoke tests (controlled in CI),
 - JSON schema fixture validation,
-- supported-architecture builds.
+- supported-architecture builds, including the still-open ARM64 artifact.
 
 CI should not fake compatibility claims. A successful generic Linux CI run does not equal validated GNOME/KDE/Sway runtime support.
 
@@ -1076,6 +1076,17 @@ Then:
 - possibly `cargo install` if dependency/system expectations are suitable.
 
 Later package channels can include distro/community packaging, but package-manager proliferation is not an early product goal.
+
+The current x86_64 artifact contract is validated without publishing: the
+bounded `scripts/build-release-artifact.sh <empty-directory>` helper runs the
+locked release build, derives the Cargo version and Rust host target, and
+creates exactly one executable `portaldoctor-<version>-<target>` payload plus
+its `<payload>.sha256` sidecar. It verifies the sidecar, exact `--version`
+output and a clean install copy; CI independently repeats the checksum,
+version, target and entry-set checks. The helper accepts only an x86_64 Linux
+host, does not use `eval` or generated shell commands, and does not upload a
+release, create a tag or publish a crate. ARM64 and `.deb` packaging remain
+separate gates.
 
 ---
 

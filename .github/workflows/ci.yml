@@ -23,6 +23,28 @@ jobs:
       - run: cargo test --locked --all-features
       - run: cargo build --locked --release
       - run: cargo package --locked
+      - name: x86_64 Linux release artifact and checksum gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/portaldoctor-release-artifact"
+          mkdir -p "$artifact_dir"
+          ./scripts/build-release-artifact.sh "$artifact_dir"
+
+          expected_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "portaldoctor") | .version')"
+          target="$(rustc -vV | awk '$1 == "host:" { print $2; exit }')"
+          test "$target" = "x86_64-unknown-linux-gnu"
+          artifact_name="portaldoctor-${expected_version}-${target}"
+
+          entries="$(find "$artifact_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)"
+          expected_entries="$(printf '%s\n%s\n' "$artifact_name" "${artifact_name}.sha256" | sort)"
+          test "$entries" = "$expected_entries"
+          test -x "$artifact_dir/$artifact_name"
+          test "$("$artifact_dir/$artifact_name" --version)" = "portaldoctor $expected_version"
+          (
+            cd "$artifact_dir"
+            sha256sum -c -- "${artifact_name}.sha256"
+          )
       - name: Install binary smoke
         shell: bash
         run: |
