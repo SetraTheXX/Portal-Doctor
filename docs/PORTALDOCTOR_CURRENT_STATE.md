@@ -43,6 +43,10 @@ outside the implemented boundary.
 - `main` is the active branch. Before starting work, verify
   `git status --short --branch`, `git log -1 --oneline --decorate` and
   `git diff --check`.
+- GitHub's default `main` ZIP/clone is unreleased development source. Stable
+  source is the immutable [`v0.2.1` tag](https://github.com/SetraTheXX/Portal-Doctor/tree/v0.2.1)
+  or the GitHub release archive. The published crate installs with
+  `cargo install portaldoctor --version 0.2.1 --locked`.
 - The default product path remains passive, read-only, rootless and bounded.
 
 ## Completed roadmap scope

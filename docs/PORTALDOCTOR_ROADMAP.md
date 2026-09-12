@@ -1,6 +1,6 @@
 # PortalDoctor — Development Roadmap
 
-**Status:** Current implementation roadmap; last verified 2026-09-09
+**Status:** Current implementation roadmap; last verified 2026-09-12
 **Date:** 2026-09-05
 **Strategy:** Narrow vertical slice first, then expand subsystem coverage and desktop compatibility
 
