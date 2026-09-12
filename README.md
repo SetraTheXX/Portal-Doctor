@@ -58,13 +58,21 @@ portaldoctor
 
 For the latest published version, omit the `--version` flag.
 
-### Build from source
+### Build the stable release from source
 
 ```sh
-git clone https://github.com/SetraTheXX/Portal-Doctor.git
+git clone --branch v0.2.1 --depth 1 https://github.com/SetraTheXX/Portal-Doctor.git
 cd Portal-Doctor
 cargo build --locked --release
 ./target/release/portaldoctor
+```
+
+GitHub's default ZIP download and a plain clone follow `main`, which is the
+unreleased development branch. Use the `v0.2.1` release/tag above when you need
+the stable published source. To inspect development work explicitly:
+
+```sh
+git clone https://github.com/SetraTheXX/Portal-Doctor.git
 ```
 
 Normal use is read-only and does not require `sudo` or root access.
@@ -201,8 +209,9 @@ version/target, unavailable service and cleanup failure:
 - optional bounded journal evidence for portal, PipeWire, and WirePlumber
   failures,
 - shareable terminal, JSON and Markdown reports with report-level redaction,
-- 20 deterministic findings across the `ENV`, `XDP`, `CFG`, `DBUS`, `PW`, and
-  `SC` families.
+- 20 deterministic findings in the published `v0.2.1` line across the `ENV`,
+  `XDP`, `CFG`, `DBUS`, `PW`, and `SC` families; development `main` adds the
+  bounded `XDP006` compatibility finding (21 IDs in the current catalog).
 
 ## Example
 
