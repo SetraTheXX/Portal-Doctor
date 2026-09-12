@@ -31,7 +31,7 @@ jobs:
           mkdir -p "$artifact_dir"
           ./scripts/build-release-artifact.sh "$artifact_dir"
 
-          expected_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "portaldoctor") | .version')"
+          expected_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '[.packages[] | select(.name == "portaldoctor") | .version] | if length == 1 then .[0] else error("expected exactly one portaldoctor package") end')"
           target="$(rustc -vV | awk '$1 == "host:" { print $2; exit }')"
           test "$target" = "x86_64-unknown-linux-gnu"
           artifact_name="portaldoctor-${expected_version}-${target}"
@@ -52,7 +52,7 @@ jobs:
           install_root="$RUNNER_TEMP/portaldoctor"
           cargo install --path . --locked --root "$install_root"
           binary="$install_root/bin/portaldoctor"
-          expected_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "portaldoctor") | .version')"
+          expected_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '[.packages[] | select(.name == "portaldoctor") | .version] | if length == 1 then .[0] else error("expected exactly one portaldoctor package") end')"
           test "$("$binary" --version)" = "portaldoctor $expected_version"
 
           set +e
