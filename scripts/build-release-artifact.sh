@@ -58,7 +58,7 @@ if [[ ! "$version" =~ ^[0-9]+(\.[0-9]+){2}([+-][0-9A-Za-z.-]+)?$ ]]; then
   exit 2
 fi
 
-target="$(rustc -vV | awk '$1 == "host:" { print $2; exit }')"
+target="$(rustc -vV | awk '$1 == "host:" { print $2 }')"
 case "$target" in
   x86_64-unknown-linux-*) ;;
   *)
